@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Xcode user data
+xcuserdata/
+*.xcuserstate
+
+# Xcode build
+build/
+DerivedData/
+
+# Xcode workspaces (except shared schemes/settings)
+*.xcworkspace/xcuserdata/
+*.xcworkspace/contents.xcworkspacedata
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# CocoaPods (if used)
+Pods/
+
+# Code coverage
+*.gcda
+*.gcno
+*.gcov
