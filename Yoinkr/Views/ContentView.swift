@@ -1,59 +1,50 @@
-//
-//  ContentView.swift
-//  Yoinkr
-//
-//  Created by Christopher Culbreath on 1/26/26.
-//
-
 import SwiftUI
 import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @Environment(MediaLibrary.self) private var library
+
+    @State private var sidebarSelection: SidebarItem? = .allMedia
+    @State private var gridViewModel = GridViewModel()
+    @State private var slideshowViewModel = SlideshowViewModel()
+    @State private var showSlideshow = false
 
     var body: some View {
         NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
-                }
-                .onDelete(perform: deleteItems)
-            }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-            .toolbar {
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
+            SidebarView(selection: $sidebarSelection)
         } detail: {
-            Text("Select an item")
+            MediaGridView(
+                viewModel: gridViewModel,
+                items: currentItems,
+                onStartSlideshow: startSlideshow
+            )
         }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+        .sheet(isPresented: $showSlideshow) {
+            slideshowViewModel.stop()
+        } content: {
+            SlideshowView(viewModel: slideshowViewModel)
+                .frame(minWidth: 800, minHeight: 600)
         }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+        .onAppear {
+            // Ensure we have a selection
+            if sidebarSelection == nil {
+                sidebarSelection = .allMedia
             }
         }
     }
-}
 
-#Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+    private var currentItems: [MediaItem] {
+        switch sidebarSelection {
+        case .allMedia, .none:
+            return library.items(sortedBy: gridViewModel.sortOrder, ascending: gridViewModel.sortAscending)
+        case .playlist:
+            // Playlist support in Phase 3
+            return []
+        }
+    }
+
+    private func startSlideshow(items: [MediaItem], startIndex: Int) {
+        slideshowViewModel.start(with: items, startingAt: startIndex)
+        showSlideshow = true
+    }
 }
