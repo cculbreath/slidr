@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct MediaGridView: View {
     @Environment(MediaLibrary.self) private var library

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import AppKit
 import OSLog
 
 private let logger = Logger(subsystem: "com.culbreath.Yoinkr", category: "Library")

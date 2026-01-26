@@ -37,7 +37,6 @@ struct YoinkrApp: App {
         WindowGroup {
             ContentView()
                 .environment(mediaLibrary)
-                .environment(thumbnailCache)
         }
         .modelContainer(modelContainer)
 

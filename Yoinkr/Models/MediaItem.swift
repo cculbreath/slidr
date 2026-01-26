@@ -1,5 +1,6 @@
 import SwiftData
 import Foundation
+import CoreGraphics
 
 @Model
 final class MediaItem {

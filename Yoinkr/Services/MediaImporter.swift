@@ -1,6 +1,8 @@
 import Foundation
 import SwiftData
 import UniformTypeIdentifiers
+import ImageIO
+import CoreGraphics
 import OSLog
 
 private let logger = Logger(subsystem: "com.culbreath.Yoinkr", category: "Import")
