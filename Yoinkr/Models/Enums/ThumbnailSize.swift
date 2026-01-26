@@ -1,4 +1,4 @@
-import Foundation
+import CoreGraphics
 
 enum ThumbnailSize: String, Codable, CaseIterable, Sendable {
     case small = "Small"
@@ -6,7 +6,7 @@ enum ThumbnailSize: String, Codable, CaseIterable, Sendable {
     case large = "Large"
     case extraLarge = "Extra Large"
 
-    var pixelSize: CGFloat {
+    nonisolated var pixelSize: CGFloat {
         switch self {
         case .small: return 128
         case .medium: return 256

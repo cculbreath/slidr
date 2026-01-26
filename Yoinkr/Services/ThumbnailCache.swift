@@ -1,10 +1,11 @@
 import Foundation
 import AppKit
+import ImageIO
 import OSLog
 
-private let logger = Logger(subsystem: "com.culbreath.Yoinkr", category: "Thumbnails")
-
 actor ThumbnailCache {
+    private static let logger = Logger(subsystem: "com.culbreath.Yoinkr", category: "Thumbnails")
+
     private let cacheDirectory: URL
     private let memoryCache = NSCache<NSString, NSImage>()
     private var generationTasks: [String: Task<NSImage, Error>] = [:]
@@ -39,24 +40,31 @@ actor ThumbnailCache {
         }
 
         // 4. Generate thumbnail
+        // Capture values to avoid crossing isolation boundaries
+        let pixelSize = size.pixelSize
+        let quality = jpegQuality
+        let relativePath = item.relativePath
+        let filename = item.originalFilename
+
         let task = Task<NSImage, Error> {
-            let fileURL = libraryRoot.appendingPathComponent(item.relativePath)
+            let fileURL = libraryRoot.appendingPathComponent(relativePath)
 
             guard FileManager.default.fileExists(atPath: fileURL.path) else {
                 throw ThumbnailError.fileNotFound
             }
 
-            let image = try generateThumbnail(url: fileURL, size: size)
+            let cgImage = try Self.generateCGImage(url: fileURL, pixelSize: pixelSize)
+            let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
 
-            // Cache to disk
-            if let jpegData = image.jpegData(compressionQuality: jpegQuality) {
+            // Cache to disk using CGImageDestination (avoids MainActor-isolated NSImage methods)
+            if let jpegData = Self.jpegData(from: cgImage, quality: quality) {
                 try? jpegData.write(to: diskPath)
             }
 
             // Cache to memory
             memoryCache.setObject(image, forKey: cacheKey as NSString)
 
-            logger.debug("Generated thumbnail for \(item.originalFilename)")
+            Self.logger.debug("Generated thumbnail for \(filename)")
             return image
         }
 
@@ -69,13 +77,13 @@ actor ThumbnailCache {
         return try await task.value
     }
 
-    private func generateThumbnail(url: URL, size: ThumbnailSize) throws -> NSImage {
+    private static func generateCGImage(url: URL, pixelSize: CGFloat) throws -> CGImage {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
             throw ThumbnailError.failedToLoad
         }
 
         let options: [CFString: Any] = [
-            kCGImageSourceThumbnailMaxPixelSize: size.pixelSize,
+            kCGImageSourceThumbnailMaxPixelSize: pixelSize,
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true
         ]
@@ -84,7 +92,20 @@ actor ThumbnailCache {
             throw ThumbnailError.failedToGenerate
         }
 
-        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        return cgImage
+    }
+
+    private static func jpegData(from cgImage: CGImage, quality: CGFloat) -> Data? {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data as CFMutableData, "public.jpeg" as CFString, 1, nil) else {
+            return nil
+        }
+        let options: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: quality]
+        CGImageDestinationAddImage(destination, cgImage, options as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else {
+            return nil
+        }
+        return data as Data
     }
 
     func removeThumbnails(forHash hash: String) {
