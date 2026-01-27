@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import AVFoundation
 
 @MainActor
 @Observable
@@ -10,6 +11,11 @@ final class SlideshowViewModel {
     var isPlaying: Bool = true
     var loop: Bool = true
 
+    // MARK: - Video Configuration
+    var volume: Float = 1.0
+    var isMuted: Bool = false
+    let scrubber = SmoothScrubber()
+
     // MARK: - State
     private(set) var items: [MediaItem] = []
     private(set) var currentIndex: Int = 0
@@ -18,6 +24,14 @@ final class SlideshowViewModel {
     var currentItem: MediaItem? {
         guard currentIndex >= 0 && currentIndex < items.count else { return nil }
         return items[currentIndex]
+    }
+
+    var currentItemIsVideo: Bool {
+        currentItem?.isVideo ?? false
+    }
+
+    var currentItemHasAudio: Bool {
+        currentItem?.hasAudio ?? false
     }
 
     var hasNext: Bool {
@@ -39,14 +53,16 @@ final class SlideshowViewModel {
         self.items = items
         self.currentIndex = max(0, min(index, items.count - 1))
 
-        if isPlaying {
+        if isPlaying && !currentItemIsVideo {
             scheduleNextAdvance()
         }
+        // Videos handle their own advancement via onVideoEnded callback
     }
 
     func stop() {
         timerCancellable?.cancel()
         timerCancellable = nil
+        scrubber.detach()
         items = []
         currentIndex = 0
     }
@@ -62,7 +78,7 @@ final class SlideshowViewModel {
             currentIndex = 0
         }
 
-        if isPlaying {
+        if isPlaying && !currentItemIsVideo {
             scheduleNextAdvance()
         }
     }
@@ -76,7 +92,7 @@ final class SlideshowViewModel {
             currentIndex = items.count - 1
         }
 
-        if isPlaying {
+        if isPlaying && !currentItemIsVideo {
             scheduleNextAdvance()
         }
     }
@@ -85,7 +101,7 @@ final class SlideshowViewModel {
         timerCancellable?.cancel()
         currentIndex = max(0, min(index, items.count - 1))
 
-        if isPlaying {
+        if isPlaying && !currentItemIsVideo {
             scheduleNextAdvance()
         }
     }
@@ -95,10 +111,33 @@ final class SlideshowViewModel {
     func togglePlayback() {
         isPlaying.toggle()
 
-        if isPlaying {
+        if isPlaying && !currentItemIsVideo {
             scheduleNextAdvance()
-        } else {
+        } else if !isPlaying {
             timerCancellable?.cancel()
+        }
+    }
+
+    func toggleMute() {
+        isMuted.toggle()
+    }
+
+    // MARK: - Video Seeking
+
+    func seekVideo(by step: SeekStep, forward: Bool) {
+        guard currentItemIsVideo else { return }
+        scrubber.step(step, forward: forward)
+    }
+
+    func stepVideoFrame(forward: Bool) {
+        guard currentItemIsVideo else { return }
+        scrubber.stepByFrame(forward: forward)
+    }
+
+    // Called by VideoPlayerView when video ends
+    func onVideoEnded() {
+        if isPlaying {
+            next()
         }
     }
 
@@ -112,7 +151,7 @@ final class SlideshowViewModel {
         case .gif:
             duration = gifDuration
         case .video:
-            duration = 0  // Videos handle their own advancement in Phase 2
+            return  // Videos handle their own advancement
         }
 
         guard duration > 0 else { return }

@@ -15,7 +15,7 @@ final class MediaLibrary {
 
     // MARK: - Dependencies
     let modelContainer: ModelContainer
-    private let thumbnailCache: ThumbnailCache
+    let thumbnailCache: ThumbnailCache
     private let fileManager = FileManager.default
 
     // MARK: - Paths
@@ -112,6 +112,10 @@ final class MediaLibrary {
 
     func thumbnail(for item: MediaItem, size: ThumbnailSize) async throws -> NSImage {
         try await thumbnailCache.thumbnail(for: item, size: size, libraryRoot: libraryRoot)
+    }
+
+    func videoScrubThumbnails(for item: MediaItem, count: Int, size: ThumbnailSize) async throws -> [NSImage] {
+        try await thumbnailCache.videoScrubThumbnails(for: item, count: count, size: size, libraryRoot: libraryRoot)
     }
 
     // MARK: - Helpers

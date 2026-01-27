@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import ImageIO
+import AVFoundation
 import OSLog
 
 actor ThumbnailCache {
@@ -45,6 +46,7 @@ actor ThumbnailCache {
         let quality = jpegQuality
         let relativePath = item.relativePath
         let filename = item.originalFilename
+        let mediaType = item.mediaType
 
         let task = Task<NSImage, Error> {
             let fileURL = libraryRoot.appendingPathComponent(relativePath)
@@ -53,11 +55,19 @@ actor ThumbnailCache {
                 throw ThumbnailError.fileNotFound
             }
 
-            let cgImage = try Self.generateCGImage(url: fileURL, pixelSize: pixelSize)
-            let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+            let image: NSImage
+            switch mediaType {
+            case .video:
+                image = try await Self.generateVideoThumbnail(url: fileURL, pixelSize: pixelSize)
+            case .image, .gif:
+                let cgImage = try Self.generateCGImage(url: fileURL, pixelSize: pixelSize)
+                image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+            }
 
-            // Cache to disk using CGImageDestination (avoids MainActor-isolated NSImage methods)
-            if let jpegData = Self.jpegData(from: cgImage, quality: quality) {
+            // Cache to disk
+            if let tiffData = image.tiffRepresentation,
+               let bitmapRep = NSBitmapImageRep(data: tiffData),
+               let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: quality]) {
                 try? jpegData.write(to: diskPath)
             }
 
@@ -95,17 +105,52 @@ actor ThumbnailCache {
         return cgImage
     }
 
-    private static func jpegData(from cgImage: CGImage, quality: CGFloat) -> Data? {
-        let data = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(data as CFMutableData, "public.jpeg" as CFString, 1, nil) else {
-            return nil
+    private static func generateVideoThumbnail(url: URL, pixelSize: CGFloat) async throws -> NSImage {
+        let asset = AVURLAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: pixelSize, height: pixelSize)
+
+        // Get thumbnail from 10% into the video (avoids black frames at start)
+        let duration = try await asset.load(.duration)
+        let time = CMTime(seconds: duration.seconds * 0.1, preferredTimescale: duration.timescale)
+
+        let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
+        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+    }
+
+    func videoScrubThumbnails(for item: MediaItem, count: Int, size: ThumbnailSize, libraryRoot: URL) async throws -> [NSImage] {
+        guard item.isVideo else {
+            throw ThumbnailError.invalidMedia
         }
-        let options: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: quality]
-        CGImageDestinationAddImage(destination, cgImage, options as CFDictionary)
-        guard CGImageDestinationFinalize(destination) else {
-            return nil
+
+        let fileURL = libraryRoot.appendingPathComponent(item.relativePath)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            throw ThumbnailError.fileNotFound
         }
-        return data as Data
+
+        let asset = AVURLAsset(url: fileURL)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: size.pixelSize, height: size.pixelSize)
+
+        let duration = try await asset.load(.duration)
+        let interval = duration.seconds / Double(count + 1)
+
+        var thumbnails: [NSImage] = []
+
+        for i in 1...count {
+            let time = CMTime(seconds: interval * Double(i), preferredTimescale: duration.timescale)
+            do {
+                let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
+                let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+                thumbnails.append(image)
+            } catch {
+                Self.logger.warning("Failed to generate scrub thumbnail at \(time.seconds)s: \(error.localizedDescription)")
+            }
+        }
+
+        return thumbnails
     }
 
     func removeThumbnails(forHash hash: String) {

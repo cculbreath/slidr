@@ -3,6 +3,7 @@ import SwiftData
 import UniformTypeIdentifiers
 import ImageIO
 import CoreGraphics
+import AVFoundation
 import OSLog
 
 private let logger = Logger(subsystem: "com.culbreath.Yoinkr", category: "Import")
@@ -22,7 +23,7 @@ struct MediaImporter {
         for url in urls {
             do {
                 // Check if supported
-                guard let mediaType = detectMediaType(url: url) else {
+                guard let mediaType = await detectMediaType(url: url) else {
                     logger.warning("Unsupported file type: \(url.lastPathComponent)")
                     result.failed.append((url, ImportError.unsupportedFormat))
                     continue
@@ -68,8 +69,10 @@ struct MediaImporter {
                     fileModifiedDate: modDate
                 )
 
-                // Extract dimensions for images
-                if let dimensions = getImageDimensions(url: destinationURL) {
+                // Extract metadata based on type
+                if mediaType == .video {
+                    await extractVideoMetadata(url: destinationURL, item: item)
+                } else if let dimensions = getImageDimensions(url: destinationURL) {
                     item.width = Int(dimensions.width)
                     item.height = Int(dimensions.height)
                 }
@@ -89,17 +92,21 @@ struct MediaImporter {
         return result
     }
 
-    private func detectMediaType(url: URL) -> MediaType? {
+    private func detectMediaType(url: URL) async -> MediaType? {
         guard let uti = UTType(filenameExtension: url.pathExtension.lowercased()) else {
             return nil
         }
 
         if uti.conforms(to: .gif) {
             return .gif
+        } else if uti.conforms(to: .movie) || uti.conforms(to: .video) {
+            // Verify it's actually a video with video track (not audio-only)
+            let asset = AVURLAsset(url: url)
+            let videoTracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
+            return videoTracks.isEmpty ? nil : .video
         } else if uti.conforms(to: .image) {
             return .image
         }
-        // Video support in Phase 2
 
         return nil
     }
@@ -119,6 +126,39 @@ struct MediaImporter {
             return nil
         }
         return CGSize(width: width, height: height)
+    }
+
+    private func extractVideoMetadata(url: URL, item: MediaItem) async {
+        let asset = AVURLAsset(url: url)
+
+        do {
+            // Load duration
+            let duration = try await asset.load(.duration)
+            item.duration = duration.seconds
+
+            // Load tracks for dimensions and frame rate
+            let videoTracks = try await asset.loadTracks(withMediaType: .video)
+            if let videoTrack = videoTracks.first {
+                let size = try await videoTrack.load(.naturalSize)
+                let transform = try await videoTrack.load(.preferredTransform)
+
+                // Apply transform to get correct orientation
+                let transformedSize = size.applying(transform)
+                item.width = Int(abs(transformedSize.width))
+                item.height = Int(abs(transformedSize.height))
+
+                // Get frame rate
+                let frameRate = try await videoTrack.load(.nominalFrameRate)
+                item.frameRate = Double(frameRate)
+            }
+
+            // Check for audio track
+            let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+            item.hasAudio = !audioTracks.isEmpty
+
+        } catch {
+            logger.warning("Failed to extract video metadata for \(url.lastPathComponent): \(error.localizedDescription)")
+        }
     }
 }
 

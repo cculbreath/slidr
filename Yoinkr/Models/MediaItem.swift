@@ -20,6 +20,9 @@ final class MediaItem {
     var mediaType: MediaType
     var width: Int?
     var height: Int?
+    var duration: TimeInterval?      // Video duration in seconds
+    var frameRate: Double?           // Video frame rate
+    var hasAudio: Bool?              // Whether video has audio track
 
     // MARK: - User Data
     var isFavorite: Bool
@@ -54,5 +57,15 @@ final class MediaItem {
     var dimensions: CGSize? {
         guard let w = width, let h = height else { return nil }
         return CGSize(width: w, height: h)
+    }
+
+    var isVideo: Bool { mediaType == .video }
+    var isAnimated: Bool { mediaType == .gif }
+
+    var formattedDuration: String? {
+        guard let duration = duration else { return nil }
+        let minutes = Int(duration) / 60
+        let seconds = Int(duration) % 60
+        return String(format: "%d:%02d", minutes, seconds)
     }
 }

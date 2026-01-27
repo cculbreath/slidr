@@ -14,7 +14,7 @@ struct MediaGridView: View {
             if items.isEmpty {
                 EmptyStateView(
                     title: "No Media",
-                    subtitle: "Import images and GIFs to get started",
+                    subtitle: "Import images, GIFs, and videos to get started",
                     systemImage: "photo.on.rectangle.angled",
                     action: { importFiles() },
                     actionLabel: "Import Files"
@@ -118,7 +118,15 @@ struct MediaGridView: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.image, .gif]
+        panel.allowedContentTypes = [
+            .image,
+            .gif,
+            .movie,
+            .video,
+            .mpeg4Movie,
+            .quickTimeMovie,
+            .avi
+        ]
 
         if panel.runModal() == .OK {
             Task {
