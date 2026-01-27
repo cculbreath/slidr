@@ -1,4 +1,4 @@
-# Yoinkr
+# Slidr
 
 A native macOS media gallery viewer for images, GIFs, and videos.
 
@@ -17,7 +17,7 @@ A native macOS media gallery viewer for images, GIFs, and videos.
 
 ## Building
 
-1. Open `Yoinkr.xcodeproj` in Xcode 15+
+1. Open `Slidr.xcodeproj` in Xcode 15+
 2. Build and run (⌘R)
 
 ## Documentation

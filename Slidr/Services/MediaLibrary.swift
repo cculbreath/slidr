@@ -3,7 +3,7 @@ import SwiftData
 import AppKit
 import OSLog
 
-private let logger = Logger(subsystem: "com.culbreath.Yoinkr", category: "Library")
+private let logger = Logger(subsystem: "com.physicscloud.slidr", category: "Library")
 
 @MainActor
 @Observable
@@ -27,7 +27,7 @@ final class MediaLibrary {
         self.thumbnailCache = thumbnailCache
 
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let yoinkrDir = appSupport.appendingPathComponent("Yoinkr", isDirectory: true)
+        let yoinkrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
         self.libraryRoot = yoinkrDir.appendingPathComponent("Library", isDirectory: true)
 
         // Ensure directories exist

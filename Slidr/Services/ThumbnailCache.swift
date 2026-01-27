@@ -5,7 +5,7 @@ import AVFoundation
 import OSLog
 
 actor ThumbnailCache {
-    private static let logger = Logger(subsystem: "com.culbreath.Yoinkr", category: "Thumbnails")
+    private static let logger = Logger(subsystem: "com.physicscloud.slidr", category: "Thumbnails")
 
     private let cacheDirectory: URL
     private let memoryCache = NSCache<NSString, NSImage>()

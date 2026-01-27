@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 @main
-struct YoinkrApp: App {
+struct SlidrApp: App {
     let modelContainer: ModelContainer
     let mediaLibrary: MediaLibrary
     let thumbnailCache: ThumbnailCache
@@ -11,13 +11,13 @@ struct YoinkrApp: App {
         // Initialize SwiftData container
         let schema = Schema([MediaItem.self, Playlist.self])
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let yoinkrDir = appSupport.appendingPathComponent("Yoinkr", isDirectory: true)
+        let yoinkrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
 
         // Ensure directory exists
         try? FileManager.default.createDirectory(at: yoinkrDir, withIntermediateDirectories: true)
 
-        let storeURL = yoinkrDir.appendingPathComponent("Yoinkr.store")
-        let config = ModelConfiguration("Yoinkr", schema: schema, url: storeURL)
+        let storeURL = yoinkrDir.appendingPathComponent("Slidr.store")
+        let config = ModelConfiguration("Slidr", schema: schema, url: storeURL)
 
         do {
             modelContainer = try ModelContainer(for: schema, configurations: config)

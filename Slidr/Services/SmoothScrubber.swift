@@ -2,7 +2,7 @@ import Foundation
 import AVFoundation
 import OSLog
 
-private let logger = Logger(subsystem: "com.culbreath.Yoinkr", category: "Scrubber")
+private let logger = Logger(subsystem: "com.physicscloud.slidr", category: "Scrubber")
 
 @MainActor
 @Observable

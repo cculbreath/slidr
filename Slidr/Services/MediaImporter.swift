@@ -6,7 +6,7 @@ import CoreGraphics
 import AVFoundation
 import OSLog
 
-private let logger = Logger(subsystem: "com.culbreath.Yoinkr", category: "Import")
+private let logger = Logger(subsystem: "com.physicscloud.slidr", category: "Import")
 
 struct MediaImporter {
     private let libraryRoot: URL
