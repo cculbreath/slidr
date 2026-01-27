@@ -53,11 +53,71 @@ struct SlidrApp: App {
                 .keyboardShortcut("?", modifiers: .command)
             }
 
+            // Edit menu
+            CommandGroup(after: .pasteboard) {
+                Button("Select All") {
+                    NotificationCenter.default.post(name: .selectAll, object: nil)
+                }
+                .keyboardShortcut("a", modifiers: .command)
+
+                Button("Deselect All") {
+                    NotificationCenter.default.post(name: .deselectAll, object: nil)
+                }
+                .keyboardShortcut("a", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Find...") {
+                    NotificationCenter.default.post(name: .focusSearch, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: .command)
+            }
+
+            // File menu
+            CommandGroup(after: .newItem) {
+                Button("New Playlist") {
+                    NotificationCenter.default.post(name: .newPlaylist, object: nil)
+                }
+                .keyboardShortcut("n", modifiers: .command)
+
+                Button("New Smart Playlist") {
+                    NotificationCenter.default.post(name: .newSmartPlaylist, object: nil)
+                }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Delete Selected") {
+                    NotificationCenter.default.post(name: .deleteSelected, object: nil)
+                }
+                .keyboardShortcut(.delete, modifiers: [])
+            }
+
+            // View menu
             CommandGroup(after: .toolbar) {
+                Button("Larger Thumbnails") {
+                    NotificationCenter.default.post(name: .increaseThumbnailSize, object: nil)
+                }
+                .keyboardShortcut("+", modifiers: .command)
+
+                Button("Smaller Thumbnails") {
+                    NotificationCenter.default.post(name: .decreaseThumbnailSize, object: nil)
+                }
+                .keyboardShortcut("-", modifiers: .command)
+
+                Divider()
+
                 Button("Enter Fullscreen Slideshow") {
                     NotificationCenter.default.post(name: .startSlideshow, object: nil)
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Toggle Inspector") {
+                    NotificationCenter.default.post(name: .toggleInspector, object: nil)
+                }
+                .keyboardShortcut("i", modifiers: .command)
             }
         }
 

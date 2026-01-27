@@ -6,11 +6,22 @@ struct ImportSettingsView: View {
     var body: some View {
         Form {
             Section("File Handling") {
-                Toggle("Copy files to library", isOn: $settings.copyFilesToLibrary)
+                Toggle("Copy new files to library", isOn: $settings.copyFilesToLibrary)
 
-                Text("When disabled, files remain in their original location and are referenced by the library.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("When enabled, imported files are copied to the library folder.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Text("When disabled, files remain in their original location and are referenced by the library. Referenced files become unavailable if moved or deleted.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Text("This setting only affects new imports. Existing files are not changed.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                .padding(.top, 2)
 
                 Toggle("Skip duplicate files", isOn: $settings.skipDuplicates)
             }

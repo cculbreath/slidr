@@ -10,6 +10,17 @@ final class GridViewModel {
     var sortOrder: SortOrder = .dateImported
     var sortAscending: Bool = false
 
+    // MARK: - Search
+    var searchText: String = ""
+    var isSearchFocused: Bool = false
+
+    // MARK: - Keyboard Navigation
+    var focusedIndex: Int? = nil
+
+    // MARK: - Delete State
+    var itemsToDelete: [MediaItem] = []
+    var showDeleteConfirmation = false
+
     // MARK: - Selection
 
     func select(_ item: MediaItem) {
@@ -50,9 +61,85 @@ final class GridViewModel {
         selectedItems.contains(item.id)
     }
 
+    // MARK: - Search
+
+    func filteredItems(_ items: [MediaItem]) -> [MediaItem] {
+        guard !searchText.isEmpty else { return items }
+        let query = searchText.lowercased()
+        return items.filter { item in
+            if item.originalFilename.lowercased().contains(query) { return true }
+            if item.tags.contains(where: { $0.lowercased().contains(query) }) { return true }
+            if let caption = item.caption?.lowercased(), caption.contains(query) { return true }
+            return false
+        }
+    }
+
+    func clearSearch() {
+        searchText = ""
+    }
+
+    // MARK: - Keyboard Navigation
+
+    func moveSelection(direction: NavigationDirection, in items: [MediaItem], columns: Int) {
+        guard !items.isEmpty else { return }
+        let currentIndex = focusedIndex ?? (selectedItems.first.flatMap { id in
+            items.firstIndex { $0.id == id }
+        }) ?? 0
+
+        let newIndex: Int
+        switch direction {
+        case .up: newIndex = max(0, currentIndex - columns)
+        case .down: newIndex = min(items.count - 1, currentIndex + columns)
+        case .left: newIndex = max(0, currentIndex - 1)
+        case .right: newIndex = min(items.count - 1, currentIndex + 1)
+        }
+
+        focusedIndex = newIndex
+        selectedItems = [items[newIndex].id]
+    }
+
+    func increaseThumbnailSize() {
+        let sizes = ThumbnailSize.allCases
+        guard let currentIndex = sizes.firstIndex(of: thumbnailSize),
+              currentIndex < sizes.count - 1 else { return }
+        thumbnailSize = sizes[currentIndex + 1]
+    }
+
+    func decreaseThumbnailSize() {
+        let sizes = ThumbnailSize.allCases
+        guard let currentIndex = sizes.firstIndex(of: thumbnailSize),
+              currentIndex > 0 else { return }
+        thumbnailSize = sizes[currentIndex - 1]
+    }
+
+    func columnCount(for containerWidth: CGFloat) -> Int {
+        let itemWidth = thumbnailSize.pixelSize + 8
+        return max(1, Int(containerWidth / itemWidth))
+    }
+
+    // MARK: - Delete
+
+    func prepareDelete(items: [MediaItem], confirmBeforeDelete: Bool) {
+        itemsToDelete = items
+        if confirmBeforeDelete && !items.isEmpty {
+            showDeleteConfirmation = true
+        }
+    }
+
+    func cancelDelete() {
+        itemsToDelete = []
+        showDeleteConfirmation = false
+    }
+
     // MARK: - Thumbnail Size
 
     var gridColumns: [GridItem] {
         [GridItem(.adaptive(minimum: thumbnailSize.pixelSize, maximum: thumbnailSize.pixelSize * 1.5), spacing: 8)]
     }
+}
+
+// MARK: - Navigation Direction
+
+enum NavigationDirection {
+    case up, down, left, right
 }

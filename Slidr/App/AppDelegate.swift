@@ -107,4 +107,25 @@ extension Notification.Name {
     static let stopSlideshow = Notification.Name("com.slidr.stopSlideshow")
     static let slideshowNext = Notification.Name("com.slidr.slideshowNext")
     static let slideshowPrevious = Notification.Name("com.slidr.slideshowPrevious")
+    static let selectAll = Notification.Name("com.slidr.selectAll")
+    static let deselectAll = Notification.Name("com.slidr.deselectAll")
+    static let deleteSelected = Notification.Name("com.slidr.deleteSelected")
+    static let toggleInspector = Notification.Name("com.slidr.toggleInspector")
+
+    // Phase 6: Search
+    static let focusSearch = Notification.Name("com.slidr.focusSearch")
+
+    // Phase 6: Playlists
+    static let newPlaylist = Notification.Name("com.slidr.newPlaylist")
+    static let newSmartPlaylist = Notification.Name("com.slidr.newSmartPlaylist")
+
+    // Phase 6: Thumbnails
+    static let increaseThumbnailSize = Notification.Name("com.slidr.increaseThumbnailSize")
+    static let decreaseThumbnailSize = Notification.Name("com.slidr.decreaseThumbnailSize")
+
+    // Phase 6: Quick Look
+    static let quickLook = Notification.Name("com.slidr.quickLook")
+
+    // Phase 6: Rating
+    static let rateItem = Notification.Name("com.slidr.rateItem")
 }

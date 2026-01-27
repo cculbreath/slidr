@@ -5,9 +5,18 @@ import UniformTypeIdentifiers
 struct MediaGridView: View {
     @Environment(MediaLibrary.self) private var library
     @Bindable var viewModel: GridViewModel
+    @Query private var settingsQuery: [AppSettings]
 
     let items: [MediaItem]
     let onStartSlideshow: ([MediaItem], Int) -> Void
+    var onSelectItem: ((MediaItem) -> Void)?
+
+    @State private var showDeleteConfirmation = false
+    @State private var itemsToDelete: [MediaItem] = []
+
+    private var settings: AppSettings? {
+        settingsQuery.first
+    }
 
     var body: some View {
         Group {
@@ -30,6 +39,24 @@ struct MediaGridView: View {
                                 onTap: { handleTap(item) },
                                 onDoubleTap: { handleDoubleTap(item) }
                             )
+                            .contextMenu {
+                                Button("Show in Finder") {
+                                    showInFinder(item)
+                                }
+
+                                if item.storageLocation == .referenced {
+                                    Button("Copy to Library") {
+                                        copyToLibrary(item)
+                                    }
+                                }
+
+                                Divider()
+
+                                Button("Delete", role: .destructive) {
+                                    itemsToDelete = [item]
+                                    showDeleteConfirmation = true
+                                }
+                            }
                         }
                     }
                     .padding()
@@ -45,7 +72,8 @@ struct MediaGridView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 200)
+                .labelsHidden()
+                .fixedSize()
 
                 Divider()
 
@@ -73,6 +101,19 @@ struct MediaGridView: View {
 
                 Divider()
 
+                // GIF animation toggle
+                Button {
+                    toggleGIFAnimation()
+                } label: {
+                    Label(
+                        settings?.animateGIFsInGrid == true ? "GIFs: On" : "GIFs: Off",
+                        systemImage: settings?.animateGIFsInGrid == true ? "play.circle.fill" : "play.circle"
+                    )
+                }
+                .help("Toggle GIF animation in grid")
+
+                Divider()
+
                 // Slideshow button
                 Button {
                     startSlideshow()
@@ -82,7 +123,41 @@ struct MediaGridView: View {
                 .disabled(items.isEmpty)
             }
         }
+        .onKeyPress(.delete) {
+            deleteSelectedItems()
+            return .handled
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .selectAll)) { _ in
+            viewModel.selectAll(items)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .deselectAll)) { _ in
+            viewModel.clearSelection()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .deleteSelected)) { _ in
+            deleteSelectedItems()
+        }
+        .confirmationDialog(
+            "Delete \(itemsToDelete.count) item\(itemsToDelete.count == 1 ? "" : "s")?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                performDelete(itemsToDelete)
+                itemsToDelete = []
+            }
+            Button("Cancel", role: .cancel) {
+                itemsToDelete = []
+            }
+        } message: {
+            if itemsToDelete.count == 1 {
+                Text("This will permanently delete \"\(itemsToDelete.first?.originalFilename ?? "")\" from the library.")
+            } else {
+                Text("This will permanently delete \(itemsToDelete.count) items from the library.")
+            }
+        }
     }
+
+    // MARK: - Tap Handling
 
     private func handleTap(_ item: MediaItem) {
         if NSEvent.modifierFlags.contains(.command) {
@@ -92,6 +167,7 @@ struct MediaGridView: View {
         } else {
             viewModel.select(item)
         }
+        onSelectItem?(item)
     }
 
     private func handleDoubleTap(_ item: MediaItem) {
@@ -113,6 +189,49 @@ struct MediaGridView: View {
 
         onStartSlideshow(selectedItems, startIndex)
     }
+
+    // MARK: - Delete
+
+    private func deleteSelectedItems() {
+        guard !viewModel.selectedItems.isEmpty else { return }
+
+        let selectedItems = items.filter { viewModel.selectedItems.contains($0.id) }
+        guard !selectedItems.isEmpty else { return }
+
+        if settings?.confirmBeforeDelete == true {
+            itemsToDelete = selectedItems
+            showDeleteConfirmation = true
+        } else {
+            performDelete(selectedItems)
+        }
+    }
+
+    private func performDelete(_ itemsToDelete: [MediaItem]) {
+        library.delete(itemsToDelete)
+        viewModel.clearSelection()
+    }
+
+    // MARK: - Context Menu Actions
+
+    private func showInFinder(_ item: MediaItem) {
+        let url = library.absoluteURL(for: item)
+        NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: url.deletingLastPathComponent().path)
+    }
+
+    private func copyToLibrary(_ item: MediaItem) {
+        Task {
+            try? await library.copyToLibrary(item)
+        }
+    }
+
+    // MARK: - GIF Animation
+
+    private func toggleGIFAnimation() {
+        guard let settings = settingsQuery.first else { return }
+        settings.animateGIFsInGrid.toggle()
+    }
+
+    // MARK: - Import
 
     private func importFiles() {
         let panel = NSOpenPanel()

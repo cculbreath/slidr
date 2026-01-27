@@ -29,10 +29,16 @@ final class MediaItem {
     var playlists: [Playlist]?
 
     // MARK: - User Data
+    var caption: String?
     var isFavorite: Bool
+    var rating: Int?
+    var tags: [String]
 
     // MARK: - Status
     var status: MediaStatus
+
+    // MARK: - Verification
+    var lastVerifiedDate: Date?
 
     // MARK: - Initialization
     init(
@@ -55,6 +61,9 @@ final class MediaItem {
         self.importDate = Date()
         self.status = .available
         self.isFavorite = false
+        self.rating = nil
+        self.tags = []
+        self.lastVerifiedDate = nil
         self.playlists = []
     }
 
@@ -67,10 +76,57 @@ final class MediaItem {
     var isVideo: Bool { mediaType == .video }
     var isAnimated: Bool { mediaType == .gif }
 
+    var hasCaption: Bool {
+        guard let caption = caption else { return false }
+        return !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Returns caption if set, otherwise returns filename
+    var displayCaption: String {
+        if let caption = caption, !caption.isEmpty {
+            return caption
+        }
+        return originalFilename
+    }
+
     var formattedDuration: String? {
         guard let duration = duration else { return nil }
         let minutes = Int(duration) / 60
         let seconds = Int(duration) % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    // MARK: - Rating Computed Properties
+
+    var effectiveRating: Int {
+        rating ?? 0
+    }
+
+    var isRated: Bool {
+        rating != nil && rating! > 0
+    }
+
+    var ratingStars: String {
+        let filled = effectiveRating
+        let empty = 5 - filled
+        return String(repeating: "\u{2605}", count: filled) + String(repeating: "\u{2606}", count: empty)
+    }
+
+    // MARK: - Tag Methods
+
+    func hasTag(_ tag: String) -> Bool {
+        let normalized = tag.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return tags.contains { $0.lowercased() == normalized }
+    }
+
+    func addTag(_ tag: String) {
+        let normalized = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty, !hasTag(normalized) else { return }
+        tags.append(normalized)
+    }
+
+    func removeTag(_ tag: String) {
+        let normalized = tag.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        tags.removeAll { $0.lowercased() == normalized }
     }
 }

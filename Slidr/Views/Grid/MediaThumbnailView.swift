@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct MediaThumbnailView: View {
     let item: MediaItem
@@ -7,15 +8,25 @@ struct MediaThumbnailView: View {
     let onTap: () -> Void
     let onDoubleTap: () -> Void
 
+    @Query private var settingsQuery: [AppSettings]
     @State private var isHovering = false
     @State private var hoverLocation: CGPoint = .zero
     @State private var hoverPosition: CGFloat = 0.5
 
+    private var animateGIFs: Bool {
+        settingsQuery.first?.animateGIFsInGrid ?? false
+    }
+
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Show video hover view or regular thumbnail
-                if item.isVideo && isHovering {
+                // Show animated GIF on hover, video hover view, or regular thumbnail
+                if item.isAnimated && animateGIFs && isHovering {
+                    AsyncAnimatedGIFView(
+                        item: item,
+                        size: CGSize(width: size.pixelSize, height: size.pixelSize)
+                    )
+                } else if item.isVideo && isHovering {
                     VideoHoverView(
                         item: item,
                         size: size,

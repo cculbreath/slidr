@@ -9,6 +9,8 @@ struct ContentView: View {
     @State private var gridViewModel = GridViewModel()
     @State private var slideshowViewModel = SlideshowViewModel()
     @State private var showSlideshow = false
+    @State private var showInspector = false
+    @State private var inspectorItem: MediaItem?
 
     var body: some View {
         NavigationSplitView {
@@ -17,8 +19,17 @@ struct ContentView: View {
             MediaGridView(
                 viewModel: gridViewModel,
                 items: currentItems,
-                onStartSlideshow: startSlideshow
+                onStartSlideshow: startSlideshow,
+                onSelectItem: { item in
+                    inspectorItem = item
+                }
             )
+        }
+        .inspector(isPresented: $showInspector) {
+            inspectorContent
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleInspector)) { _ in
+            showInspector.toggle()
         }
         .sheet(isPresented: $showSlideshow) {
             slideshowViewModel.stop()
@@ -55,5 +66,26 @@ struct ContentView: View {
     private func startSlideshow(items: [MediaItem], startIndex: Int) {
         slideshowViewModel.start(with: items, startingAt: startIndex)
         showSlideshow = true
+    }
+
+    // MARK: - Inspector
+
+    @ViewBuilder
+    private var inspectorContent: some View {
+        if let item = inspectorItem {
+            MediaInspectorView(item: item)
+        } else if let firstSelectedID = gridViewModel.selectedItems.first,
+                  let item = currentItems.first(where: { $0.id == firstSelectedID }) {
+            MediaInspectorView(item: item)
+        } else {
+            VStack {
+                Image(systemName: "sidebar.right")
+                    .font(.largeTitle)
+                    .foregroundStyle(.tertiary)
+                Text("Select an item to inspect")
+                    .foregroundStyle(.secondary)
+            }
+            .frame(minWidth: 280)
+        }
     }
 }

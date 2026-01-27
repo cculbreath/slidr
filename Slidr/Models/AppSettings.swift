@@ -11,6 +11,7 @@ final class AppSettings {
     var confirmBeforeDelete: Bool
     var defaultSortOrder: SortOrder
     var defaultSortAscending: Bool
+    var customLibraryPath: String?
 
     // MARK: - Import
     var copyFilesToLibrary: Bool
@@ -23,6 +24,7 @@ final class AppSettings {
     var defaultThumbnailSize: ThumbnailSize
     var maxMemoryCacheItems: Int
     var maxDiskCacheMB: Int
+    var animateGIFsInGrid: Bool
 
     // MARK: - Slideshow
     var defaultImageDuration: TimeInterval
@@ -39,6 +41,15 @@ final class AppSettings {
     var controlPanelOnSeparateMonitor: Bool
     var preferredControlMonitor: Int?
 
+    // MARK: - Grid
+    var gridShowFilenames: Bool
+    var gridVideoHoverScrub: Bool
+
+    // MARK: - Verification
+    var verifyFilesOnLaunch: Bool
+    var removeOrphanedThumbnails: Bool
+    var lastVerificationDate: Date?
+
     // MARK: - Audio
     var defaultVolume: Float
     var muteByDefault: Bool
@@ -52,6 +63,7 @@ final class AppSettings {
         self.confirmBeforeDelete = true
         self.defaultSortOrder = .dateImported
         self.defaultSortAscending = false
+        self.customLibraryPath = nil
 
         // Import defaults
         self.copyFilesToLibrary = true
@@ -64,6 +76,7 @@ final class AppSettings {
         self.defaultThumbnailSize = .medium
         self.maxMemoryCacheItems = 100
         self.maxDiskCacheMB = 500
+        self.animateGIFsInGrid = false
 
         // Slideshow defaults
         self.defaultImageDuration = 5.0
@@ -80,9 +93,28 @@ final class AppSettings {
         self.controlPanelOnSeparateMonitor = false
         self.preferredControlMonitor = nil
 
+        // Grid defaults
+        self.gridShowFilenames = false
+        self.gridVideoHoverScrub = true
+
+        // Verification defaults
+        self.verifyFilesOnLaunch = false
+        self.removeOrphanedThumbnails = true
+        self.lastVerificationDate = nil
+
         // Audio defaults
         self.defaultVolume = 1.0
         self.muteByDefault = false
+    }
+
+    // MARK: - Computed Properties
+
+    var resolvedLibraryPath: URL {
+        if let custom = customLibraryPath {
+            return URL(fileURLWithPath: custom)
+        }
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return appSupport.appendingPathComponent("Slidr/Library", isDirectory: true)
     }
 }
 
