@@ -53,28 +53,29 @@ actor VideoConverter {
     func convert(
         sourceURL: URL,
         outputDirectory: URL,
+        targetFormat: VideoFormat = .h264MP4,
         progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> URL {
-        Self.logger.info("Converting: \(sourceURL.lastPathComponent)")
+        Self.logger.info("Converting: \(sourceURL.lastPathComponent) to \(targetFormat.displayName)")
 
         let asset = AVURLAsset(url: sourceURL)
         guard let _ = try await asset.loadTracks(withMediaType: .video).first else {
             throw ConversionError.noVideoTrack
         }
 
-        let outputFilename = sourceURL.deletingPathExtension().lastPathComponent + ".mp4"
+        let outputFilename = sourceURL.deletingPathExtension().lastPathComponent + "." + targetFormat.fileExtension
         let outputURL = outputDirectory.appendingPathComponent(outputFilename)
         try? FileManager.default.removeItem(at: outputURL)
 
         guard let exportSession = AVAssetExportSession(
             asset: asset,
-            presetName: AVAssetExportPresetHighestQuality
+            presetName: targetFormat.exportPreset
         ) else {
             throw ConversionError.exportFailed("Could not create export session")
         }
 
         exportSession.outputURL = outputURL
-        exportSession.outputFileType = .mp4
+        exportSession.outputFileType = targetFormat.fileType
         exportSession.shouldOptimizeForNetworkUse = true
 
         let progressTask = Task {
@@ -106,11 +107,12 @@ actor VideoConverter {
     func convertBatch(
         sourceURLs: [URL],
         outputDirectory: URL,
+        targetFormat: VideoFormat = .h264MP4,
         progress: (@Sendable (Int, Int, Double) -> Void)? = nil
     ) async throws -> [URL] {
         var results: [URL] = []
         for (index, sourceURL) in sourceURLs.enumerated() {
-            let outputURL = try await convert(sourceURL: sourceURL, outputDirectory: outputDirectory) { itemProgress in
+            let outputURL = try await convert(sourceURL: sourceURL, outputDirectory: outputDirectory, targetFormat: targetFormat) { itemProgress in
                 progress?(index, sourceURLs.count, itemProgress)
             }
             results.append(outputURL)

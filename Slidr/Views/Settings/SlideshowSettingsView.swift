@@ -25,9 +25,38 @@ struct SlideshowSettingsView: View {
                 }
             }
 
+            Section("Transitions") {
+                Picker("Effect", selection: $settings.slideshowTransition) {
+                    ForEach(TransitionType.allCases, id: \.self) { type in
+                        Text(type.displayName).tag(type)
+                    }
+                }
+
+                if settings.slideshowTransition != .none {
+                    HStack {
+                        Text("Duration")
+                        Slider(value: $settings.slideshowTransitionDuration, in: 0.2...2.0, step: 0.1)
+                        Text(String(format: "%.1fs", settings.slideshowTransitionDuration))
+                            .frame(width: 40)
+                    }
+                }
+            }
+
             Section("Playback") {
                 Toggle("Loop slideshow", isOn: $settings.loopSlideshow)
                 Toggle("Shuffle order", isOn: $settings.shuffleSlideshow)
+            }
+
+            Section("Video Playback") {
+                Picker("Video mode", selection: $settings.slideshowVideoMode) {
+                    ForEach(VideoPlaybackMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+
+                Text(settings.slideshowVideoMode.description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Audio") {
@@ -65,6 +94,13 @@ struct SlideshowSettingsView: View {
                         Text("Font size")
                         Slider(value: $settings.captionFontSize, in: 10...32)
                         Text("\(Int(settings.captionFontSize))pt")
+                            .frame(width: 40)
+                    }
+
+                    HStack {
+                        Text("Background opacity")
+                        Slider(value: $settings.captionBackgroundOpacity, in: 0.0...1.0)
+                        Text("\(Int(settings.captionBackgroundOpacity * 100))%")
                             .frame(width: 40)
                     }
                 }

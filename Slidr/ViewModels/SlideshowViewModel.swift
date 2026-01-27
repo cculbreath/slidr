@@ -15,16 +15,26 @@ final class SlideshowViewModel {
     var volume: Float = 1.0
     var isMuted: Bool = false
     let scrubber = SmoothScrubber()
+    var videoPlaybackMode: VideoPlaybackMode = .playFull
 
     // MARK: - Playback Mode
     var isRandomMode: Bool = false
     private var originalOrder: [MediaItem] = []
     private var shuffledOrder: [MediaItem] = []
 
+    // MARK: - Pre-buffering
+    struct PreloadedMedia {
+        let image: NSImage?
+        let videoAsset: AVAsset?
+    }
+
+    private var preloadedItems: [UUID: PreloadedMedia] = [:]
+
     // MARK: - State
     private(set) var items: [MediaItem] = []
     private(set) var currentIndex: Int = 0
     private var timerCancellable: AnyCancellable?
+    private(set) var library: MediaLibrary?
 
     var activeItems: [MediaItem] {
         isRandomMode && !shuffledOrder.isEmpty ? shuffledOrder : items
@@ -63,10 +73,13 @@ final class SlideshowViewModel {
         self.items = items
         self.currentIndex = max(0, min(index, items.count - 1))
 
-        if isPlaying && !currentItemIsVideo {
-            scheduleNextAdvance()
+        if isPlaying {
+            if !currentItemIsVideo || videoPlaybackMode == .limitDuration {
+                scheduleNextAdvance()
+            }
         }
-        // Videos handle their own advancement via onVideoEnded callback
+
+        Task { await preloadAdjacentItems() }
     }
 
     func stop() {
@@ -92,6 +105,8 @@ final class SlideshowViewModel {
         if isPlaying && !currentItemIsVideo {
             scheduleNextAdvance()
         }
+
+        Task { await preloadAdjacentItems() }
     }
 
     func previous() {
@@ -107,6 +122,8 @@ final class SlideshowViewModel {
         if isPlaying && !currentItemIsVideo {
             scheduleNextAdvance()
         }
+
+        Task { await preloadAdjacentItems() }
     }
 
     func goTo(index: Int) {
@@ -148,8 +165,14 @@ final class SlideshowViewModel {
 
     // Called by VideoPlayerView when video ends
     func onVideoEnded() {
-        if isPlaying {
-            next()
+        switch videoPlaybackMode {
+        case .playFull, .playOnce:
+            if isPlaying {
+                next()
+            }
+        case .limitDuration:
+            // Timer handles advancement; video ended early so just stop
+            break
         }
     }
 
@@ -163,7 +186,11 @@ final class SlideshowViewModel {
         case .gif:
             duration = gifDuration
         case .video:
-            return  // Videos handle their own advancement
+            if videoPlaybackMode == .limitDuration {
+                duration = imageDuration  // Use image duration as limit for videos
+            } else {
+                return  // Videos handle their own advancement
+            }
         }
 
         guard duration > 0 else { return }
@@ -174,6 +201,53 @@ final class SlideshowViewModel {
             .sink { [weak self] _ in
                 self?.next()
             }
+    }
+
+    // MARK: - Library Reference
+
+    func configure(library: MediaLibrary) {
+        self.library = library
+    }
+
+    // MARK: - Pre-buffering
+
+    func preloadAdjacentItems() async {
+        guard let library = library else { return }
+        let active = activeItems
+        let indicesToPreload = [
+            currentIndex - 1,
+            currentIndex + 1
+        ].filter { $0 >= 0 && $0 < active.count }
+
+        for index in indicesToPreload {
+            let item = active[index]
+            guard preloadedItems[item.id] == nil else { continue }
+            await preloadItem(item, library: library)
+        }
+
+        let adjacentIDs = Set(indicesToPreload.map { active[$0].id })
+        let currentID = currentItem?.id
+        preloadedItems = preloadedItems.filter { key, _ in
+            adjacentIDs.contains(key) || key == currentID
+        }
+    }
+
+    private func preloadItem(_ item: MediaItem, library: MediaLibrary) async {
+        let url = library.absoluteURL(for: item)
+
+        switch item.mediaType {
+        case .image, .gif:
+            if let image = NSImage(contentsOf: url) {
+                preloadedItems[item.id] = PreloadedMedia(image: image, videoAsset: nil)
+            }
+        case .video:
+            let asset = AVAsset(url: url)
+            preloadedItems[item.id] = PreloadedMedia(image: nil, videoAsset: asset)
+        }
+    }
+
+    func preloadedMedia(for item: MediaItem) -> PreloadedMedia? {
+        preloadedItems[item.id]
     }
 
     // MARK: - Rating

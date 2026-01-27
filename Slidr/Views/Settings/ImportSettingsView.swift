@@ -32,7 +32,23 @@ struct ImportSettingsView: View {
                 if settings.convertIncompatibleFormats {
                     Toggle("Keep original file after conversion", isOn: $settings.keepOriginalAfterConversion)
 
-                    Text("Incompatible formats (AVI, WMV, etc.) will be converted to MP4 for better playback.")
+                    Picker("Target format", selection: $settings.importTargetFormat) {
+                        ForEach(VideoFormat.allCases, id: \.self) { format in
+                            Text(format.displayName).tag(format)
+                        }
+                    }
+
+                    Text(settings.importTargetFormat.formatDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Organization") {
+                Toggle("Organize imports by date", isOn: $settings.importOrganizeByDate)
+
+                if settings.importOrganizeByDate {
+                    Text("Files will be organized into Year/Month folders based on file modification date.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -44,7 +60,48 @@ struct ImportSettingsView: View {
                     Text("External Drive").tag(StorageLocation.external)
                 }
             }
+
+            Section("External Storage") {
+                HStack {
+                    if let path = settings.externalDrivePath {
+                        Text(path)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    } else {
+                        Text("Not configured")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button("Browse...") {
+                        selectExternalPath()
+                    }
+
+                    if settings.externalDrivePath != nil {
+                        Button("Clear") {
+                            settings.externalDrivePath = nil
+                        }
+                    }
+                }
+
+                Text("Secondary library location on external drive.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private func selectExternalPath() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose external library location"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            settings.externalDrivePath = url.path
+        }
     }
 }

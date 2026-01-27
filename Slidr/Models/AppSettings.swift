@@ -19,6 +19,9 @@ final class AppSettings {
     var keepOriginalAfterConversion: Bool
     var skipDuplicates: Bool
     var defaultImportLocation: StorageLocation
+    var importTargetFormat: VideoFormat
+    var importOrganizeByDate: Bool
+    var externalDrivePath: String?
 
     // MARK: - Thumbnails
     var defaultThumbnailSize: ThumbnailSize
@@ -35,6 +38,10 @@ final class AppSettings {
     var captionTemplate: String
     var captionPosition: CaptionPosition
     var captionFontSize: Double
+    var captionBackgroundOpacity: Double
+    var slideshowTransition: TransitionType
+    var slideshowTransitionDuration: TimeInterval
+    var slideshowVideoMode: VideoPlaybackMode
 
     // MARK: - Multi-Monitor
     var useAllMonitors: Bool
@@ -71,6 +78,9 @@ final class AppSettings {
         self.keepOriginalAfterConversion = false
         self.skipDuplicates = true
         self.defaultImportLocation = .local
+        self.importTargetFormat = .h264MP4
+        self.importOrganizeByDate = false
+        self.externalDrivePath = nil
 
         // Thumbnail defaults
         self.defaultThumbnailSize = .medium
@@ -87,6 +97,10 @@ final class AppSettings {
         self.captionTemplate = "{filename}"
         self.captionPosition = .bottom
         self.captionFontSize = 16.0
+        self.captionBackgroundOpacity = 0.6
+        self.slideshowTransition = .crossfade
+        self.slideshowTransitionDuration = 0.5
+        self.slideshowVideoMode = .playFull
 
         // Multi-monitor defaults
         self.useAllMonitors = false

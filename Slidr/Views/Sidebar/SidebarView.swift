@@ -7,6 +7,7 @@ struct SidebarView: View {
     @Bindable var viewModel: SidebarViewModel
 
     @State private var playlistToEdit: Playlist?
+    @State private var isDropTargeted = false
 
     var body: some View {
         List(selection: $viewModel.selectedItem) {
@@ -92,6 +93,16 @@ struct SidebarView: View {
                     }
                     .buttonStyle(.plain)
                 }
+            }
+
+            // Import Drop Zone
+            Section {
+                ImportDropZone(isTargeted: isDropTargeted)
+            }
+        }
+        .dropZone(isTargeted: $isDropTargeted) { urls in
+            Task {
+                _ = try? await library.importFiles(urls: urls)
             }
         }
         .listStyle(.sidebar)

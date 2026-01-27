@@ -40,6 +40,8 @@ struct MediaImporter {
 
     var convertIncompatibleFormats: Bool = true
     var keepOriginalAfterConversion: Bool = false
+    var organizeByDate: Bool = false
+    var targetFormat: VideoFormat = .h264MP4
 
     init(libraryRoot: URL, modelContext: ModelContext) {
         self.libraryRoot = libraryRoot
@@ -102,7 +104,8 @@ struct MediaImporter {
                     let convertedDir = libraryRoot.appendingPathComponent("Converted")
                     let convertedURL = try await videoConverter.convert(
                         sourceURL: url,
-                        outputDirectory: convertedDir
+                        outputDirectory: convertedDir,
+                        targetFormat: targetFormat
                     ) { conversionProgress in
                         progressHandler?(ImportProgress(
                             currentItem: index,
@@ -112,9 +115,9 @@ struct MediaImporter {
                         ))
                     }
                     importURL = convertedURL
-                    finalExtension = "mp4"
+                    finalExtension = targetFormat.fileExtension
                     result.converted.append(url)
-                    logger.info("Converted \(url.lastPathComponent) to MP4")
+                    logger.info("Converted \(url.lastPathComponent) to \(targetFormat.displayName)")
                 }
 
                 progressHandler?(ImportProgress(
@@ -124,13 +127,19 @@ struct MediaImporter {
                     phase: .extractingMetadata
                 ))
 
-                let year = Calendar.current.component(.year, from: Date())
+                let dateForOrg = organizeByDate ? modDate : Date()
+                let year = Calendar.current.component(.year, from: dateForOrg)
                 let uuid = UUID().uuidString
-                let relativePath = "Local/\(year)/\(uuid).\(finalExtension)"
+                let relativePath: String
+                if organizeByDate {
+                    let month = Calendar.current.component(.month, from: dateForOrg)
+                    relativePath = "Local/\(year)/\(String(format: "%02d", month))/\(uuid).\(finalExtension)"
+                } else {
+                    relativePath = "Local/\(year)/\(uuid).\(finalExtension)"
+                }
                 let destinationURL = libraryRoot.appendingPathComponent(relativePath)
-
-                let yearDir = libraryRoot.appendingPathComponent("Local/\(year)")
-                try FileManager.default.createDirectory(at: yearDir, withIntermediateDirectories: true)
+                let destinationDir = destinationURL.deletingLastPathComponent()
+                try FileManager.default.createDirectory(at: destinationDir, withIntermediateDirectories: true)
 
                 try FileManager.default.copyItem(at: importURL, to: destinationURL)
 

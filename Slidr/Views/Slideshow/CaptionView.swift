@@ -5,6 +5,7 @@ struct CaptionView: View {
     let template: String
     let position: CaptionPosition
     let fontSize: Double
+    var backgroundOpacity: Double = 0.6
 
     var body: some View {
         Text(processedCaption)
@@ -12,7 +13,7 @@ struct CaptionView: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .background(.black.opacity(0.6))
+            .background(.black.opacity(backgroundOpacity))
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .padding()
     }
@@ -62,11 +63,12 @@ struct CaptionOverlay: ViewModifier {
     let template: String
     let position: CaptionPosition
     let fontSize: Double
+    var backgroundOpacity: Double = 0.6
 
     func body(content: Content) -> some View {
         content.overlay(alignment: position.alignment) {
             if showCaptions {
-                CaptionView(item: item, template: template, position: position, fontSize: fontSize)
+                CaptionView(item: item, template: template, position: position, fontSize: fontSize, backgroundOpacity: backgroundOpacity)
                     .transition(.opacity)
             }
         }
@@ -74,7 +76,7 @@ struct CaptionOverlay: ViewModifier {
 }
 
 extension View {
-    func caption(for item: MediaItem, show: Bool, template: String, position: CaptionPosition, fontSize: Double) -> some View {
-        modifier(CaptionOverlay(item: item, showCaptions: show, template: template, position: position, fontSize: fontSize))
+    func caption(for item: MediaItem, show: Bool, template: String, position: CaptionPosition, fontSize: Double, backgroundOpacity: Double = 0.6) -> some View {
+        modifier(CaptionOverlay(item: item, showCaptions: show, template: template, position: position, fontSize: fontSize, backgroundOpacity: backgroundOpacity))
     }
 }

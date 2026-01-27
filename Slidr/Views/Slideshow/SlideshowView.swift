@@ -12,8 +12,27 @@ struct SlideshowView: View {
     @State private var showCaptions: Bool = false
     @State private var showInfoOverlay: Bool = false
     @State private var ratingFeedback: Int? = nil
+    @State private var navigationDirection: NavigationDirection = .forward
 
     private var settings: AppSettings? { settingsQuery.first }
+
+    private enum NavigationDirection {
+        case forward, backward
+    }
+
+    private var currentTransition: AnyTransition {
+        let type = settings?.slideshowTransition ?? .crossfade
+        switch navigationDirection {
+        case .forward:
+            return type.enterTransition
+        case .backward:
+            return type.exitTransition
+        }
+    }
+
+    private var transitionDuration: Double {
+        settings?.slideshowTransitionDuration ?? 0.5
+    }
 
     var body: some View {
         slideshowContent
@@ -81,7 +100,7 @@ struct SlideshowView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showControls)
-        .animation(.easeInOut(duration: 0.3), value: viewModel.currentIndex)
+        .animation(.easeInOut(duration: transitionDuration), value: viewModel.currentIndex)
         .animation(.easeInOut(duration: 0.2), value: showInfoOverlay)
         .animation(.easeInOut(duration: 0.15), value: ratingFeedback)
         .onAppear {
@@ -122,10 +141,11 @@ struct SlideshowView: View {
                 show: showCaptions,
                 template: settings?.captionTemplate ?? "{filename}",
                 position: settings?.captionPosition ?? .bottom,
-                fontSize: settings?.captionFontSize ?? 16
+                fontSize: settings?.captionFontSize ?? 16,
+                backgroundOpacity: settings?.captionBackgroundOpacity ?? 0.6
             )
             .id(item.id)
-            .transition(.opacity)
+            .transition(currentTransition)
         }
     }
 
@@ -236,7 +256,7 @@ struct SlideshowView: View {
     private var bottomControls: some View {
         HStack(spacing: 24) {
             Button {
-                viewModel.previous()
+                goPrevious()
             } label: {
                 Image(systemName: "backward.fill")
                     .font(.title2)
@@ -251,7 +271,7 @@ struct SlideshowView: View {
             }
 
             Button {
-                viewModel.next()
+                goNext()
             } label: {
                 Image(systemName: "forward.fill")
                     .font(.title2)
@@ -283,6 +303,16 @@ struct SlideshowView: View {
                 showControls = false
             }
         }
+    }
+
+    private func goNext() {
+        navigationDirection = .forward
+        viewModel.next()
+    }
+
+    private func goPrevious() {
+        navigationDirection = .backward
+        viewModel.previous()
     }
 
     private func toggleFullscreen() {
