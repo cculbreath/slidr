@@ -79,7 +79,7 @@ struct MediaPreviewView: View {
                 onVideoEnded: {}
             )
         } else if currentItem.isAnimated {
-            AsyncAnimatedGIFView(item: currentItem, size: CGSize(width: 1024, height: 1024))
+            AsyncAnimatedGIFView(item: currentItem)
                 .aspectRatio(contentMode: .fit)
         } else {
             AsyncThumbnailImage(item: currentItem, size: .extraLarge)

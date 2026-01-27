@@ -1,19 +1,19 @@
 import SwiftUI
 import SwiftData
+import OSLog
 
 struct SettingsView: View {
-    @Environment(\.modelContext) private var modelContext
     @Query private var settingsQuery: [AppSettings]
 
     let thumbnailCache: ThumbnailCache
 
     private var settings: AppSettings {
-        if let existing = settingsQuery.first {
-            return existing
+        guard let existing = settingsQuery.first else {
+            // AppSettings is bootstrapped in SlidrApp.init — this should never happen
+            Logger.library.error("AppSettings missing from database — this indicates a startup failure")
+            fatalError("AppSettings not found. The database may be corrupted.")
         }
-        let newSettings = AppSettings()
-        modelContext.insert(newSettings)
-        return newSettings
+        return existing
     }
 
     var body: some View {

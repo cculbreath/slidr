@@ -131,7 +131,7 @@ struct SlideshowView: View {
                         onVideoEnded: { viewModel.onVideoEnded() }
                     )
                 } else if item.isAnimated {
-                    AsyncAnimatedGIFView(item: item, size: CGSize(width: 1024, height: 1024))
+                    AsyncAnimatedGIFView(item: item)
                         .aspectRatio(contentMode: .fit)
                 } else {
                     AsyncThumbnailImage(item: item, size: .extraLarge)

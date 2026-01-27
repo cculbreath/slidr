@@ -11,10 +11,10 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		579FD6CB2F28241D0061CAFF /* Slidr */ = {
+		5766637C2F28BB3E00FFF5A6 /* Slidr */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Slidr;
-			sourceTree = "<group>";
+			sourceTree = SOURCE_ROOT;
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
@@ -32,7 +32,7 @@
 		579FD6C02F28241D0061CAFF = {
 			isa = PBXGroup;
 			children = (
-				579FD6CB2F28241D0061CAFF /* Slidr */,
+				5766637C2F28BB3E00FFF5A6 /* Slidr */,
 				579FD6CA2F28241D0061CAFF /* Products */,
 			);
 			sourceTree = "<group>";
@@ -61,7 +61,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				579FD6CB2F28241D0061CAFF /* Slidr */,
+				5766637C2F28BB3E00FFF5A6 /* Slidr */,
 			);
 			name = Slidr;
 			packageProductDependencies = (
@@ -345,7 +345,7 @@
 				579FD6D52F2824200061CAFF /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		579FD6D62F2824200061CAFF /* Build configuration list for PBXNativeTarget "Slidr" */ = {
 			isa = XCConfigurationList;
@@ -354,7 +354,7 @@
 				579FD6D82F2824200061CAFF /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};

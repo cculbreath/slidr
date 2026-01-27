@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import OSLog
 
 @main
 struct SlidrApp: App {
@@ -13,7 +14,7 @@ struct SlidrApp: App {
 
     init() {
         // Initialize SwiftData container with versioned schema and migration plan
-        let schema = Schema(versionedSchema: SlidrSchemaV3.self)
+        let schema = Schema(versionedSchema: SlidrSchemaV2.self)
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let slidrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
 
@@ -31,6 +32,15 @@ struct SlidrApp: App {
             )
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
+        }
+
+        // Ensure AppSettings exists
+        let context = modelContainer.mainContext
+        let settingsDescriptor = FetchDescriptor<AppSettings>()
+        if (try? context.fetchCount(settingsDescriptor)) == 0 {
+            context.insert(AppSettings())
+            try? context.save()
+            Logger.library.info("Created default AppSettings")
         }
 
         // Initialize services
@@ -60,8 +70,29 @@ struct SlidrApp: App {
                 .keyboardShortcut("?", modifiers: .command)
             }
 
-            // Edit menu - replace system Select All with grid selection
-            CommandGroup(replacing: .textEditing) {
+            // Replace pasteboard group to remove system Select All and add our own
+            CommandGroup(replacing: .pasteboard) {
+                Button("Cut") {
+                    NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("x", modifiers: .command)
+
+                Button("Copy") {
+                    NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("c", modifiers: .command)
+
+                Button("Paste") {
+                    NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("v", modifiers: .command)
+
+                Button("Delete") {
+                    NSApp.sendAction(#selector(NSText.delete(_:)), to: nil, from: nil)
+                }
+
+                Divider()
+
                 Button("Select All") {
                     NotificationCenter.default.post(name: .selectAll, object: nil)
                 }

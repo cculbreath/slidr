@@ -1,9 +1,11 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
+import OSLog
 
 struct MediaGridView: View {
     @Environment(MediaLibrary.self) private var library
+    @Environment(\.modelContext) private var modelContext
     @Bindable var viewModel: GridViewModel
     @Query private var settingsQuery: [AppSettings]
 
@@ -14,6 +16,7 @@ struct MediaGridView: View {
     @State private var showDeleteConfirmation = false
     @State private var itemsToDelete: [MediaItem] = []
     @State private var containerWidth: CGFloat = 0
+    @State private var hoveredItemID: UUID?
 
     private var settings: AppSettings? {
         settingsQuery.first
@@ -42,6 +45,7 @@ struct MediaGridView: View {
                                 size: viewModel.thumbnailSize,
                                 isSelected: viewModel.isSelected(item),
                                 selectedItemIDs: viewModel.selectedItems,
+                                hoveredItemID: $hoveredItemID,
                                 onTap: { handleTap(item) },
                                 onDoubleTap: { handleDoubleTap(item) }
                             )
@@ -64,6 +68,21 @@ struct MediaGridView: View {
                                 }
                             }
                         }
+                    }
+                    .overlayPreferenceValue(HoverCellAnchorKey.self) { anchor in
+                        GeometryReader { proxy in
+                            if let anchor,
+                               let id = hoveredItemID,
+                               let item = displayedItems.first(where: { $0.id == id }),
+                               !item.isVideo {
+                                let frame = proxy[anchor]
+                                hoverRevealContent(for: item)
+                                    .id(id)
+                                    .position(x: frame.midX, y: frame.midY)
+                            }
+                        }
+                        .allowsHitTesting(false)
+                        .animation(.easeInOut(duration: 0.15), value: hoveredItemID)
                     }
                     .padding()
                 }
@@ -127,7 +146,7 @@ struct MediaGridView: View {
                 } label: {
                     Label(
                         settings?.animateGIFsInGrid == true ? "GIFs: On" : "GIFs: Off",
-                        systemImage: settings?.animateGIFsInGrid == true ? "photo.stack.fill" : "photo.stack"
+                        image: settings?.animateGIFsInGrid == true ? "custom.gifs.pause" : "custom.gifs.play"
                     )
                 }
                 .help("Toggle GIF animation in grid")
@@ -172,6 +191,14 @@ struct MediaGridView: View {
         .onKeyPress(.rightArrow) {
             let columns = viewModel.columnCount(for: containerWidth)
             viewModel.moveSelection(direction: .right, in: displayedItems, columns: columns)
+            return .handled
+        }
+        .onKeyPress(.space) {
+            guard let selectedID = viewModel.selectedItems.first,
+                  let item = displayedItems.first(where: { $0.id == selectedID }) else {
+                return .ignored
+            }
+            onQuickLook?(item)
             return .handled
         }
         .onReceive(NotificationCenter.default.publisher(for: .selectAll)) { _ in
@@ -291,10 +318,44 @@ struct MediaGridView: View {
         }
     }
 
+    // MARK: - Hover Reveal Overlay
+
+    @ViewBuilder
+    private func hoverRevealContent(for item: MediaItem) -> some View {
+        let pixelSize = viewModel.thumbnailSize.pixelSize
+        let revealedWidth: CGFloat = {
+            guard let w = item.width, let h = item.height, h > 0, w > h else { return pixelSize }
+            return pixelSize * CGFloat(w) / CGFloat(h)
+        }()
+        let revealedHeight: CGFloat = {
+            guard let w = item.width, let h = item.height, w > 0, h > w else { return pixelSize }
+            return pixelSize * CGFloat(h) / CGFloat(w)
+        }()
+
+        Group {
+            if item.isAnimated {
+                GIFFrameView(url: library.absoluteURL(for: item))
+            } else {
+                AsyncThumbnailImage(item: item, size: viewModel.thumbnailSize)
+            }
+        }
+        .frame(width: revealedWidth, height: revealedHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(color: .black.opacity(0.3), radius: 8)
+    }
+
     // MARK: - GIF Animation
 
     private func toggleGIFAnimation() {
-        guard let settings = settingsQuery.first else { return }
+        let settings: AppSettings
+        if let existing = settingsQuery.first {
+            settings = existing
+        } else {
+            Logger.library.error("AppSettings missing in toggleGIFAnimation — creating fallback defaults")
+            let newSettings = AppSettings()
+            modelContext.insert(newSettings)
+            settings = newSettings
+        }
         settings.animateGIFsInGrid.toggle()
     }
 
