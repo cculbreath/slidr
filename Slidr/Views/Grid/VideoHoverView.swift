@@ -1,26 +1,34 @@
 import SwiftUI
+import SwiftData
+import AVKit
 
 struct VideoHoverView: View {
     let item: MediaItem
     let size: ThumbnailSize
-    let hoverPosition: CGFloat  // 0.0 to 1.0 across thumbnail width
+    @Binding var hoverState: HoverState
 
     @Environment(MediaLibrary.self) private var library
+    @Environment(HoverVideoPlayer.self) private var hoverPlayer
+    @Query private var settingsQuery: [AppSettings]
     @State private var scrubThumbnails: [NSImage] = []
     @State private var isLoading = true
+    @State private var playbackTimer: Task<Void, Never>?
 
-    private let thumbnailCount = 100
+    private var scrubThumbnailCount: Int {
+        settingsQuery.first?.scrubThumbnailCount ?? 100
+    }
 
     var body: some View {
         ZStack {
-            // Show appropriate scrub thumbnail based on hover position
-            if !scrubThumbnails.isEmpty {
-                let index = min(Int(hoverPosition * CGFloat(scrubThumbnails.count)), scrubThumbnails.count - 1)
-                Image(nsImage: scrubThumbnails[max(0, index)])
+            if hoverState.isPlaying, let player = hoverPlayer.avPlayer {
+                VideoPlayer(player: player)
+                    .disabled(true)
+            } else if !scrubThumbnails.isEmpty {
+                let index = scrubIndex(for: hoverState.position)
+                Image(nsImage: scrubThumbnails[index])
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else if isLoading {
-                // Show static thumbnail while loading scrub thumbnails
                 AsyncThumbnailImage(item: item, size: size)
                     .overlay {
                         ProgressView()
@@ -29,7 +37,7 @@ struct VideoHoverView: View {
             }
 
             // Duration badge
-            if let duration = item.formattedDuration {
+            if !hoverState.isPlaying, let duration = item.formattedDuration {
                 VStack {
                     Spacer()
                     HStack {
@@ -47,21 +55,78 @@ struct VideoHoverView: View {
                 }
             }
 
-            // Scrub position indicator
-            VStack {
-                Spacer()
-                GeometryReader { geo in
-                    Rectangle()
-                        .fill(Color.white.opacity(0.8))
-                        .frame(width: 2, height: 4)
-                        .position(x: geo.size.width * hoverPosition, y: 2)
+            // Scrub position indicator (only during scrubbing)
+            if hoverState.isScrubbing {
+                VStack {
+                    Spacer()
+                    GeometryReader { geo in
+                        Rectangle()
+                            .fill(Color.white.opacity(0.8))
+                            .frame(width: 2, height: 4)
+                            .position(x: geo.size.width * hoverState.position, y: 2)
+                    }
+                    .frame(height: 4)
                 }
-                .frame(height: 4)
             }
         }
         .task {
             await loadScrubThumbnails()
         }
+        .onChange(of: hoverState) { oldState, newState in
+            handleStateTransition(from: oldState, to: newState)
+        }
+        .onDisappear {
+            cancelTimer()
+            hoverPlayer.stop()
+        }
+    }
+
+    private func scrubIndex(for position: Double) -> Int {
+        guard !scrubThumbnails.isEmpty else { return 0 }
+        let index = Int(position * Double(scrubThumbnails.count))
+        return max(0, min(index, scrubThumbnails.count - 1))
+    }
+
+    private func handleStateTransition(from oldState: HoverState, to newState: HoverState) {
+        switch newState {
+        case .scrubbing:
+            cancelTimer()
+            if oldState.isPlaying {
+                hoverPlayer.pause()
+            }
+            // Start delay timer for potential playback
+            let position = newState.position
+            playbackTimer = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled else { return }
+                hoverState = .pendingPlayback(position: position)
+            }
+
+        case .pendingPlayback(let position):
+            let fileURL = library.absoluteURL(for: item)
+            hoverPlayer.prepare(url: fileURL, contentHash: item.contentHash)
+            // Brief buffer then start playing
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(100))
+                guard case .pendingPlayback = hoverState else { return }
+                hoverState = .playing(position: position)
+            }
+
+        case .playing(let position):
+            let duration = item.duration ?? 0
+            if duration > 0 {
+                hoverPlayer.play(from: position, duration: duration)
+            }
+
+        case .idle:
+            cancelTimer()
+            hoverPlayer.stop()
+        }
+    }
+
+    private func cancelTimer() {
+        playbackTimer?.cancel()
+        playbackTimer = nil
     }
 
     private func loadScrubThumbnails() async {
@@ -70,11 +135,10 @@ struct VideoHoverView: View {
         do {
             scrubThumbnails = try await library.videoScrubThumbnails(
                 for: item,
-                count: thumbnailCount,
+                count: scrubThumbnailCount,
                 size: size
             )
         } catch {
-            // Fall back to static thumbnail on error
             scrubThumbnails = []
         }
 

@@ -9,10 +9,11 @@ struct SlidrApp: App {
     let thumbnailCache: ThumbnailCache
     let folderWatcher: FolderWatcher
     let playlistService: PlaylistService
+    let hoverVideoPlayer: HoverVideoPlayer
 
     init() {
         // Initialize SwiftData container with versioned schema and migration plan
-        let schema = Schema(versionedSchema: SlidrSchemaV2.self)
+        let schema = Schema(versionedSchema: SlidrSchemaV3.self)
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let slidrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
 
@@ -40,6 +41,7 @@ struct SlidrApp: App {
         mediaLibrary = MediaLibrary(modelContainer: modelContainer, thumbnailCache: thumbnailCache)
         folderWatcher = FolderWatcher()
         playlistService = PlaylistService(modelContainer: modelContainer, mediaLibrary: mediaLibrary, folderWatcher: folderWatcher)
+        hoverVideoPlayer = HoverVideoPlayer()
     }
 
     var body: some Scene {
@@ -47,6 +49,7 @@ struct SlidrApp: App {
             ContentView()
                 .environment(mediaLibrary)
                 .environment(playlistService)
+                .environment(hoverVideoPlayer)
         }
         .modelContainer(modelContainer)
         .commands {
@@ -146,6 +149,7 @@ struct SlidrApp: App {
 
         Settings {
             SettingsView(thumbnailCache: thumbnailCache)
+                .environment(mediaLibrary)
         }
         .modelContainer(modelContainer)
 

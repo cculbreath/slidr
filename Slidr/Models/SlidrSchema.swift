@@ -197,19 +197,34 @@ enum SlidrSchemaV2: VersionedSchema {
     }
 }
 
+// MARK: - Schema V3 (Scrub Thumbnails: added scrubThumbnailCount)
+
+enum SlidrSchemaV3: VersionedSchema {
+    static var versionIdentifier = Schema.Version(3, 0, 0)
+
+    static var models: [any PersistentModel.Type] {
+        [MediaItem.self, Playlist.self, AppSettings.self]
+    }
+}
+
 // MARK: - Migration Plan
 
 enum SlidrMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [SlidrSchemaV1.self, SlidrSchemaV2.self]
+        [SlidrSchemaV1.self, SlidrSchemaV2.self, SlidrSchemaV3.self]
     }
 
     static var stages: [MigrationStage] {
-        [migrateV1toV2]
+        [migrateV1toV2, migrateV2toV3]
     }
 
     static let migrateV1toV2 = MigrationStage.lightweight(
         fromVersion: SlidrSchemaV1.self,
         toVersion: SlidrSchemaV2.self
+    )
+
+    static let migrateV2toV3 = MigrationStage.lightweight(
+        fromVersion: SlidrSchemaV2.self,
+        toVersion: SlidrSchemaV3.self
     )
 }

@@ -119,9 +119,35 @@ actor ThumbnailCache {
         return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
     }
 
+    // MARK: - Scrub Thumbnail Disk Cache
+
+    func cachedScrubThumbnails(forHash hash: String, count: Int) -> [NSImage]? {
+        var images: [NSImage] = []
+        for i in 0..<count {
+            let path = cacheDirectory.appendingPathComponent("\(hash)-scrub-\(i).jpg")
+            guard let image = NSImage(contentsOf: path) else { return nil }
+            images.append(image)
+        }
+        return images
+    }
+
+    func hasScrubThumbnails(forHash hash: String, count: Int) -> Bool {
+        let firstPath = cacheDirectory.appendingPathComponent("\(hash)-scrub-0.jpg")
+        let lastPath = cacheDirectory.appendingPathComponent("\(hash)-scrub-\(count - 1).jpg")
+        let fm = FileManager.default
+        return fm.fileExists(atPath: firstPath.path) && fm.fileExists(atPath: lastPath.path)
+    }
+
     func videoScrubThumbnails(for item: MediaItem, count: Int, size: ThumbnailSize, libraryRoot: URL) async throws -> [NSImage] {
         guard item.isVideo else {
             throw ThumbnailError.invalidMedia
+        }
+
+        let hash = item.contentHash
+
+        // Check disk cache first
+        if let cached = cachedScrubThumbnails(forHash: hash, count: count) {
+            return cached
         }
 
         let fileURL = libraryRoot.appendingPathComponent(item.relativePath)
@@ -145,6 +171,14 @@ actor ThumbnailCache {
                 let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
                 let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
                 thumbnails.append(image)
+
+                // Write to disk cache
+                if let tiffData = image.tiffRepresentation,
+                   let bitmapRep = NSBitmapImageRep(data: tiffData),
+                   let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: jpegQuality]) {
+                    let diskPath = cacheDirectory.appendingPathComponent("\(hash)-scrub-\(i - 1).jpg")
+                    try? jpegData.write(to: diskPath)
+                }
             } catch {
                 Self.logger.warning("Failed to generate scrub thumbnail at \(time.seconds)s: \(error.localizedDescription)")
             }
@@ -153,13 +187,80 @@ actor ThumbnailCache {
         return thumbnails
     }
 
+    func preGenerateScrubThumbnails(for items: [PreGenerateItem], count: Int, libraryRoot: URL) async {
+        let pixelSize = ThumbnailSize.medium.pixelSize
+        var generated = 0
+
+        for item in items {
+            if hasScrubThumbnails(forHash: item.contentHash, count: count) {
+                continue
+            }
+
+            let fileURL = libraryRoot.appendingPathComponent(item.relativePath)
+            guard FileManager.default.fileExists(atPath: fileURL.path) else { continue }
+
+            do {
+                let asset = AVURLAsset(url: fileURL)
+                let generator = AVAssetImageGenerator(asset: asset)
+                generator.appliesPreferredTrackTransform = true
+                generator.maximumSize = CGSize(width: pixelSize, height: pixelSize)
+
+                let duration = try await asset.load(.duration)
+                let interval = duration.seconds / Double(count + 1)
+
+                for i in 1...count {
+                    let time = CMTime(seconds: interval * Double(i), preferredTimescale: duration.timescale)
+                    let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
+                    let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+
+                    if let tiffData = image.tiffRepresentation,
+                       let bitmapRep = NSBitmapImageRep(data: tiffData),
+                       let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: jpegQuality]) {
+                        let diskPath = cacheDirectory.appendingPathComponent("\(item.contentHash)-scrub-\(i - 1).jpg")
+                        try? jpegData.write(to: diskPath)
+                    }
+                }
+                generated += 1
+                Self.logger.debug("Pre-generated scrub thumbnails for \(item.filename)")
+            } catch {
+                Self.logger.warning("Failed to pre-generate scrub thumbnails for \(item.filename): \(error.localizedDescription)")
+            }
+        }
+
+        if generated > 0 {
+            Self.logger.info("Pre-generated scrub thumbnails for \(generated) videos")
+        }
+    }
+
+    func clearScrubThumbnails() {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil) else { return }
+
+        var removedCount = 0
+        for file in files where file.lastPathComponent.contains("-scrub-") {
+            try? FileManager.default.removeItem(at: file)
+            removedCount += 1
+        }
+
+        if removedCount > 0 {
+            Self.logger.info("Cleared \(removedCount) scrub thumbnail files")
+        }
+    }
+
     func removeThumbnails(forHash hash: String) {
+        // Remove standard thumbnails
         for size in ThumbnailSize.allCases {
             let key = "\(hash)-\(size.rawValue)" as NSString
             memoryCache.removeObject(forKey: key)
 
             let path = cacheDirectory.appendingPathComponent("\(hash)-\(size.rawValue).jpg")
             try? FileManager.default.removeItem(at: path)
+        }
+
+        // Remove scrub thumbnails
+        guard let files = try? FileManager.default.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil) else { return }
+        let prefix = "\(hash)-scrub-"
+        for file in files where file.lastPathComponent.hasPrefix(prefix) {
+            try? FileManager.default.removeItem(at: file)
         }
     }
 
@@ -270,6 +371,12 @@ actor ThumbnailCache {
     // MARK: - Private Helpers
 
     private func extractHash(from cacheKey: String) -> String {
+        // Handle scrub thumbnail pattern: {hash}-scrub-{index}
+        if let scrubRange = cacheKey.range(of: "-scrub-") {
+            return String(cacheKey[cacheKey.startIndex..<scrubRange.lowerBound])
+        }
+
+        // Handle standard thumbnail pattern: {hash}-{size}
         for size in ThumbnailSize.allCases {
             let suffix = "-\(size.rawValue)"
             if cacheKey.hasSuffix(suffix) {
@@ -278,6 +385,13 @@ actor ThumbnailCache {
         }
         return cacheKey
     }
+}
+
+/// Sendable value type for passing media item data across isolation boundaries
+struct PreGenerateItem: Sendable {
+    let contentHash: String
+    let relativePath: String
+    let filename: String
 }
 
 enum ThumbnailError: LocalizedError {

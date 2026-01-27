@@ -28,6 +28,7 @@ final class AppSettings {
     var maxMemoryCacheItems: Int
     var maxDiskCacheMB: Int
     var animateGIFsInGrid: Bool
+    var scrubThumbnailCount: Int
 
     // MARK: - Slideshow
     var defaultImageDuration: TimeInterval
@@ -93,6 +94,7 @@ final class AppSettings {
         self.maxMemoryCacheItems = 100
         self.maxDiskCacheMB = 500
         self.animateGIFsInGrid = false
+        self.scrubThumbnailCount = 100
 
         // Slideshow defaults
         self.defaultImageDuration = 5.0

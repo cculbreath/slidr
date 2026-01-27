@@ -10,9 +10,7 @@ struct MediaThumbnailView: View {
     let onDoubleTap: () -> Void
 
     @Query private var settingsQuery: [AppSettings]
-    @State private var isHovering = false
-    @State private var hoverLocation: CGPoint = .zero
-    @State private var hoverPosition: CGFloat = 0.5
+    @State private var hoverState: HoverState = .idle
 
     private var settings: AppSettings? {
         settingsQuery.first
@@ -74,11 +72,11 @@ struct MediaThumbnailView: View {
                         item: item,
                         size: CGSize(width: size.pixelSize, height: size.pixelSize)
                     )
-                } else if item.isVideo && isHovering {
+                } else if item.isVideo && hoverState.isActive {
                     VideoHoverView(
                         item: item,
                         size: size,
-                        hoverPosition: hoverPosition
+                        hoverState: $hoverState
                     )
                 } else {
                     AsyncThumbnailImage(item: item, size: size)
@@ -102,7 +100,7 @@ struct MediaThumbnailView: View {
             }
             .overlay(alignment: .bottomTrailing) {
                 // Duration badge for videos (when not hovering)
-                if item.isVideo && !isHovering, let duration = item.formattedDuration {
+                if item.isVideo && !hoverState.isActive, let duration = item.formattedDuration {
                     Text(duration)
                         .font(.caption2)
                         .fontWeight(.medium)
@@ -115,17 +113,15 @@ struct MediaThumbnailView: View {
                 }
             }
             .shadow(color: .black.opacity(isSelected ? 0.3 : 0.1), radius: isSelected ? 8 : 4)
-            .scaleEffect(isHovering ? 1.02 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: isHovering)
+            .scaleEffect(hoverState.isActive ? 1.02 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: hoverState.isActive)
             .onContinuousHover { phase in
                 switch phase {
                 case .active(let location):
-                    isHovering = true
-                    hoverLocation = location
-                    // Calculate horizontal position as 0.0 - 1.0
-                    hoverPosition = max(0, min(1, location.x / geometry.size.width))
+                    let position = max(0, min(1, location.x / geometry.size.width))
+                    hoverState = .scrubbing(position: position)
                 case .ended:
-                    isHovering = false
+                    hoverState = .idle
                 }
             }
             .draggable(dragPayload) {

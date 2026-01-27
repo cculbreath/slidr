@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Environment(MediaLibrary.self) private var library
     @Environment(PlaylistService.self) private var playlistService
+    @Query private var settingsQuery: [AppSettings]
 
     @State private var sidebarViewModel = SidebarViewModel()
     @State private var gridViewModel = GridViewModel()
@@ -76,6 +77,9 @@ struct ContentView: View {
             if sidebarViewModel.selectedItem == nil {
                 sidebarViewModel.selectedItem = .allMedia
             }
+            // Background-generate missing scrub thumbnails for videos
+            let count = settingsQuery.first?.scrubThumbnailCount ?? 100
+            library.backgroundGenerateMissingScrubThumbnails(count: count)
         }
     }
 

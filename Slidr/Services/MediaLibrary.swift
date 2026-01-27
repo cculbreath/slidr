@@ -102,6 +102,14 @@ final class MediaLibrary {
 
         if !result.imported.isEmpty {
             lastImportDate = Date()
+
+            // Generate scrub thumbnails for imported videos in the background
+            let videoItems = result.imported.filter { $0.isVideo }
+            if !videoItems.isEmpty {
+                let descriptor = FetchDescriptor<AppSettings>()
+                let count = (try? modelContainer.mainContext.fetch(descriptor).first?.scrubThumbnailCount) ?? 100
+                generateScrubThumbnailsForVideos(videoItems, count: count)
+            }
         }
 
         Logger.library.info("Import complete: \(result.summary)")
@@ -157,6 +165,49 @@ final class MediaLibrary {
 
     func videoScrubThumbnails(for item: MediaItem, count: Int, size: ThumbnailSize) async throws -> [NSImage] {
         try await thumbnailCache.videoScrubThumbnails(for: item, count: count, size: size, libraryRoot: libraryRoot)
+    }
+
+    // MARK: - Scrub Thumbnail Generation
+
+    func generateScrubThumbnailsForVideos(_ items: [MediaItem], count: Int) {
+        let pregenItems = items
+            .filter { $0.isVideo }
+            .map { PreGenerateItem(contentHash: $0.contentHash, relativePath: $0.relativePath, filename: $0.originalFilename) }
+
+        guard !pregenItems.isEmpty else { return }
+
+        let cache = thumbnailCache
+        let root = libraryRoot
+
+        Task.detached(priority: .utility) {
+            await cache.preGenerateScrubThumbnails(for: pregenItems, count: count, libraryRoot: root)
+        }
+    }
+
+    func backgroundGenerateMissingScrubThumbnails(count: Int) {
+        let videoItems = allItems
+            .filter { $0.isVideo }
+            .map { PreGenerateItem(contentHash: $0.contentHash, relativePath: $0.relativePath, filename: $0.originalFilename) }
+
+        guard !videoItems.isEmpty else { return }
+
+        let cache = thumbnailCache
+        let root = libraryRoot
+
+        Task.detached(priority: .background) {
+            await cache.preGenerateScrubThumbnails(for: videoItems, count: count, libraryRoot: root)
+        }
+    }
+
+    func invalidateScrubThumbnails(newCount: Int) {
+        let cache = thumbnailCache
+
+        Task.detached(priority: .utility) {
+            await cache.clearScrubThumbnails()
+        }
+
+        // Re-generate with the new count
+        backgroundGenerateMissingScrubThumbnails(count: newCount)
     }
 
     // MARK: - Library Path Management
