@@ -2,9 +2,8 @@ import AVFoundation
 import Foundation
 import OSLog
 
-private let logger = Logger(subsystem: "com.physicscloud.slidr", category: "VideoConverter")
-
 actor VideoConverter {
+    private static let logger = Logger(subsystem: "com.physicscloud.slidr", category: "VideoConverter")
     static let incompatibleFormats: Set<String> = [
         "avi", "wmv", "flv", "mkv", "webm", "3gp", "asf", "vob"
     ]
@@ -56,7 +55,7 @@ actor VideoConverter {
         outputDirectory: URL,
         progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> URL {
-        logger.info("Converting: \(sourceURL.lastPathComponent)")
+        Self.logger.info("Converting: \(sourceURL.lastPathComponent)")
 
         let asset = AVURLAsset(url: sourceURL)
         guard let _ = try await asset.loadTracks(withMediaType: .video).first else {
@@ -90,12 +89,12 @@ actor VideoConverter {
 
         switch exportSession.status {
         case .completed:
-            logger.info("Conversion complete: \(outputURL.lastPathComponent)")
+            Self.logger.info("Conversion complete: \(outputURL.lastPathComponent)")
             progress?(1.0)
             return outputURL
         case .failed:
             let error = exportSession.error?.localizedDescription ?? "Unknown error"
-            logger.error("Conversion failed: \(error)")
+            Self.logger.error("Conversion failed: \(error)")
             throw ConversionError.exportFailed(error)
         case .cancelled:
             throw ConversionError.cancelled
