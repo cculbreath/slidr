@@ -44,6 +44,11 @@ struct FileInfoSection: View {
                 InfoRow(label: "Frame Rate", value: String(format: "%.2f fps", frameRate))
             }
 
+            // Frame count (for GIFs)
+            if let frameCount = item.frameCount {
+                InfoRow(label: "Frames", value: "\(frameCount)")
+            }
+
             // Has audio (for video)
             if item.isVideo {
                 InfoRow(label: "Audio", value: item.hasAudio == true ? "Yes" : "No")

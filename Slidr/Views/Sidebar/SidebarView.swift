@@ -7,118 +7,16 @@ struct SidebarView: View {
     @Bindable var viewModel: SidebarViewModel
 
     @State private var playlistToEdit: Playlist?
-    @State private var isDropTargeted = false
+    @State private var playlistDropTargetID: UUID?
 
     var body: some View {
         List(selection: $viewModel.selectedItem) {
-            // Library Section
-            Section("Library") {
-                Label {
-                    HStack {
-                        Text("All Media")
-                        Spacer()
-                        Text("\(library.itemCount)")
-                            .foregroundStyle(.secondary)
-                            .font(.caption)
-                    }
-                } icon: {
-                    Image(systemName: "photo.on.rectangle.angled")
-                }
-                .tag(SidebarItem.allMedia)
-
-                Label {
-                    HStack {
-                        Text("Favorites")
-                        Spacer()
-                        Text("\(favoritesCount)")
-                            .foregroundStyle(.secondary)
-                            .font(.caption)
-                    }
-                } icon: {
-                    Image(systemName: "heart.fill")
-                        .foregroundStyle(.pink)
-                }
-                .tag(SidebarItem.favorites)
-            }
-
-            // Playlists Section
-            Section {
-                ForEach(viewModel.manualPlaylists) { playlist in
-                    PlaylistRow(
-                        playlist: playlist,
-                        onEdit: { playlistToEdit = playlist },
-                        onDelete: { viewModel.deletePlaylist(playlist) }
-                    )
-                    .tag(SidebarItem.playlist(playlist.id))
-                    .dropDestination(for: String.self) { uuidStrings, _ in
-                        let itemIDs = uuidStrings.compactMap { UUID(uuidString: $0) }
-                        return handleDrop(itemIDs: itemIDs, onto: playlist)
-                    }
-                }
-            } header: {
-                HStack {
-                    Text("Playlists")
-                    Spacer()
-                    Button {
-                        viewModel.newPlaylistType = .manual
-                        viewModel.isCreatingPlaylist = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            // Smart Playlists Section
-            Section {
-                ForEach(viewModel.smartPlaylists) { playlist in
-                    PlaylistRow(
-                        playlist: playlist,
-                        onEdit: { playlistToEdit = playlist },
-                        onDelete: { viewModel.deletePlaylist(playlist) }
-                    )
-                    .tag(SidebarItem.playlist(playlist.id))
-                }
-            } header: {
-                HStack {
-                    Text("Smart Playlists")
-                    Spacer()
-                    Button {
-                        viewModel.newPlaylistType = .smart
-                        viewModel.isCreatingPlaylist = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            // Import Drop Zone
-            Section {
-                ImportDropZone(isTargeted: isDropTargeted)
-            }
-        }
-        .dropZone(isTargeted: $isDropTargeted) { urls in
-            Task {
-                _ = try? await library.importFiles(urls: urls)
-            }
+            librarySection
+            manualPlaylistsSection
+            smartPlaylistsSection
         }
         .listStyle(.sidebar)
         .frame(minWidth: 200)
-        .toolbar {
-            ToolbarItem {
-                Button {
-                    importFiles()
-                } label: {
-                    Label("Import", systemImage: "plus")
-                }
-            }
-        }
-        .sheet(isPresented: $viewModel.isCreatingPlaylist) {
-            CreatePlaylistSheet(viewModel: viewModel)
-        }
         .sheet(item: $playlistToEdit) { playlist in
             PlaylistEditorView(playlist: playlist)
         }
@@ -136,8 +34,163 @@ struct SidebarView: View {
         } message: { playlist in
             Text("Are you sure you want to delete \"\(playlist.name)\"? This cannot be undone.")
         }
+        .onReceive(NotificationCenter.default.publisher(for: .newPlaylist)) { _ in
+            viewModel.createPlaylist()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .newSmartPlaylist)) { _ in
+            viewModel.createSmartPlaylist()
+        }
         .onAppear {
             viewModel.configure(with: playlistService)
+        }
+    }
+
+    // MARK: - Library Section
+
+    private var librarySection: some View {
+        Section("Library") {
+            allMediaRow
+            favoritesRow
+            Label("Last Import", systemImage: "clock.arrow.circlepath")
+                .tag(SidebarItem.lastImport)
+            Label("Imported Today", systemImage: "calendar")
+                .tag(SidebarItem.importedToday)
+        }
+    }
+
+    private var allMediaRow: some View {
+        Label {
+            HStack {
+                Text("All Media")
+                Spacer()
+                Text("\(library.itemCount)")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
+        } icon: {
+            Image(systemName: "photo.on.rectangle.angled")
+        }
+        .tag(SidebarItem.allMedia)
+    }
+
+    private var favoritesRow: some View {
+        Label {
+            HStack {
+                Text("Favorites")
+                Spacer()
+                Text("\(favoritesCount)")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
+        } icon: {
+            Image(systemName: "heart.fill")
+                .foregroundStyle(.pink)
+        }
+        .tag(SidebarItem.favorites)
+    }
+
+    // MARK: - Manual Playlists Section
+
+    private var manualPlaylistsSection: some View {
+        Section {
+            ForEach(viewModel.manualPlaylists) { playlist in
+                manualPlaylistRow(playlist: playlist)
+            }
+        } header: {
+            HStack {
+                Text("Playlists")
+                Spacer()
+                Button {
+                    viewModel.createPlaylist()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func manualPlaylistRow(playlist: Playlist) -> some View {
+        Group {
+            if viewModel.editingPlaylistID == playlist.id {
+                inlinePlaylistEditor(playlist: playlist)
+            } else {
+                PlaylistRow(
+                    playlist: playlist,
+                    onEdit: { playlistToEdit = playlist },
+                    onDelete: { viewModel.deletePlaylist(playlist) }
+                )
+            }
+        }
+        .tag(SidebarItem.playlist(playlist.id))
+        .dropDestination(for: String.self) { uuidStrings, _ in
+            // Each string may contain newline-separated UUIDs for multi-select drag
+            let itemIDs = uuidStrings
+                .flatMap { $0.components(separatedBy: "\n") }
+                .compactMap { UUID(uuidString: $0) }
+            return handleDrop(itemIDs: itemIDs, onto: playlist)
+        } isTargeted: { targeted in
+            playlistDropTargetID = targeted ? playlist.id : nil
+        }
+        .listRowBackground(
+            playlistDropTargetID == playlist.id
+                ? Color.accentColor.opacity(0.2)
+                : nil
+        )
+    }
+
+    // MARK: - Smart Playlists Section
+
+    private var smartPlaylistsSection: some View {
+        Section {
+            ForEach(viewModel.smartPlaylists) { playlist in
+                PlaylistRow(
+                    playlist: playlist,
+                    onEdit: { playlistToEdit = playlist },
+                    onDelete: { viewModel.deletePlaylist(playlist) }
+                )
+                .tag(SidebarItem.playlist(playlist.id))
+            }
+        } header: {
+            HStack {
+                Text("Smart Playlists")
+                Spacer()
+                Button {
+                    viewModel.createSmartPlaylist()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Inline Playlist Editor
+
+    @ViewBuilder
+    private func inlinePlaylistEditor(playlist: Playlist) -> some View {
+        TextField("Playlist Name", text: Binding(
+            get: { playlist.name },
+            set: { playlist.name = $0 }
+        ))
+        .onSubmit {
+            let trimmed = playlist.name.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                viewModel.cancelInlineEdit(playlist: playlist)
+            } else {
+                viewModel.finishInlineEdit()
+            }
+        }
+        .onExitCommand {
+            let trimmed = playlist.name.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                viewModel.cancelInlineEdit(playlist: playlist)
+            } else {
+                viewModel.finishInlineEdit()
+            }
         }
     }
 
@@ -148,21 +201,6 @@ struct SidebarView: View {
     }
 
     // MARK: - Actions
-
-    private func importFiles() {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = true
-        panel.allowedContentTypes = [
-            .image, .gif, .movie, .video, .mpeg4Movie, .quickTimeMovie
-        ]
-
-        if panel.runModal() == .OK {
-            Task {
-                _ = try? await library.importFiles(urls: panel.urls)
-            }
-        }
-    }
 
     private func handleDrop(itemIDs: [UUID], onto playlist: Playlist) -> Bool {
         let items = library.allItems.filter { itemIDs.contains($0.id) }
@@ -178,12 +216,16 @@ struct SidebarView: View {
 enum SidebarItem: Hashable, Identifiable {
     case allMedia
     case favorites
+    case lastImport
+    case importedToday
     case playlist(UUID)
 
     var id: String {
         switch self {
         case .allMedia: return "allMedia"
         case .favorites: return "favorites"
+        case .lastImport: return "lastImport"
+        case .importedToday: return "importedToday"
         case .playlist(let uuid): return "playlist-\(uuid.uuidString)"
         }
     }
@@ -241,39 +283,3 @@ struct PlaylistRow: View {
         return playlist.isSmartPlaylist ? .orange : .accentColor
     }
 }
-
-// MARK: - Create Playlist Sheet
-
-struct CreatePlaylistSheet: View {
-    @Bindable var viewModel: SidebarViewModel
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(spacing: 20) {
-            Text(viewModel.newPlaylistType == .smart ? "New Smart Playlist" : "New Playlist")
-                .font(.headline)
-
-            TextField("Playlist Name", text: $viewModel.newPlaylistName)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 250)
-
-            HStack(spacing: 16) {
-                Button("Cancel") {
-                    viewModel.newPlaylistName = ""
-                    dismiss()
-                }
-                .keyboardShortcut(.escape)
-
-                Button("Create") {
-                    viewModel.createPlaylist()
-                    dismiss()
-                }
-                .keyboardShortcut(.return)
-                .disabled(viewModel.newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-        .padding(24)
-        .frame(width: 300)
-    }
-}
-

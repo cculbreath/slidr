@@ -130,6 +130,9 @@ struct SlideshowView: View {
                         scrubber: viewModel.scrubber,
                         onVideoEnded: { viewModel.onVideoEnded() }
                     )
+                } else if item.isAnimated {
+                    AsyncAnimatedGIFView(item: item, size: CGSize(width: 1024, height: 1024))
+                        .aspectRatio(contentMode: .fit)
                 } else {
                     AsyncThumbnailImage(item: item, size: .extraLarge)
                         .aspectRatio(contentMode: .fit)
@@ -407,14 +410,14 @@ private struct VideoSeekKeys: ViewModifier {
             viewModel.seekVideo(by: .fiveSeconds, forward: false)
             return .handled
         }
-        // Option + right arrow = seek forward 10s
+        // Option + right arrow = seek forward 30s
         if press.key == .rightArrow && hasOption {
-            viewModel.seekVideo(by: .tenSeconds, forward: true)
+            viewModel.seekVideo(by: .thirtySeconds, forward: true)
             return .handled
         }
-        // Option + left arrow = seek back 10s
+        // Option + left arrow = seek back 30s
         if press.key == .leftArrow && hasOption {
-            viewModel.seekVideo(by: .tenSeconds, forward: false)
+            viewModel.seekVideo(by: .thirtySeconds, forward: false)
             return .handled
         }
         // Comma = step frame backward
@@ -449,6 +452,11 @@ private struct VolumeKeys: ViewModifier {
         }
         // Up arrow = volume up
         if press.key == .upArrow {
+            viewModel.increaseVolume()
+            return .handled
+        }
+        // K = volume up
+        if press.key == KeyEquivalent("k") {
             viewModel.increaseVolume()
             return .handled
         }

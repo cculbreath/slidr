@@ -2,8 +2,6 @@ import Foundation
 import AVFoundation
 import OSLog
 
-private let logger = Logger(subsystem: "com.physicscloud.slidr", category: "Scrubber")
-
 @MainActor
 @Observable
 final class SmoothScrubber {
@@ -80,7 +78,7 @@ final class SmoothScrubber {
         if isSeekInProgress {
             // Queue this seek for when current one completes
             pendingSeekTime = clampedTime
-            logger.debug("Queued seek to \(clampedTime.seconds)")
+            Logger.scrubber.debug("Queued seek to \(clampedTime.seconds)")
         } else {
             performSeek(to: clampedTime, player: player)
         }
@@ -123,7 +121,7 @@ final class SmoothScrubber {
         isSeekInProgress = true
         isSeeking = true
 
-        logger.debug("Seeking to \(time.seconds)")
+        Logger.scrubber.debug("Seeking to \(time.seconds)")
 
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
             Task { @MainActor in

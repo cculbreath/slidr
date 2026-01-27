@@ -9,7 +9,7 @@ struct VideoHoverView: View {
     @State private var scrubThumbnails: [NSImage] = []
     @State private var isLoading = true
 
-    private let thumbnailCount = 10
+    private let thumbnailCount = 100
 
     var body: some View {
         ZStack {

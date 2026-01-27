@@ -112,6 +112,10 @@ final class GridViewModel {
         thumbnailSize = sizes[currentIndex - 1]
     }
 
+    func resetThumbnailSize() {
+        thumbnailSize = .medium
+    }
+
     func columnCount(for containerWidth: CGFloat) -> Int {
         let itemWidth = thumbnailSize.pixelSize + 8
         return max(1, Int(containerWidth / itemWidth))

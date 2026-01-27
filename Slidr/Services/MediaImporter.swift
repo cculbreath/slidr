@@ -6,8 +6,6 @@ import CoreGraphics
 import AVFoundation
 import OSLog
 
-private let logger = Logger(subsystem: "com.physicscloud.slidr", category: "Import")
-
 struct ImportProgress: Sendable {
     let currentItem: Int
     let totalItems: Int
@@ -37,15 +35,12 @@ struct MediaImporter {
     private let libraryRoot: URL
     private let modelContext: ModelContext
     private let videoConverter = VideoConverter()
+    private let options: ImportOptions
 
-    var convertIncompatibleFormats: Bool = true
-    var keepOriginalAfterConversion: Bool = false
-    var organizeByDate: Bool = false
-    var targetFormat: VideoFormat = .h264MP4
-
-    init(libraryRoot: URL, modelContext: ModelContext) {
+    init(libraryRoot: URL, modelContext: ModelContext, options: ImportOptions = .default) {
         self.libraryRoot = libraryRoot
         self.modelContext = modelContext
+        self.options = options
 
         let convertedDir = libraryRoot.appendingPathComponent("Converted")
         try? FileManager.default.createDirectory(at: convertedDir, withIntermediateDirectories: true)
@@ -70,10 +65,10 @@ struct MediaImporter {
                     phase: .importing
                 ))
 
-                let needsVideoConversion = convertIncompatibleFormats && VideoConverter.needsConversion(url: url)
+                let needsVideoConversion = options.convertIncompatible && VideoConverter.needsConversion(url: url)
 
                 guard let mediaType = await detectMediaType(url: url) else {
-                    logger.warning("Unsupported file type: \(url.lastPathComponent)")
+                    Logger.importing.warning("Unsupported file type: \(url.lastPathComponent)")
                     result.failed.append((url, ImportError.unsupportedFormat))
                     continue
                 }
@@ -81,7 +76,7 @@ struct MediaImporter {
                 let hash = try ContentHasher.hash(fileAt: url)
 
                 if isDuplicate(hash: hash) {
-                    logger.info("Skipping duplicate: \(url.lastPathComponent)")
+                    Logger.importing.info("Skipping duplicate: \(url.lastPathComponent)")
                     result.skippedDuplicates.append(url)
                     continue
                 }
@@ -105,7 +100,7 @@ struct MediaImporter {
                     let convertedURL = try await videoConverter.convert(
                         sourceURL: url,
                         outputDirectory: convertedDir,
-                        targetFormat: targetFormat
+                        targetFormat: options.targetFormat
                     ) { conversionProgress in
                         progressHandler?(ImportProgress(
                             currentItem: index,
@@ -115,9 +110,9 @@ struct MediaImporter {
                         ))
                     }
                     importURL = convertedURL
-                    finalExtension = targetFormat.fileExtension
+                    finalExtension = options.targetFormat.fileExtension
                     result.converted.append(url)
-                    logger.info("Converted \(url.lastPathComponent) to \(targetFormat.displayName)")
+                    Logger.importing.info("Converted \(url.lastPathComponent) to \(options.targetFormat.displayName)")
                 }
 
                 progressHandler?(ImportProgress(
@@ -127,11 +122,11 @@ struct MediaImporter {
                     phase: .extractingMetadata
                 ))
 
-                let dateForOrg = organizeByDate ? modDate : Date()
+                let dateForOrg = options.organizeByDate ? modDate : Date()
                 let year = Calendar.current.component(.year, from: dateForOrg)
                 let uuid = UUID().uuidString
                 let relativePath: String
-                if organizeByDate {
+                if options.organizeByDate {
                     let month = Calendar.current.component(.month, from: dateForOrg)
                     relativePath = "Local/\(year)/\(String(format: "%02d", month))/\(uuid).\(finalExtension)"
                 } else {
@@ -158,7 +153,14 @@ struct MediaImporter {
                     fileModifiedDate: modDate
                 )
 
-                if mediaType == .video {
+                if mediaType == .gif {
+                    if let gifMeta = GIFDecoder.metadata(url: destinationURL) {
+                        item.width = Int(gifMeta.size.width)
+                        item.height = Int(gifMeta.size.height)
+                        item.duration = gifMeta.duration
+                        item.frameCount = gifMeta.frameCount
+                    }
+                } else if mediaType == .video {
                     await extractVideoMetadata(url: destinationURL, item: item)
                 } else if let dimensions = getImageDimensions(url: destinationURL) {
                     item.width = Int(dimensions.width)
@@ -168,10 +170,10 @@ struct MediaImporter {
                 modelContext.insert(item)
                 result.imported.append(item)
 
-                logger.info("Imported: \(url.lastPathComponent)")
+                Logger.importing.info("Imported: \(url.lastPathComponent)")
 
             } catch {
-                logger.error("Failed to import \(url.lastPathComponent): \(error.localizedDescription)")
+                Logger.importing.error("Failed to import \(url.lastPathComponent): \(error.localizedDescription)")
                 result.failed.append((url, error))
             }
         }
@@ -188,13 +190,13 @@ struct MediaImporter {
         for url in urls {
             do {
                 guard ExternalDriveManager.isExternalDrive(url) else {
-                    logger.warning("Not an external drive path: \(url.path)")
+                    Logger.importing.warning("Not an external drive path: \(url.path)")
                     result.failed.append((url, ImportError.unsupportedFormat))
                     continue
                 }
 
                 guard let mediaType = await detectMediaType(url: url) else {
-                    logger.warning("Unsupported file type: \(url.lastPathComponent)")
+                    Logger.importing.warning("Unsupported file type: \(url.lastPathComponent)")
                     result.failed.append((url, ImportError.unsupportedFormat))
                     continue
                 }
@@ -202,7 +204,7 @@ struct MediaImporter {
                 let hash = try ContentHasher.hash(fileAt: url)
 
                 if isDuplicate(hash: hash) {
-                    logger.info("Skipping duplicate: \(url.lastPathComponent)")
+                    Logger.importing.info("Skipping duplicate: \(url.lastPathComponent)")
                     result.skippedDuplicates.append(url)
                     continue
                 }
@@ -236,7 +238,14 @@ struct MediaImporter {
                     fileModifiedDate: modDate
                 )
 
-                if mediaType == .video {
+                if mediaType == .gif {
+                    if let gifMeta = GIFDecoder.metadata(url: destinationURL) {
+                        item.width = Int(gifMeta.size.width)
+                        item.height = Int(gifMeta.size.height)
+                        item.duration = gifMeta.duration
+                        item.frameCount = gifMeta.frameCount
+                    }
+                } else if mediaType == .video {
                     await extractVideoMetadata(url: destinationURL, item: item)
                 } else if let dimensions = getImageDimensions(url: destinationURL) {
                     item.width = Int(dimensions.width)
@@ -246,10 +255,10 @@ struct MediaImporter {
                 modelContext.insert(item)
                 result.imported.append(item)
 
-                logger.info("Imported from external drive: \(url.lastPathComponent)")
+                Logger.importing.info("Imported from external drive: \(url.lastPathComponent)")
 
             } catch {
-                logger.error("Failed to import from external \(url.lastPathComponent): \(error.localizedDescription)")
+                Logger.importing.error("Failed to import from external \(url.lastPathComponent): \(error.localizedDescription)")
                 result.failed.append((url, error))
             }
         }
@@ -264,7 +273,7 @@ struct MediaImporter {
         for url in urls {
             do {
                 guard let mediaType = await detectMediaType(url: url) else {
-                    logger.warning("Unsupported file type: \(url.lastPathComponent)")
+                    Logger.importing.warning("Unsupported file type: \(url.lastPathComponent)")
                     result.failed.append((url, ImportError.unsupportedFormat))
                     continue
                 }
@@ -272,7 +281,7 @@ struct MediaImporter {
                 let hash = try ContentHasher.hash(fileAt: url)
 
                 if isDuplicate(hash: hash) {
-                    logger.info("Skipping duplicate: \(url.lastPathComponent)")
+                    Logger.importing.info("Skipping duplicate: \(url.lastPathComponent)")
                     result.skippedDuplicates.append(url)
                     continue
                 }
@@ -292,7 +301,14 @@ struct MediaImporter {
                     fileModifiedDate: modDate
                 )
 
-                if mediaType == .video {
+                if mediaType == .gif {
+                    if let gifMeta = GIFDecoder.metadata(url: url) {
+                        item.width = Int(gifMeta.size.width)
+                        item.height = Int(gifMeta.size.height)
+                        item.duration = gifMeta.duration
+                        item.frameCount = gifMeta.frameCount
+                    }
+                } else if mediaType == .video {
                     await extractVideoMetadata(url: url, item: item)
                 } else if let dimensions = getImageDimensions(url: url) {
                     item.width = Int(dimensions.width)
@@ -302,10 +318,10 @@ struct MediaImporter {
                 modelContext.insert(item)
                 result.imported.append(item)
 
-                logger.info("Referenced: \(url.lastPathComponent)")
+                Logger.importing.info("Referenced: \(url.lastPathComponent)")
 
             } catch {
-                logger.error("Failed to reference \(url.lastPathComponent): \(error.localizedDescription)")
+                Logger.importing.error("Failed to reference \(url.lastPathComponent): \(error.localizedDescription)")
                 result.failed.append((url, error))
             }
         }
@@ -382,7 +398,7 @@ struct MediaImporter {
             item.hasAudio = !audioTracks.isEmpty
 
         } catch {
-            logger.warning("Failed to extract video metadata for \(url.lastPathComponent): \(error.localizedDescription)")
+            Logger.importing.warning("Failed to extract video metadata for \(url.lastPathComponent): \(error.localizedDescription)")
         }
     }
 }

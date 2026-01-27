@@ -128,4 +128,9 @@ extension Notification.Name {
 
     // Phase 6: Rating
     static let rateItem = Notification.Name("com.slidr.rateItem")
+
+    // Phase 8: Menu commands
+    static let importFiles = Notification.Name("com.slidr.importFiles")
+    static let resetThumbnailSize = Notification.Name("com.slidr.resetThumbnailSize")
+    static let revealInFinder = Notification.Name("com.slidr.revealInFinder")
 }

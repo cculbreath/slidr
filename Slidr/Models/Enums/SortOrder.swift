@@ -5,5 +5,6 @@ enum SortOrder: String, Codable, CaseIterable, Sendable {
     case dateModified = "Date Modified"
     case dateImported = "Date Imported"
     case fileSize = "File Size"
+    case duration = "Duration"
     case random = "Random"
 }

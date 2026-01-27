@@ -23,6 +23,7 @@ final class MediaItem {
     var duration: TimeInterval?      // Video duration in seconds
     var frameRate: Double?           // Video frame rate
     var hasAudio: Bool?              // Whether video has audio track
+    var frameCount: Int?             // GIF frame count
 
     // MARK: - Relationships
     @Relationship(deleteRule: .nullify)

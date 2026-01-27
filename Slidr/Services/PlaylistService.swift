@@ -3,8 +3,6 @@ import SwiftData
 import UniformTypeIdentifiers
 import OSLog
 
-private let logger = Logger(subsystem: "com.physicscloud.slidr", category: "Playlist")
-
 @MainActor
 @Observable
 final class PlaylistService {
@@ -41,7 +39,7 @@ final class PlaylistService {
         modelContainer.mainContext.insert(playlist)
         save()
         loadPlaylists()
-        logger.info("Created playlist: \(name) (\(type.rawValue))")
+        Logger.playlists.info("Created playlist: \(name) (\(type.rawValue))")
         return playlist
     }
 
@@ -49,7 +47,7 @@ final class PlaylistService {
         playlist.modifiedDate = Date()
         save()
         loadPlaylists()
-        logger.info("Updated playlist: \(playlist.name)")
+        Logger.playlists.info("Updated playlist: \(playlist.name)")
     }
 
     func deletePlaylist(_ playlist: Playlist) {
@@ -63,7 +61,7 @@ final class PlaylistService {
         modelContainer.mainContext.delete(playlist)
         save()
         loadPlaylists()
-        logger.info("Deleted playlist: \(name)")
+        Logger.playlists.info("Deleted playlist: \(name)")
     }
 
     // MARK: - Item Management
@@ -83,7 +81,7 @@ final class PlaylistService {
         guard playlist.isManualPlaylist else { return }
         playlist.addItem(item)
         save()
-        logger.info("Added \(item.originalFilename) to \(playlist.name)")
+        Logger.playlists.info("Added \(item.originalFilename) to \(playlist.name)")
     }
 
     func addItems(_ items: [MediaItem], to playlist: Playlist) {
@@ -92,14 +90,14 @@ final class PlaylistService {
             playlist.addItem(item)
         }
         save()
-        logger.info("Added \(items.count) items to \(playlist.name)")
+        Logger.playlists.info("Added \(items.count) items to \(playlist.name)")
     }
 
     func removeItem(_ item: MediaItem, from playlist: Playlist) {
         guard playlist.isManualPlaylist else { return }
         playlist.removeItem(item)
         save()
-        logger.info("Removed \(item.originalFilename) from \(playlist.name)")
+        Logger.playlists.info("Removed \(item.originalFilename) from \(playlist.name)")
     }
 
     func moveItems(in playlist: Playlist, from source: IndexSet, to destination: Int) {
@@ -131,22 +129,22 @@ final class PlaylistService {
             }
         }
 
-        logger.info("Set watched folder for \(playlist.name): \(url?.path ?? "none")")
+        Logger.playlists.info("Set watched folder for \(playlist.name): \(url?.path ?? "none")")
     }
 
     func scanWatchedFolder(url: URL, playlist: Playlist) async {
         let filesToImport = collectMatchingFiles(in: url, playlist: playlist)
 
         guard !filesToImport.isEmpty else {
-            logger.info("No matching files in watched folder: \(url.path)")
+            Logger.playlists.info("No matching files in watched folder: \(url.path)")
             return
         }
 
         do {
             let result = try await mediaLibrary.importFiles(urls: filesToImport)
-            logger.info("Scanned watched folder \(url.path): \(result.summary)")
+            Logger.playlists.info("Scanned watched folder \(url.path): \(result.summary)")
         } catch {
-            logger.error("Failed to import from watched folder: \(error.localizedDescription)")
+            Logger.playlists.error("Failed to import from watched folder: \(error.localizedDescription)")
             lastError = error
         }
     }
@@ -154,7 +152,7 @@ final class PlaylistService {
     private func collectMatchingFiles(in url: URL, playlist: Playlist) -> [URL] {
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: url.path) else {
-            logger.warning("Watched folder does not exist: \(url.path)")
+            Logger.playlists.warning("Watched folder does not exist: \(url.path)")
             return []
         }
 
@@ -168,7 +166,7 @@ final class PlaylistService {
             includingPropertiesForKeys: [.isRegularFileKey, .contentTypeKey],
             options: options
         ) else {
-            logger.error("Failed to enumerate folder: \(url.path)")
+            Logger.playlists.error("Failed to enumerate folder: \(url.path)")
             return []
         }
 
@@ -256,6 +254,12 @@ final class PlaylistService {
             return items.sorted {
                 ascending ? $0.fileSize < $1.fileSize : $0.fileSize > $1.fileSize
             }
+        case .duration:
+            return items.sorted {
+                let d0 = $0.duration ?? 0
+                let d1 = $1.duration ?? 0
+                return ascending ? d0 < d1 : d0 > d1
+            }
         case .random:
             return items.shuffled()
         }
@@ -269,7 +273,7 @@ final class PlaylistService {
             playlist.removeOrphanedItems(existingIDs: allItemIDs)
         }
         save()
-        logger.info("Cleaned up orphaned playlist items")
+        Logger.playlists.info("Cleaned up orphaned playlist items")
     }
 
     // MARK: - Queries
@@ -291,7 +295,7 @@ final class PlaylistService {
         do {
             try modelContainer.mainContext.save()
         } catch {
-            logger.error("Failed to save context: \(error.localizedDescription)")
+            Logger.playlists.error("Failed to save context: \(error.localizedDescription)")
             lastError = error
         }
     }
@@ -336,9 +340,9 @@ final class PlaylistService {
             Task {
                 do {
                     _ = try await mediaLibrary.importFiles(urls: [url])
-                    logger.info("Auto-imported from watched folder: \(url.lastPathComponent)")
+                    Logger.playlists.info("Auto-imported from watched folder: \(url.lastPathComponent)")
                 } catch {
-                    logger.error("Auto-import failed: \(error.localizedDescription)")
+                    Logger.playlists.error("Auto-import failed: \(error.localizedDescription)")
                 }
             }
 
@@ -349,7 +353,7 @@ final class PlaylistService {
         case .deleted:
             // File deletion from watched folder doesn't remove from library
             // (user may want to keep imported copies)
-            logger.info("File deleted from watched folder: \(url.lastPathComponent)")
+            Logger.playlists.info("File deleted from watched folder: \(url.lastPathComponent)")
         }
     }
 }

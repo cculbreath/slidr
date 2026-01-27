@@ -9,11 +9,10 @@ struct MediaGridView: View {
 
     let items: [MediaItem]
     let onStartSlideshow: ([MediaItem], Int) -> Void
-    var onSelectItem: ((MediaItem) -> Void)?
+    var onQuickLook: ((MediaItem) -> Void)?
 
     @State private var showDeleteConfirmation = false
     @State private var itemsToDelete: [MediaItem] = []
-    @FocusState private var isSearchFocused: Bool
     @State private var containerWidth: CGFloat = 0
 
     private var settings: AppSettings? {
@@ -42,6 +41,7 @@ struct MediaGridView: View {
                                 item: item,
                                 size: viewModel.thumbnailSize,
                                 isSelected: viewModel.isSelected(item),
+                                selectedItemIDs: viewModel.selectedItems,
                                 onTap: { handleTap(item) },
                                 onDoubleTap: { handleDoubleTap(item) }
                             )
@@ -79,12 +79,15 @@ struct MediaGridView: View {
             }
         }
         .toolbar {
-            ToolbarItemGroup(placement: .automatic) {
-                SearchBarView(text: $viewModel.searchText, isFocused: $isSearchFocused)
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    importFiles()
+                } label: {
+                    Label("Import", systemImage: "square.and.arrow.down")
+                }
+            }
 
-                Divider()
-
-                // Thumbnail size picker
+            ToolbarItem(placement: .automatic) {
                 Picker("Size", selection: $viewModel.thumbnailSize) {
                     ForEach(ThumbnailSize.allCases, id: \.self) { size in
                         Text(size.rawValue).tag(size)
@@ -93,10 +96,9 @@ struct MediaGridView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .fixedSize()
+            }
 
-                Divider()
-
-                // Sort menu
+            ToolbarItem(placement: .automatic) {
                 Menu {
                     ForEach(SortOrder.allCases, id: \.self) { order in
                         Button {
@@ -115,31 +117,37 @@ struct MediaGridView: View {
 
                     Toggle("Ascending", isOn: $viewModel.sortAscending)
                 } label: {
-                    Label("Sort", systemImage: "arrow.up.arrow.down")
+                    Label("Sort", systemImage: "line.3.horizontal.decrease")
                 }
+            }
 
-                Divider()
-
-                // GIF animation toggle
+            ToolbarItem(placement: .automatic) {
                 Button {
                     toggleGIFAnimation()
                 } label: {
                     Label(
                         settings?.animateGIFsInGrid == true ? "GIFs: On" : "GIFs: Off",
-                        systemImage: settings?.animateGIFsInGrid == true ? "play.circle.fill" : "play.circle"
+                        systemImage: settings?.animateGIFsInGrid == true ? "photo.stack.fill" : "photo.stack"
                     )
                 }
                 .help("Toggle GIF animation in grid")
+            }
 
-                Divider()
-
-                // Slideshow button
+            ToolbarItem(placement: .automatic) {
                 Button {
                     startSlideshow()
                 } label: {
                     Label("Slideshow", systemImage: "play.fill")
                 }
                 .disabled(items.isEmpty)
+            }
+
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    NotificationCenter.default.post(name: .toggleInspector, object: nil)
+                } label: {
+                    Label("Inspector", systemImage: "sidebar.right")
+                }
             }
         }
         .onKeyPress(.delete) {
@@ -175,20 +183,20 @@ struct MediaGridView: View {
         .onReceive(NotificationCenter.default.publisher(for: .deleteSelected)) { _ in
             deleteSelectedItems()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .focusSearch)) { _ in
-            isSearchFocused = true
-        }
         .onReceive(NotificationCenter.default.publisher(for: .increaseThumbnailSize)) { _ in
             viewModel.increaseThumbnailSize()
         }
         .onReceive(NotificationCenter.default.publisher(for: .decreaseThumbnailSize)) { _ in
             viewModel.decreaseThumbnailSize()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .quickLook)) { _ in
-            quickLookSelectedItem()
-        }
         .onReceive(NotificationCenter.default.publisher(for: .startSlideshow)) { _ in
             startSlideshow()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .resetThumbnailSize)) { _ in
+            viewModel.resetThumbnailSize()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .revealInFinder)) { _ in
+            revealSelectedInFinder()
         }
         .confirmationDialog(
             "Delete \(itemsToDelete.count) item\(itemsToDelete.count == 1 ? "" : "s")?",
@@ -221,7 +229,6 @@ struct MediaGridView: View {
         } else {
             viewModel.select(item)
         }
-        onSelectItem?(item)
     }
 
     private func handleDoubleTap(_ item: MediaItem) {
@@ -242,15 +249,6 @@ struct MediaGridView: View {
         }
 
         onStartSlideshow(selectedItems, startIndex)
-    }
-
-    // MARK: - Quick Look
-
-    private func quickLookSelectedItem() {
-        guard let selectedID = viewModel.selectedItems.first,
-              let item = displayedItems.first(where: { $0.id == selectedID }) else { return }
-        let url = library.absoluteURL(for: item)
-        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     // MARK: - Delete
@@ -275,6 +273,12 @@ struct MediaGridView: View {
     }
 
     // MARK: - Context Menu Actions
+
+    private func revealSelectedInFinder() {
+        guard let selectedID = viewModel.selectedItems.first,
+              let item = displayedItems.first(where: { $0.id == selectedID }) else { return }
+        showInFinder(item)
+    }
 
     private func showInFinder(_ item: MediaItem) {
         let url = library.absoluteURL(for: item)
@@ -317,4 +321,3 @@ struct MediaGridView: View {
         }
     }
 }
-

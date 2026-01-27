@@ -5,6 +5,7 @@ struct MediaThumbnailView: View {
     let item: MediaItem
     let size: ThumbnailSize
     let isSelected: Bool
+    var selectedItemIDs: Set<UUID> = []
     let onTap: () -> Void
     let onDoubleTap: () -> Void
 
@@ -25,6 +26,19 @@ struct MediaThumbnailView: View {
         settings?.gridShowFilenames ?? false
     }
 
+    private var showCaptions: Bool {
+        settings?.gridShowCaptions ?? true
+    }
+
+    /// When the dragged item is part of a multi-selection, include all selected IDs
+    /// so playlist drop targets receive the full set. IDs are newline-separated.
+    private var dragPayload: String {
+        if isSelected && selectedItemIDs.count > 1 {
+            return selectedItemIDs.map(\.uuidString).joined(separator: "\n")
+        }
+        return item.id.uuidString
+    }
+
     var body: some View {
         VStack(spacing: 4) {
             thumbnailContent
@@ -38,6 +52,16 @@ struct MediaThumbnailView: View {
                     .foregroundStyle(.secondary)
                     .frame(width: size.pixelSize)
             }
+
+            if showCaptions, item.hasCaption {
+                Text(item.caption ?? "")
+                    .font(.caption2)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                    .foregroundStyle(.secondary)
+                    .frame(width: size.pixelSize)
+                    .italic()
+            }
         }
     }
 
@@ -45,7 +69,7 @@ struct MediaThumbnailView: View {
         GeometryReader { geometry in
             ZStack {
                 // Show animated GIF on hover, video hover view, or regular thumbnail
-                if item.isAnimated && animateGIFs && isHovering {
+                if item.isAnimated && animateGIFs {
                     AsyncAnimatedGIFView(
                         item: item,
                         size: CGSize(width: size.pixelSize, height: size.pixelSize)
@@ -104,7 +128,7 @@ struct MediaThumbnailView: View {
                     isHovering = false
                 }
             }
-            .draggable(item.id.uuidString) {
+            .draggable(dragPayload) {
                 AsyncThumbnailImage(item: item, size: .small)
                     .frame(width: 60, height: 60)
                     .clipShape(RoundedRectangle(cornerRadius: 8))

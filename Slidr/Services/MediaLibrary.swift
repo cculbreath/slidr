@@ -3,15 +3,15 @@ import SwiftData
 import AppKit
 import OSLog
 
-private let logger = Logger(subsystem: "com.physicscloud.slidr", category: "Library")
-
 @MainActor
 @Observable
 final class MediaLibrary {
     // MARK: - Published State
     private(set) var isLoading = false
     private(set) var itemCount = 0
-    private(set) var lastError: Error?
+    private(set) var lastError: LibraryError?
+    private(set) var libraryVersion: Int = 0
+    private(set) var lastImportDate: Date?
 
     // MARK: - Dependencies
     let modelContainer: ModelContainer
@@ -20,6 +20,7 @@ final class MediaLibrary {
 
     // MARK: - Paths
     private(set) var libraryRoot: URL
+    var externalLibraryRoot: URL?
 
     // MARK: - Initialization
     init(modelContainer: ModelContainer, thumbnailCache: ThumbnailCache) {
@@ -27,8 +28,8 @@ final class MediaLibrary {
         self.thumbnailCache = thumbnailCache
 
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let yoinkrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
-        self.libraryRoot = yoinkrDir.appendingPathComponent("Library", isDirectory: true)
+        let slidrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
+        self.libraryRoot = slidrDir.appendingPathComponent("Library", isDirectory: true)
 
         // Ensure directories exist
         try? fileManager.createDirectory(at: libraryRoot.appendingPathComponent("Local"), withIntermediateDirectories: true)
@@ -57,6 +58,8 @@ final class MediaLibrary {
             descriptor.sortBy = [SortDescriptor(\.importDate, order: ascending ? .forward : .reverse)]
         case .fileSize:
             descriptor.sortBy = [SortDescriptor(\.fileSize, order: ascending ? .forward : .reverse)]
+        case .duration:
+            descriptor.sortBy = [SortDescriptor(\.duration, order: ascending ? .forward : .reverse)]
         case .random:
             // Fetch all, then shuffle
             let items = (try? modelContainer.mainContext.fetch(descriptor)) ?? []
@@ -66,19 +69,42 @@ final class MediaLibrary {
         return (try? modelContainer.mainContext.fetch(descriptor)) ?? []
     }
 
+    // MARK: - Item Management
+
+    func add(_ item: MediaItem) {
+        modelContainer.mainContext.insert(item)
+        try? modelContainer.mainContext.save()
+        updateItemCount()
+    }
+
+    func items(inFolder folder: String, includeSubfolders: Bool) -> [MediaItem] {
+        allItems.filter { item in
+            if includeSubfolders {
+                return item.relativePath.hasPrefix(folder)
+            } else {
+                let itemFolder = (item.relativePath as NSString).deletingLastPathComponent
+                return itemFolder == folder
+            }
+        }
+    }
+
     // MARK: - Import
 
-    func importFiles(urls: [URL]) async throws -> ImportResult {
+    func importFiles(urls: [URL], options: ImportOptions = .default) async throws -> ImportResult {
         isLoading = true
         defer {
             isLoading = false
             updateItemCount()
         }
 
-        let importer = MediaImporter(libraryRoot: libraryRoot, modelContext: modelContainer.mainContext)
+        let importer = MediaImporter(libraryRoot: libraryRoot, modelContext: modelContainer.mainContext, options: options)
         let result = try await importer.importFiles(urls: urls)
 
-        logger.info("Import complete: \(result.summary)")
+        if !result.imported.isEmpty {
+            lastImportDate = Date()
+        }
+
+        Logger.library.info("Import complete: \(result.summary)")
         return result
     }
 
@@ -99,7 +125,7 @@ final class MediaLibrary {
         try? modelContainer.mainContext.save()
 
         updateItemCount()
-        logger.info("Deleted: \(item.originalFilename)")
+        Logger.library.info("Deleted: \(item.originalFilename)")
         NotificationCenter.default.post(name: .mediaItemsDeleted, object: nil)
     }
 
@@ -119,7 +145,7 @@ final class MediaLibrary {
         }
         try? modelContainer.mainContext.save()
         updateItemCount()
-        logger.info("Deleted \(items.count) items")
+        Logger.library.info("Deleted \(items.count) items")
         NotificationCenter.default.post(name: .mediaItemsDeleted, object: nil)
     }
 
@@ -145,7 +171,7 @@ final class MediaLibrary {
         try fileManager.createDirectory(at: localDir, withIntermediateDirectories: true)
 
         libraryRoot = url
-        logger.info("Library root changed to: \(url.path)")
+        Logger.library.info("Library root changed to: \(url.path)")
     }
 
     func migrateLibrary(to newPath: URL, progress: ((Double) -> Void)? = nil) async throws {
@@ -174,7 +200,22 @@ final class MediaLibrary {
         }
 
         libraryRoot = newPath
-        logger.info("Library migrated from \(oldPath.path) to \(newPath.path)")
+        Logger.library.info("Library migrated from \(oldPath.path) to \(newPath.path)")
+    }
+
+    // MARK: - Smart Albums
+
+    func lastImportItems(sortedBy sortOrder: SortOrder, ascending: Bool) -> [MediaItem] {
+        guard let importDate = lastImportDate else { return [] }
+        let threshold = importDate.addingTimeInterval(-2)
+        return items(sortedBy: sortOrder, ascending: ascending)
+            .filter { $0.importDate >= threshold }
+    }
+
+    func importedTodayItems(sortedBy sortOrder: SortOrder, ascending: Bool) -> [MediaItem] {
+        let startOfDay = Calendar.current.startOfDay(for: Date())
+        return items(sortedBy: sortOrder, ascending: ascending)
+            .filter { $0.importDate >= startOfDay }
     }
 
     // MARK: - Helpers
@@ -182,6 +223,7 @@ final class MediaLibrary {
     private func updateItemCount() {
         let descriptor = FetchDescriptor<MediaItem>()
         itemCount = (try? modelContainer.mainContext.fetchCount(descriptor)) ?? 0
+        libraryVersion += 1
     }
 
     func absoluteURL(for item: MediaItem) -> URL {
@@ -235,7 +277,7 @@ final class MediaLibrary {
         let orphanedCount = await countOrphanedThumbnails()
 
         let duration = Date().timeIntervalSince(startTime)
-        logger.info("Library verification complete: \(verifiedCount)/\(totalItems) verified, \(missingCount) missing, \(orphanedCount) orphaned thumbnails")
+        Logger.library.info("Library verification complete: \(verifiedCount)/\(totalItems) verified, \(missingCount) missing, \(orphanedCount) orphaned thumbnails")
 
         return VerificationResult(
             totalItems: totalItems,
@@ -256,7 +298,7 @@ final class MediaLibrary {
     func cleanOrphanedThumbnails() async {
         let existingHashes = Set(allItems.map(\.contentHash))
         await thumbnailCache.pruneOrphanedThumbnails(existingHashes: existingHashes)
-        logger.info("Orphaned thumbnail cleanup complete")
+        Logger.library.info("Orphaned thumbnail cleanup complete")
     }
 
     func removeOrphanedItems() {
@@ -272,7 +314,7 @@ final class MediaLibrary {
 
         try? modelContainer.mainContext.save()
         updateItemCount()
-        logger.info("Removed \(orphaned.count) orphaned items with .missing status")
+        Logger.library.info("Removed \(orphaned.count) orphaned items with .missing status")
 
         if !orphaned.isEmpty {
             NotificationCenter.default.post(name: .mediaItemsDeleted, object: nil)
@@ -298,7 +340,7 @@ final class MediaLibrary {
 
         let sourceURL = URL(fileURLWithPath: item.relativePath)
         guard fileManager.fileExists(atPath: sourceURL.path) else {
-            throw CopyToLibraryError.sourceFileNotFound
+            throw LibraryError.sourceFileNotFound
         }
 
         let year = Calendar.current.component(.year, from: Date())
@@ -315,20 +357,7 @@ final class MediaLibrary {
         item.storageLocation = .local
         try? modelContainer.mainContext.save()
 
-        logger.info("Copied to library: \(item.originalFilename)")
-    }
-}
-
-// MARK: - Errors
-
-enum CopyToLibraryError: LocalizedError {
-    case sourceFileNotFound
-
-    var errorDescription: String? {
-        switch self {
-        case .sourceFileNotFound:
-            return "The source file could not be found."
-        }
+        Logger.library.info("Copied to library: \(item.originalFilename)")
     }
 }
 

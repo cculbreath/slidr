@@ -5,9 +5,7 @@ import SwiftUI
 final class SidebarViewModel {
     // MARK: - State
     var selectedItem: SidebarItem? = .allMedia
-    var isCreatingPlaylist = false
-    var newPlaylistName = ""
-    var newPlaylistType: PlaylistType = .manual
+    var editingPlaylistID: UUID?
     var playlistToDelete: Playlist?
     var showDeleteConfirmation = false
 
@@ -34,20 +32,50 @@ final class SidebarViewModel {
         playlists.filter { $0.isSmartPlaylist }
     }
 
-    // MARK: - Actions
+    // MARK: - Inline Playlist Creation
 
     func createPlaylist() {
-        guard let service = playlistService,
-              !newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-
-        let playlist = service.createPlaylist(name: newPlaylistName, type: newPlaylistType)
+        guard let service = playlistService else { return }
+        let playlist = service.createPlaylist(name: "New Playlist", type: .manual)
+        editingPlaylistID = playlist.id
         selectedItem = .playlist(playlist.id)
-
-        // Reset state
-        newPlaylistName = ""
-        newPlaylistType = .manual
-        isCreatingPlaylist = false
     }
+
+    func createSmartPlaylist() {
+        guard let service = playlistService else { return }
+        let playlist = service.createPlaylist(name: "New Smart Playlist", type: .smart)
+        editingPlaylistID = playlist.id
+        selectedItem = .playlist(playlist.id)
+    }
+
+    func finishInlineEdit() {
+        guard let editingID = editingPlaylistID,
+              let service = playlistService,
+              let playlist = service.playlist(withID: editingID) else {
+            editingPlaylistID = nil
+            return
+        }
+        let trimmed = playlist.name.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty {
+            service.deletePlaylist(playlist)
+            selectedItem = .allMedia
+        } else {
+            service.updatePlaylist(playlist)
+        }
+        editingPlaylistID = nil
+    }
+
+    func cancelInlineEdit(playlist: Playlist) {
+        guard let service = playlistService else { return }
+        let trimmed = playlist.name.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty {
+            service.deletePlaylist(playlist)
+            selectedItem = .allMedia
+        }
+        editingPlaylistID = nil
+    }
+
+    // MARK: - Delete
 
     func deletePlaylist(_ playlist: Playlist) {
         playlistToDelete = playlist

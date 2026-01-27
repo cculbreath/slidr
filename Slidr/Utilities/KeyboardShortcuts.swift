@@ -16,13 +16,14 @@ enum KeyboardShortcuts {
     // MARK: - Thumbnails
     static let increaseThumbnailSize = KeyboardShortcut("+", modifiers: .command)
     static let decreaseThumbnailSize = KeyboardShortcut("-", modifiers: .command)
+    static let resetThumbnailSize = KeyboardShortcut("0", modifiers: .command)
 
     // MARK: - Playlists
     static let newPlaylist = KeyboardShortcut("n", modifiers: .command)
     static let newSmartPlaylist = KeyboardShortcut("n", modifiers: [.command, .shift])
 
     // MARK: - Inspector
-    static let toggleInspector = KeyboardShortcut("i", modifiers: .command)
+    static let toggleInspector = KeyboardShortcut("i", modifiers: [.command, .shift])
     static let revealInFinder = KeyboardShortcut("r", modifiers: [.command, .shift])
 
     // MARK: - Slideshow Reference
@@ -55,13 +56,15 @@ enum KeyboardShortcuts {
         ("\u{2191}\u{2193}\u{2190}\u{2192}", "Navigate selection"),
         ("\u{2318}+", "Larger thumbnails"),
         ("\u{2318}-", "Smaller thumbnails"),
+        ("\u{2318}0", "Reset thumbnail size"),
     ]
 
     // MARK: - General Reference
     static let generalShortcuts: [(String, String)] = [
         ("\u{2318},", "Settings"),
         ("\u{2318}I", "Import files"),
-        ("\u{2318}\u{2325}I", "Toggle inspector"),
+        ("\u{2318}\u{21E7}I", "Toggle inspector"),
+        ("\u{2318}0", "Reset thumbnail size"),
         ("\u{2318}N", "New playlist"),
         ("\u{2318}\u{21E7}N", "New smart playlist"),
         ("\u{2318}\u{21E7}R", "Reveal in Finder"),

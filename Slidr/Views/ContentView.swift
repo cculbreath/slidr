@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Environment(MediaLibrary.self) private var library
@@ -10,26 +11,56 @@ struct ContentView: View {
     @State private var slideshowViewModel = SlideshowViewModel()
     @State private var showSlideshow = false
     @State private var showInspector = false
-    @State private var inspectorItem: MediaItem?
+    @State private var isDropTargeted = false
+    @State private var previewItem: MediaItem?
 
     var body: some View {
         NavigationSplitView {
             SidebarView(viewModel: sidebarViewModel)
         } detail: {
-            MediaGridView(
-                viewModel: gridViewModel,
-                items: currentItems,
-                onStartSlideshow: startSlideshow,
-                onSelectItem: { item in
-                    inspectorItem = item
+            if let previewItem {
+                MediaPreviewView(item: previewItem, items: currentItems, library: library) {
+                    self.previewItem = nil
                 }
-            )
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            } else {
+                MediaGridView(
+                    viewModel: gridViewModel,
+                    items: currentItems,
+                    onStartSlideshow: startSlideshow,
+                    onQuickLook: { item in
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            previewItem = item
+                        }
+                    }
+                )
+            }
         }
+        .animation(.easeInOut(duration: 0.25), value: previewItem != nil)
+        .searchable(text: $gridViewModel.searchText, prompt: "Search media")
         .inspector(isPresented: $showInspector) {
             inspectorContent
         }
+        .dropZone(isTargeted: $isDropTargeted) { urls in
+            Task {
+                _ = try? await library.importFiles(urls: urls)
+            }
+        }
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.accentColor, lineWidth: 3)
+                    .ignoresSafeArea()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .toggleInspector)) { _ in
             showInspector.toggle()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .importFiles)) { _ in
+            importFiles()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .quickLook)) { _ in
+            togglePreview()
         }
         .sheet(isPresented: $showSlideshow) {
             slideshowViewModel.stop()
@@ -49,12 +80,17 @@ struct ContentView: View {
     }
 
     private var currentItems: [MediaItem] {
+        _ = library.libraryVersion
         switch sidebarViewModel.selectedItem {
         case .allMedia, .none:
             return library.items(sortedBy: gridViewModel.sortOrder, ascending: gridViewModel.sortAscending)
         case .favorites:
             return library.items(sortedBy: gridViewModel.sortOrder, ascending: gridViewModel.sortAscending)
                 .filter { $0.isFavorite }
+        case .lastImport:
+            return library.lastImportItems(sortedBy: gridViewModel.sortOrder, ascending: gridViewModel.sortAscending)
+        case .importedToday:
+            return library.importedTodayItems(sortedBy: gridViewModel.sortOrder, ascending: gridViewModel.sortAscending)
         case .playlist(let id):
             if let playlist = playlistService.playlist(withID: id) {
                 return playlistService.items(for: playlist)
@@ -68,14 +104,43 @@ struct ContentView: View {
         showSlideshow = true
     }
 
+    private func importFiles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = true
+        panel.allowedContentTypes = [
+            .image, .gif, .movie, .video, .mpeg4Movie, .quickTimeMovie
+        ]
+
+        if panel.runModal() == .OK {
+            Task {
+                _ = try? await library.importFiles(urls: panel.urls)
+            }
+        }
+    }
+
+    private func togglePreview() {
+        if previewItem != nil {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                previewItem = nil
+            }
+        } else if let selectedID = gridViewModel.selectedItems.first,
+                  let item = currentItems.first(where: { $0.id == selectedID }) {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                previewItem = item
+            }
+        }
+    }
+
     // MARK: - Inspector
 
     @ViewBuilder
     private var inspectorContent: some View {
-        if let item = inspectorItem {
-            MediaInspectorView(item: item)
-        } else if let firstSelectedID = gridViewModel.selectedItems.first,
-                  let item = currentItems.first(where: { $0.id == firstSelectedID }) {
+        if gridViewModel.selectedItems.count > 1 {
+            let selectedMediaItems = currentItems.filter { gridViewModel.selectedItems.contains($0.id) }
+            MultiSelectInspectorView(items: selectedMediaItems, library: library, playlistService: playlistService)
+        } else if let selectedID = gridViewModel.selectedItems.first,
+                  let item = currentItems.first(where: { $0.id == selectedID }) {
             MediaInspectorView(item: item)
         } else {
             VStack {

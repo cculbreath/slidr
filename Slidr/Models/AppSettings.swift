@@ -50,7 +50,13 @@ final class AppSettings {
 
     // MARK: - Grid
     var gridShowFilenames: Bool
+    var gridShowCaptionsRaw: Bool?
     var gridVideoHoverScrub: Bool
+
+    var gridShowCaptions: Bool {
+        get { gridShowCaptionsRaw ?? true }
+        set { gridShowCaptionsRaw = newValue }
+    }
 
     // MARK: - Verification
     var verifyFilesOnLaunch: Bool
@@ -109,6 +115,7 @@ final class AppSettings {
 
         // Grid defaults
         self.gridShowFilenames = false
+        self.gridShowCaptionsRaw = true
         self.gridVideoHoverScrub = true
 
         // Verification defaults

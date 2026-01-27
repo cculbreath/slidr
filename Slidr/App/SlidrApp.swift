@@ -11,25 +11,29 @@ struct SlidrApp: App {
     let playlistService: PlaylistService
 
     init() {
-        // Initialize SwiftData container
-        let schema = Schema([MediaItem.self, Playlist.self, AppSettings.self])
+        // Initialize SwiftData container with versioned schema and migration plan
+        let schema = Schema(versionedSchema: SlidrSchemaV2.self)
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let yoinkrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
+        let slidrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
 
         // Ensure directory exists
-        try? FileManager.default.createDirectory(at: yoinkrDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: slidrDir, withIntermediateDirectories: true)
 
-        let storeURL = yoinkrDir.appendingPathComponent("Slidr.store")
+        let storeURL = slidrDir.appendingPathComponent("Slidr.store")
         let config = ModelConfiguration("Slidr", schema: schema, url: storeURL)
 
         do {
-            modelContainer = try ModelContainer(for: schema, configurations: config)
+            modelContainer = try ModelContainer(
+                for: schema,
+                migrationPlan: SlidrMigrationPlan.self,
+                configurations: config
+            )
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
 
         // Initialize services
-        let thumbnailDir = yoinkrDir.appendingPathComponent("Thumbnails", isDirectory: true)
+        let thumbnailDir = slidrDir.appendingPathComponent("Thumbnails", isDirectory: true)
         try? FileManager.default.createDirectory(at: thumbnailDir, withIntermediateDirectories: true)
 
         thumbnailCache = ThumbnailCache(cacheDirectory: thumbnailDir)
@@ -53,8 +57,8 @@ struct SlidrApp: App {
                 .keyboardShortcut("?", modifiers: .command)
             }
 
-            // Edit menu
-            CommandGroup(after: .pasteboard) {
+            // Edit menu - replace system Select All with grid selection
+            CommandGroup(replacing: .textEditing) {
                 Button("Select All") {
                     NotificationCenter.default.post(name: .selectAll, object: nil)
                 }
@@ -64,7 +68,9 @@ struct SlidrApp: App {
                     NotificationCenter.default.post(name: .deselectAll, object: nil)
                 }
                 .keyboardShortcut("a", modifiers: [.command, .shift])
+            }
 
+            CommandGroup(after: .textEditing) {
                 Divider()
 
                 Button("Find...") {
@@ -75,6 +81,13 @@ struct SlidrApp: App {
 
             // File menu
             CommandGroup(after: .newItem) {
+                Button("Import Files...") {
+                    NotificationCenter.default.post(name: .importFiles, object: nil)
+                }
+                .keyboardShortcut("i", modifiers: .command)
+
+                Divider()
+
                 Button("New Playlist") {
                     NotificationCenter.default.post(name: .newPlaylist, object: nil)
                 }
@@ -105,6 +118,11 @@ struct SlidrApp: App {
                 }
                 .keyboardShortcut("-", modifiers: .command)
 
+                Button("Reset Thumbnail Size") {
+                    NotificationCenter.default.post(name: .resetThumbnailSize, object: nil)
+                }
+                .keyboardShortcut("0", modifiers: .command)
+
                 Divider()
 
                 Button("Enter Fullscreen Slideshow") {
@@ -117,7 +135,12 @@ struct SlidrApp: App {
                 Button("Toggle Inspector") {
                     NotificationCenter.default.post(name: .toggleInspector, object: nil)
                 }
-                .keyboardShortcut("i", modifiers: .command)
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+
+                Button("Reveal in Finder") {
+                    NotificationCenter.default.post(name: .revealInFinder, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
             }
         }
 
