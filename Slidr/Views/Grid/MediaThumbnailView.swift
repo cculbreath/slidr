@@ -63,6 +63,11 @@ struct MediaThumbnailView: View {
                     isHovering = false
                 }
             }
+            .draggable(item.id.uuidString) {
+                AsyncThumbnailImage(item: item, size: .small)
+                    .frame(width: 60, height: 60)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
             .onTapGesture(count: 2) {
                 onDoubleTap()
             }

@@ -100,12 +100,27 @@ final class MediaLibrary {
 
         updateItemCount()
         logger.info("Deleted: \(item.originalFilename)")
+        NotificationCenter.default.post(name: .mediaItemsDeleted, object: nil)
     }
 
     func delete(_ items: [MediaItem]) {
         for item in items {
-            delete(item)
+            // Delete file
+            let fileURL = libraryRoot.appendingPathComponent(item.relativePath)
+            try? fileManager.removeItem(at: fileURL)
+
+            // Delete thumbnails
+            Task {
+                await thumbnailCache.removeThumbnails(forHash: item.contentHash)
+            }
+
+            // Delete from database
+            modelContainer.mainContext.delete(item)
         }
+        try? modelContainer.mainContext.save()
+        updateItemCount()
+        logger.info("Deleted \(items.count) items")
+        NotificationCenter.default.post(name: .mediaItemsDeleted, object: nil)
     }
 
     // MARK: - Thumbnail Access
@@ -128,4 +143,10 @@ final class MediaLibrary {
     func absoluteURL(for item: MediaItem) -> URL {
         libraryRoot.appendingPathComponent(item.relativePath)
     }
+}
+
+// MARK: - Notifications
+
+extension Notification.Name {
+    static let mediaItemsDeleted = Notification.Name("com.physicscloud.slidr.mediaItemsDeleted")
 }

@@ -3,15 +3,16 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(MediaLibrary.self) private var library
+    @Environment(PlaylistService.self) private var playlistService
 
-    @State private var sidebarSelection: SidebarItem? = .allMedia
+    @State private var sidebarViewModel = SidebarViewModel()
     @State private var gridViewModel = GridViewModel()
     @State private var slideshowViewModel = SlideshowViewModel()
     @State private var showSlideshow = false
 
     var body: some View {
         NavigationSplitView {
-            SidebarView(selection: $sidebarSelection)
+            SidebarView(viewModel: sidebarViewModel)
         } detail: {
             MediaGridView(
                 viewModel: gridViewModel,
@@ -25,20 +26,28 @@ struct ContentView: View {
             SlideshowView(viewModel: slideshowViewModel)
                 .frame(minWidth: 800, minHeight: 600)
         }
+        .onChange(of: sidebarViewModel.selectedItem) {
+            gridViewModel.clearSelection()
+        }
         .onAppear {
-            // Ensure we have a selection
-            if sidebarSelection == nil {
-                sidebarSelection = .allMedia
+            sidebarViewModel.configure(with: playlistService)
+            if sidebarViewModel.selectedItem == nil {
+                sidebarViewModel.selectedItem = .allMedia
             }
         }
     }
 
     private var currentItems: [MediaItem] {
-        switch sidebarSelection {
+        switch sidebarViewModel.selectedItem {
         case .allMedia, .none:
             return library.items(sortedBy: gridViewModel.sortOrder, ascending: gridViewModel.sortAscending)
-        case .playlist:
-            // Playlist support in Phase 3
+        case .favorites:
+            return library.items(sortedBy: gridViewModel.sortOrder, ascending: gridViewModel.sortAscending)
+                .filter { $0.isFavorite }
+        case .playlist(let id):
+            if let playlist = playlistService.playlist(withID: id) {
+                return playlistService.items(for: playlist)
+            }
             return []
         }
     }

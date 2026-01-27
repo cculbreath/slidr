@@ -24,6 +24,10 @@ final class MediaItem {
     var frameRate: Double?           // Video frame rate
     var hasAudio: Bool?              // Whether video has audio track
 
+    // MARK: - Relationships
+    @Relationship(deleteRule: .nullify)
+    var playlists: [Playlist]?
+
     // MARK: - User Data
     var isFavorite: Bool
 
@@ -51,6 +55,7 @@ final class MediaItem {
         self.importDate = Date()
         self.status = .available
         self.isFavorite = false
+        self.playlists = []
     }
 
     // MARK: - Computed Properties

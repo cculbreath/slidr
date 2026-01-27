@@ -6,6 +6,8 @@ struct SlidrApp: App {
     let modelContainer: ModelContainer
     let mediaLibrary: MediaLibrary
     let thumbnailCache: ThumbnailCache
+    let folderWatcher: FolderWatcher
+    let playlistService: PlaylistService
 
     init() {
         // Initialize SwiftData container
@@ -31,12 +33,15 @@ struct SlidrApp: App {
 
         thumbnailCache = ThumbnailCache(cacheDirectory: thumbnailDir)
         mediaLibrary = MediaLibrary(modelContainer: modelContainer, thumbnailCache: thumbnailCache)
+        folderWatcher = FolderWatcher()
+        playlistService = PlaylistService(modelContainer: modelContainer, mediaLibrary: mediaLibrary, folderWatcher: folderWatcher)
     }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(mediaLibrary)
+                .environment(playlistService)
         }
         .modelContainer(modelContainer)
 
