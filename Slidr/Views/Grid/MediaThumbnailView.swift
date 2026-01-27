@@ -13,11 +13,35 @@ struct MediaThumbnailView: View {
     @State private var hoverLocation: CGPoint = .zero
     @State private var hoverPosition: CGFloat = 0.5
 
+    private var settings: AppSettings? {
+        settingsQuery.first
+    }
+
     private var animateGIFs: Bool {
-        settingsQuery.first?.animateGIFsInGrid ?? false
+        settings?.animateGIFsInGrid ?? false
+    }
+
+    private var showFilenames: Bool {
+        settings?.gridShowFilenames ?? false
     }
 
     var body: some View {
+        VStack(spacing: 4) {
+            thumbnailContent
+                .frame(width: size.pixelSize, height: size.pixelSize)
+
+            if showFilenames {
+                Text(item.originalFilename)
+                    .font(.caption2)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(.secondary)
+                    .frame(width: size.pixelSize)
+            }
+        }
+    }
+
+    private var thumbnailContent: some View {
         GeometryReader { geometry in
             ZStack {
                 // Show animated GIF on hover, video hover view, or regular thumbnail
@@ -45,6 +69,12 @@ struct MediaThumbnailView: View {
             .overlay(alignment: .topLeading) {
                 // Media type badge
                 mediaBadge
+            }
+            .overlay(alignment: .topTrailing) {
+                // Rating stars overlay
+                if item.isRated {
+                    ratingBadge
+                }
             }
             .overlay(alignment: .bottomTrailing) {
                 // Duration badge for videos (when not hovering)
@@ -86,7 +116,6 @@ struct MediaThumbnailView: View {
                 onTap()
             }
         }
-        .frame(width: size.pixelSize, height: size.pixelSize)
     }
 
     @ViewBuilder
@@ -108,5 +137,21 @@ struct MediaThumbnailView: View {
                 .clipShape(Circle())
                 .padding(6)
         }
+    }
+
+    @ViewBuilder
+    private var ratingBadge: some View {
+        HStack(spacing: 1) {
+            ForEach(1...item.effectiveRating, id: \.self) { _ in
+                Image(systemName: "star.fill")
+                    .font(.system(size: 8))
+            }
+        }
+        .foregroundStyle(.yellow)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .background(.black.opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .padding(6)
     }
 }

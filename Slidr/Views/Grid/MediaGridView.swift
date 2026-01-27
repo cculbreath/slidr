@@ -13,9 +13,15 @@ struct MediaGridView: View {
 
     @State private var showDeleteConfirmation = false
     @State private var itemsToDelete: [MediaItem] = []
+    @FocusState private var isSearchFocused: Bool
+    @State private var containerWidth: CGFloat = 0
 
     private var settings: AppSettings? {
         settingsQuery.first
+    }
+
+    private var displayedItems: [MediaItem] {
+        viewModel.filteredItems(items)
     }
 
     var body: some View {
@@ -31,7 +37,7 @@ struct MediaGridView: View {
             } else {
                 ScrollView {
                     LazyVGrid(columns: viewModel.gridColumns, spacing: 8) {
-                        ForEach(items) { item in
+                        ForEach(displayedItems) { item in
                             MediaThumbnailView(
                                 item: item,
                                 size: viewModel.thumbnailSize,
@@ -61,10 +67,23 @@ struct MediaGridView: View {
                     }
                     .padding()
                 }
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear
+                            .onAppear { containerWidth = geometry.size.width }
+                            .onChange(of: geometry.size.width) { _, newWidth in
+                                containerWidth = newWidth
+                            }
+                    }
+                }
             }
         }
         .toolbar {
-            ToolbarItemGroup {
+            ToolbarItemGroup(placement: .automatic) {
+                SearchBarView(text: $viewModel.searchText, isFocused: $isSearchFocused)
+
+                Divider()
+
                 // Thumbnail size picker
                 Picker("Size", selection: $viewModel.thumbnailSize) {
                     ForEach(ThumbnailSize.allCases, id: \.self) { size in
@@ -127,14 +146,49 @@ struct MediaGridView: View {
             deleteSelectedItems()
             return .handled
         }
+        .onKeyPress(.upArrow) {
+            let columns = viewModel.columnCount(for: containerWidth)
+            viewModel.moveSelection(direction: .up, in: displayedItems, columns: columns)
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            let columns = viewModel.columnCount(for: containerWidth)
+            viewModel.moveSelection(direction: .down, in: displayedItems, columns: columns)
+            return .handled
+        }
+        .onKeyPress(.leftArrow) {
+            let columns = viewModel.columnCount(for: containerWidth)
+            viewModel.moveSelection(direction: .left, in: displayedItems, columns: columns)
+            return .handled
+        }
+        .onKeyPress(.rightArrow) {
+            let columns = viewModel.columnCount(for: containerWidth)
+            viewModel.moveSelection(direction: .right, in: displayedItems, columns: columns)
+            return .handled
+        }
         .onReceive(NotificationCenter.default.publisher(for: .selectAll)) { _ in
-            viewModel.selectAll(items)
+            viewModel.selectAll(displayedItems)
         }
         .onReceive(NotificationCenter.default.publisher(for: .deselectAll)) { _ in
             viewModel.clearSelection()
         }
         .onReceive(NotificationCenter.default.publisher(for: .deleteSelected)) { _ in
             deleteSelectedItems()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .focusSearch)) { _ in
+            isSearchFocused = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .increaseThumbnailSize)) { _ in
+            viewModel.increaseThumbnailSize()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .decreaseThumbnailSize)) { _ in
+            viewModel.decreaseThumbnailSize()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .quickLook)) { _ in
+            quickLookSelectedItem()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .startSlideshow)) { _ in
+            startSlideshow()
         }
         .confirmationDialog(
             "Delete \(itemsToDelete.count) item\(itemsToDelete.count == 1 ? "" : "s")?",
@@ -163,7 +217,7 @@ struct MediaGridView: View {
         if NSEvent.modifierFlags.contains(.command) {
             viewModel.toggleSelection(item)
         } else if NSEvent.modifierFlags.contains(.shift) {
-            viewModel.extendSelection(to: item, in: items)
+            viewModel.extendSelection(to: item, in: displayedItems)
         } else {
             viewModel.select(item)
         }
@@ -171,8 +225,8 @@ struct MediaGridView: View {
     }
 
     private func handleDoubleTap(_ item: MediaItem) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        onStartSlideshow(items, index)
+        guard let index = displayedItems.firstIndex(where: { $0.id == item.id }) else { return }
+        onStartSlideshow(displayedItems, index)
     }
 
     private func startSlideshow() {
@@ -180,14 +234,23 @@ struct MediaGridView: View {
         let startIndex: Int
 
         if viewModel.selectedItems.isEmpty {
-            selectedItems = items
+            selectedItems = displayedItems
             startIndex = 0
         } else {
-            selectedItems = items.filter { viewModel.selectedItems.contains($0.id) }
+            selectedItems = displayedItems.filter { viewModel.selectedItems.contains($0.id) }
             startIndex = 0
         }
 
         onStartSlideshow(selectedItems, startIndex)
+    }
+
+    // MARK: - Quick Look
+
+    private func quickLookSelectedItem() {
+        guard let selectedID = viewModel.selectedItems.first,
+              let item = displayedItems.first(where: { $0.id == selectedID }) else { return }
+        let url = library.absoluteURL(for: item)
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     // MARK: - Delete
@@ -195,7 +258,7 @@ struct MediaGridView: View {
     private func deleteSelectedItems() {
         guard !viewModel.selectedItems.isEmpty else { return }
 
-        let selectedItems = items.filter { viewModel.selectedItems.contains($0.id) }
+        let selectedItems = displayedItems.filter { viewModel.selectedItems.contains($0.id) }
         guard !selectedItems.isEmpty else { return }
 
         if settings?.confirmBeforeDelete == true {
@@ -254,3 +317,4 @@ struct MediaGridView: View {
         }
     }
 }
+

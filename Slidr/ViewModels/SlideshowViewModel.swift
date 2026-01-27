@@ -16,14 +16,24 @@ final class SlideshowViewModel {
     var isMuted: Bool = false
     let scrubber = SmoothScrubber()
 
+    // MARK: - Playback Mode
+    var isRandomMode: Bool = false
+    private var originalOrder: [MediaItem] = []
+    private var shuffledOrder: [MediaItem] = []
+
     // MARK: - State
     private(set) var items: [MediaItem] = []
     private(set) var currentIndex: Int = 0
     private var timerCancellable: AnyCancellable?
 
+    var activeItems: [MediaItem] {
+        isRandomMode && !shuffledOrder.isEmpty ? shuffledOrder : items
+    }
+
     var currentItem: MediaItem? {
-        guard currentIndex >= 0 && currentIndex < items.count else { return nil }
-        return items[currentIndex]
+        let active = activeItems
+        guard currentIndex >= 0 && currentIndex < active.count else { return nil }
+        return active[currentIndex]
     }
 
     var currentItemIsVideo: Bool {
@@ -35,7 +45,7 @@ final class SlideshowViewModel {
     }
 
     var hasNext: Bool {
-        currentIndex < items.count - 1 || loop
+        currentIndex < activeItems.count - 1 || loop
     }
 
     var hasPrevious: Bool {
@@ -43,8 +53,8 @@ final class SlideshowViewModel {
     }
 
     var progress: Double {
-        guard !items.isEmpty else { return 0 }
-        return Double(currentIndex + 1) / Double(items.count)
+        guard !activeItems.isEmpty else { return 0 }
+        return Double(currentIndex + 1) / Double(activeItems.count)
     }
 
     // MARK: - Setup
@@ -72,7 +82,8 @@ final class SlideshowViewModel {
     func next() {
         timerCancellable?.cancel()
 
-        if currentIndex < items.count - 1 {
+        let count = activeItems.count
+        if currentIndex < count - 1 {
             currentIndex += 1
         } else if loop {
             currentIndex = 0
@@ -86,10 +97,11 @@ final class SlideshowViewModel {
     func previous() {
         timerCancellable?.cancel()
 
+        let count = activeItems.count
         if currentIndex > 0 {
             currentIndex -= 1
         } else if loop {
-            currentIndex = items.count - 1
+            currentIndex = count - 1
         }
 
         if isPlaying && !currentItemIsVideo {
@@ -99,7 +111,7 @@ final class SlideshowViewModel {
 
     func goTo(index: Int) {
         timerCancellable?.cancel()
-        currentIndex = max(0, min(index, items.count - 1))
+        currentIndex = max(0, min(index, activeItems.count - 1))
 
         if isPlaying && !currentItemIsVideo {
             scheduleNextAdvance()
@@ -162,5 +174,42 @@ final class SlideshowViewModel {
             .sink { [weak self] _ in
                 self?.next()
             }
+    }
+
+    // MARK: - Rating
+
+    func rateCurrentItem(_ rating: Int) {
+        guard let item = currentItem else { return }
+        item.rating = rating > 0 ? rating : nil
+    }
+
+    // MARK: - Random Mode
+
+    func toggleRandomMode() {
+        isRandomMode.toggle()
+        if isRandomMode {
+            originalOrder = items
+            shuffledOrder = items.shuffled()
+            if let current = currentItem,
+               let newIndex = shuffledOrder.firstIndex(where: { $0.id == current.id }) {
+                currentIndex = newIndex
+            }
+        } else {
+            if let current = currentItem,
+               let newIndex = originalOrder.firstIndex(where: { $0.id == current.id }) {
+                currentIndex = newIndex
+            }
+            shuffledOrder = []
+        }
+    }
+
+    // MARK: - Volume
+
+    func increaseVolume() {
+        volume = min(1.0, volume + 0.1)
+    }
+
+    func decreaseVolume() {
+        volume = max(0.0, volume - 0.1)
     }
 }

@@ -11,7 +11,7 @@ struct SlideshowControlPanel: View {
                     Text(item.originalFilename)
                         .font(.headline)
                         .lineLimit(1)
-                    Text("\(viewModel.currentIndex + 1) of \(viewModel.items.count)")
+                    Text("\(viewModel.currentIndex + 1) of \(viewModel.activeItems.count)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

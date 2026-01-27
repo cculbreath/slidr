@@ -31,6 +31,7 @@ final class Playlist {
     var filterMaxDuration: TimeInterval?
     var filterMediaTypes: [String]?
     var filterFavoritesOnly: Bool
+    var filterMinRating: Int?
 
     // MARK: - Display Properties
     var iconName: String?
@@ -49,6 +50,7 @@ final class Playlist {
         self.manualItemOrder = []
         self.includeSubfolders = true
         self.filterFavoritesOnly = false
+        self.filterMinRating = nil
     }
 
     // MARK: - Computed Properties

@@ -10,6 +10,8 @@ struct SlideshowView: View {
     @State private var showControls = false
     @State private var hideControlsTask: Task<Void, Never>?
     @State private var showCaptions: Bool = false
+    @State private var showInfoOverlay: Bool = false
+    @State private var ratingFeedback: Int? = nil
 
     private var settings: AppSettings? { settingsQuery.first }
 
@@ -18,6 +20,11 @@ struct SlideshowView: View {
             .focusable()
             .modifier(SlideshowKeyboardModifier(viewModel: viewModel, dismiss: dismiss))
             .modifier(CaptionKeys(showCaptions: $showCaptions))
+            .modifier(RatingKeys(viewModel: viewModel, ratingFeedback: $ratingFeedback))
+            .modifier(ExtraNavigationKeys(
+                viewModel: viewModel,
+                showInfoOverlay: $showInfoOverlay
+            ))
     }
 
     @ViewBuilder
@@ -34,9 +41,49 @@ struct SlideshowView: View {
             if showControls {
                 controlsOverlay
             }
+
+            // Info overlay
+            if showInfoOverlay, let item = viewModel.currentItem {
+                VStack {
+                    HStack {
+                        Spacer()
+                        InfoOverlayView(
+                            item: item,
+                            index: viewModel.currentIndex,
+                            totalCount: viewModel.activeItems.count
+                        )
+                    }
+                    Spacer()
+                }
+            }
+
+            // Rating feedback
+            if let rating = ratingFeedback {
+                ratingFeedbackOverlay(rating: rating)
+            }
+
+            // Random mode indicator
+            if viewModel.isRandomMode {
+                VStack {
+                    HStack {
+                        Label("Shuffle", systemImage: "shuffle")
+                            .font(.caption)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        Spacer()
+                    }
+                    .padding(.leading, 16)
+                    .padding(.top, showControls ? 60 : 16)
+                    Spacer()
+                }
+            }
         }
         .animation(.easeInOut(duration: 0.2), value: showControls)
         .animation(.easeInOut(duration: 0.3), value: viewModel.currentIndex)
+        .animation(.easeInOut(duration: 0.2), value: showInfoOverlay)
+        .animation(.easeInOut(duration: 0.15), value: ratingFeedback)
         .onAppear {
             showControlsTemporarily()
         }
@@ -99,9 +146,43 @@ struct SlideshowView: View {
     @ViewBuilder
     private var topBar: some View {
         HStack {
-            Text("\(viewModel.currentIndex + 1) / \(viewModel.items.count)")
+            Text("\(viewModel.currentIndex + 1) / \(viewModel.activeItems.count)")
                 .font(.headline)
+
+            if let item = viewModel.currentItem, item.isRated {
+                Text(item.ratingStars)
+                    .font(.subheadline)
+            }
+
             Spacer()
+
+            Button {
+                showInfoOverlay.toggle()
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.title2)
+            }
+            .buttonStyle(.plain)
+            .help("Info (I)")
+
+            Button {
+                viewModel.toggleRandomMode()
+            } label: {
+                Image(systemName: viewModel.isRandomMode ? "shuffle.circle.fill" : "shuffle")
+                    .font(.title2)
+            }
+            .buttonStyle(.plain)
+            .help("Shuffle (R)")
+
+            Button {
+                toggleFullscreen()
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.title2)
+            }
+            .buttonStyle(.plain)
+            .help("Fullscreen (F)")
+
             Button {
                 dismiss()
             } label: {
@@ -202,6 +283,33 @@ struct SlideshowView: View {
                 showControls = false
             }
         }
+    }
+
+    private func toggleFullscreen() {
+        if let window = NSApplication.shared.keyWindow {
+            window.toggleFullScreen(nil)
+        }
+    }
+
+    @ViewBuilder
+    private func ratingFeedbackOverlay(rating: Int) -> some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                Text(rating > 0 ? String(repeating: "\u{2605}", count: rating) : "No Rating")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.6), radius: 4, x: 0, y: 2)
+                    .padding(24)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                Spacer()
+            }
+            Spacer()
+        }
+        .allowsHitTesting(false)
+        .transition(.opacity)
     }
 }
 
@@ -311,12 +419,12 @@ private struct VolumeKeys: ViewModifier {
         }
         // Up arrow = volume up
         if press.key == .upArrow {
-            viewModel.volume = min(1.0, viewModel.volume + 0.1)
+            viewModel.increaseVolume()
             return .handled
         }
         // Down arrow = volume down
         if press.key == .downArrow {
-            viewModel.volume = max(0.0, viewModel.volume - 0.1)
+            viewModel.decreaseVolume()
             return .handled
         }
         return .ignored
@@ -332,6 +440,64 @@ private struct CaptionKeys: ViewModifier {
                 showCaptions.toggle()
                 return .handled
             }
+            return .ignored
+        }
+    }
+}
+
+private struct RatingKeys: ViewModifier {
+    let viewModel: SlideshowViewModel
+    @Binding var ratingFeedback: Int?
+
+    func body(content: Content) -> some View {
+        content
+            .onKeyPress("0") { rateItem(0); return .handled }
+            .onKeyPress("1") { rateItem(1); return .handled }
+            .onKeyPress("2") { rateItem(2); return .handled }
+            .onKeyPress("3") { rateItem(3); return .handled }
+            .onKeyPress("4") { rateItem(4); return .handled }
+            .onKeyPress("5") { rateItem(5); return .handled }
+    }
+
+    private func rateItem(_ rating: Int) {
+        viewModel.rateCurrentItem(rating)
+        ratingFeedback = rating
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            ratingFeedback = nil
+        }
+    }
+}
+
+private struct ExtraNavigationKeys: ViewModifier {
+    let viewModel: SlideshowViewModel
+    @Binding var showInfoOverlay: Bool
+
+    func body(content: Content) -> some View {
+        content.onKeyPress(phases: .down) { press in
+            handleKey(press)
+        }
+    }
+
+    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        switch press.key {
+        case KeyEquivalent("i"):
+            showInfoOverlay.toggle()
+            return .handled
+        case KeyEquivalent("r"):
+            viewModel.toggleRandomMode()
+            return .handled
+        case KeyEquivalent("f"):
+            if let window = NSApplication.shared.keyWindow {
+                window.toggleFullScreen(nil)
+            }
+            return .handled
+        case KeyEquivalent("l"):
+            viewModel.next()
+            return .handled
+        case KeyEquivalent("j"):
+            viewModel.previous()
+            return .handled
+        default:
             return .ignored
         }
     }
