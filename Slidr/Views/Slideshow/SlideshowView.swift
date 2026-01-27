@@ -1,17 +1,23 @@
 import SwiftUI
+import SwiftData
 
 struct SlideshowView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(MediaLibrary.self) private var library
     @Bindable var viewModel: SlideshowViewModel
+    @Query private var settingsQuery: [AppSettings]
 
     @State private var showControls = false
     @State private var hideControlsTask: Task<Void, Never>?
+    @State private var showCaptions: Bool = false
+
+    private var settings: AppSettings? { settingsQuery.first }
 
     var body: some View {
         slideshowContent
             .focusable()
             .modifier(SlideshowKeyboardModifier(viewModel: viewModel, dismiss: dismiss))
+            .modifier(CaptionKeys(showCaptions: $showCaptions))
     }
 
     @ViewBuilder
@@ -64,6 +70,13 @@ struct SlideshowView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .caption(
+                for: item,
+                show: showCaptions,
+                template: settings?.captionTemplate ?? "{filename}",
+                position: settings?.captionPosition ?? .bottom,
+                fontSize: settings?.captionFontSize ?? 16
+            )
             .id(item.id)
             .transition(.opacity)
         }
@@ -307,5 +320,19 @@ private struct VolumeKeys: ViewModifier {
             return .handled
         }
         return .ignored
+    }
+}
+
+private struct CaptionKeys: ViewModifier {
+    @Binding var showCaptions: Bool
+
+    func body(content: Content) -> some View {
+        content.onKeyPress(phases: .down) { press in
+            if press.key == KeyEquivalent("c") {
+                showCaptions.toggle()
+                return .handled
+            }
+            return .ignored
+        }
     }
 }

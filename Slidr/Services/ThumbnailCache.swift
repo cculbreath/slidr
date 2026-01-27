@@ -163,6 +163,21 @@ actor ThumbnailCache {
         }
     }
 
+    func diskCacheSize() -> Int {
+        let fileManager = FileManager.default
+        guard let files = try? fileManager.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: [.fileSizeKey]) else {
+            return 0
+        }
+        var totalSize = 0
+        for file in files {
+            if let resources = try? file.resourceValues(forKeys: [.fileSizeKey]),
+               let size = resources.fileSize {
+                totalSize += size
+            }
+        }
+        return totalSize
+    }
+
     func clearCache() {
         memoryCache.removeAllObjects()
 
@@ -171,6 +186,97 @@ actor ThumbnailCache {
                 try? FileManager.default.removeItem(at: file)
             }
         }
+    }
+
+    // MARK: - Cache Management
+
+    func diskCacheCount() -> Int {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: cacheDirectory,
+            includingPropertiesForKeys: nil,
+            options: .skipsHiddenFiles
+        ) else { return 0 }
+
+        return files.filter { $0.pathExtension == "jpg" }.count
+    }
+
+    func pruneOrphanedThumbnails(existingHashes: Set<String>) {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: cacheDirectory,
+            includingPropertiesForKeys: nil,
+            options: .skipsHiddenFiles
+        ) else { return }
+
+        var removedCount = 0
+        for fileURL in files where fileURL.pathExtension == "jpg" {
+            let filename = fileURL.deletingPathExtension().lastPathComponent
+            let hash = extractHash(from: filename)
+            if !existingHashes.contains(hash) {
+                try? FileManager.default.removeItem(at: fileURL)
+                memoryCache.removeObject(forKey: filename as NSString)
+                removedCount += 1
+            }
+        }
+
+        if removedCount > 0 {
+            Self.logger.info("Pruned \(removedCount) orphaned thumbnails")
+        }
+    }
+
+    func enforceMaxSize(maxBytes: Int) {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: cacheDirectory,
+            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey],
+            options: .skipsHiddenFiles
+        ) else { return }
+
+        let jpgFiles = files.filter { $0.pathExtension == "jpg" }
+
+        struct CacheFile {
+            let url: URL
+            let size: Int
+            let modDate: Date
+        }
+
+        let cacheFiles: [CacheFile] = jpgFiles.compactMap { fileURL in
+            guard let resources = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+                  let size = resources.fileSize,
+                  let modDate = resources.contentModificationDate else { return nil }
+            return CacheFile(url: fileURL, size: size, modDate: modDate)
+        }
+
+        let totalSize = cacheFiles.reduce(0) { $0 + $1.size }
+        guard totalSize > maxBytes else { return }
+
+        let sorted = cacheFiles.sorted { $0.modDate < $1.modDate }
+
+        var currentSize = totalSize
+        var removedCount = 0
+
+        for file in sorted {
+            guard currentSize > maxBytes else { break }
+            try? FileManager.default.removeItem(at: file.url)
+            let cacheKey = file.url.deletingPathExtension().lastPathComponent as NSString
+            memoryCache.removeObject(forKey: cacheKey)
+            currentSize -= file.size
+            removedCount += 1
+        }
+
+        if removedCount > 0 {
+            Self.logger.info("Enforced max cache size: removed \(removedCount) files, freed \(totalSize - currentSize) bytes")
+        }
+    }
+
+    // MARK: - Private Helpers
+
+    private func extractHash(from cacheKey: String) -> String {
+        for size in ThumbnailSize.allCases {
+            let suffix = "-\(size.rawValue)"
+            if cacheKey.hasSuffix(suffix) {
+                return String(cacheKey.dropLast(suffix.count))
+            }
+        }
+        return cacheKey
     }
 }
 

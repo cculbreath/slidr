@@ -141,7 +141,25 @@ final class MediaLibrary {
     }
 
     func absoluteURL(for item: MediaItem) -> URL {
-        libraryRoot.appendingPathComponent(item.relativePath)
+        if item.storageLocation == .referenced {
+            return URL(fileURLWithPath: item.relativePath)
+        }
+        return libraryRoot.appendingPathComponent(item.relativePath)
+    }
+
+    // MARK: - External Drive Support
+
+    func isAccessible(_ item: MediaItem) -> Bool {
+        let url = absoluteURL(for: item)
+        return fileManager.fileExists(atPath: url.path)
+    }
+
+    func inaccessibleItems() -> [MediaItem] {
+        allItems.filter { !isAccessible($0) }
+    }
+
+    func items(in location: StorageLocation) -> [MediaItem] {
+        allItems.filter { $0.storageLocation == location }
     }
 }
 

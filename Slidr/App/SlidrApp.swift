@@ -3,6 +3,7 @@ import SwiftData
 
 @main
 struct SlidrApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     let modelContainer: ModelContainer
     let mediaLibrary: MediaLibrary
     let thumbnailCache: ThumbnailCache
@@ -11,7 +12,7 @@ struct SlidrApp: App {
 
     init() {
         // Initialize SwiftData container
-        let schema = Schema([MediaItem.self, Playlist.self])
+        let schema = Schema([MediaItem.self, Playlist.self, AppSettings.self])
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let yoinkrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
 
@@ -44,10 +45,31 @@ struct SlidrApp: App {
                 .environment(playlistService)
         }
         .modelContainer(modelContainer)
+        .commands {
+            CommandGroup(replacing: .help) {
+                Button("Slidr Help") {
+                    NSApp.sendAction(#selector(NSApplication.showHelp(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("?", modifiers: .command)
+            }
+
+            CommandGroup(after: .toolbar) {
+                Button("Enter Fullscreen Slideshow") {
+                    NotificationCenter.default.post(name: .startSlideshow, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+            }
+        }
 
         Settings {
-            Text("Settings coming in Phase 4")
-                .padding()
+            SettingsView(thumbnailCache: thumbnailCache)
         }
+        .modelContainer(modelContainer)
+
+        Window("About Slidr", id: "about") {
+            AboutView()
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
     }
 }
