@@ -29,7 +29,13 @@ struct DropZoneModifier: ViewModifier {
         }
 
         group.notify(queue: .main) {
-            let supported = urls.filter { FileTypeDetector.isSupported($0) }
+            let supported = urls.filter { url in
+                var isDir: ObjCBool = false
+                if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+                    return true
+                }
+                return FileTypeDetector.isSupported(url)
+            }
             if !supported.isEmpty {
                 onDrop(supported)
             }

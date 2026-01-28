@@ -14,13 +14,14 @@ final class AppSettings {
     var customLibraryPath: String?
 
     // MARK: - Import
-    var copyFilesToLibrary: Bool
+    var importMode: ImportMode
     var convertIncompatibleFormats: Bool
     var keepOriginalAfterConversion: Bool
     var skipDuplicates: Bool
     var defaultImportLocation: StorageLocation
     var importTargetFormat: VideoFormat
     var importOrganizeByDate: Bool
+    var createPlaylistsFromFolders: Bool
     var externalDrivePath: String?
 
     // MARK: - Thumbnails
@@ -38,8 +39,10 @@ final class AppSettings {
     var showCaptions: Bool
     var captionTemplate: String
     var captionPosition: CaptionPosition
+    var captionDisplayModeRaw: String?
     var captionFontSize: Double
     var captionBackgroundOpacity: Double
+    var videoCaptionDurationRaw: Double?
     var slideshowTransition: TransitionType
     var slideshowTransitionDuration: TimeInterval
     var slideshowVideoMode: VideoPlaybackMode
@@ -63,6 +66,16 @@ final class AppSettings {
         set { gridShowCaptionsRaw = newValue }
     }
 
+    var captionDisplayMode: CaptionDisplayMode {
+        get { captionDisplayModeRaw.flatMap { CaptionDisplayMode(rawValue: $0) } ?? .overlay }
+        set { captionDisplayModeRaw = newValue.rawValue }
+    }
+
+    var videoCaptionDuration: Double {
+        get { videoCaptionDurationRaw ?? 5.0 }
+        set { videoCaptionDurationRaw = newValue }
+    }
+
     // MARK: - Verification
     var verifyFilesOnLaunch: Bool
     var removeOrphanedThumbnails: Bool
@@ -84,13 +97,14 @@ final class AppSettings {
         self.customLibraryPath = nil
 
         // Import defaults
-        self.copyFilesToLibrary = true
+        self.importMode = .copy
         self.convertIncompatibleFormats = true
         self.keepOriginalAfterConversion = false
         self.skipDuplicates = true
         self.defaultImportLocation = .local
         self.importTargetFormat = .h264MP4
         self.importOrganizeByDate = false
+        self.createPlaylistsFromFolders = false
         self.externalDrivePath = nil
 
         // Thumbnail defaults
@@ -108,8 +122,10 @@ final class AppSettings {
         self.showCaptions = false
         self.captionTemplate = "{filename}"
         self.captionPosition = .bottom
+        self.captionDisplayModeRaw = CaptionDisplayMode.overlay.rawValue
         self.captionFontSize = 16.0
         self.captionBackgroundOpacity = 0.6
+        self.videoCaptionDurationRaw = 5.0
         self.slideshowTransition = .crossfade
         self.slideshowTransitionDuration = 0.5
         self.slideshowVideoMode = .playFull
@@ -189,6 +205,29 @@ enum CaptionPosition: String, Codable, CaseIterable {
         case .topRight: return .topTrailing
         case .bottomLeft: return .bottomLeading
         case .bottomRight: return .bottomTrailing
+        }
+    }
+
+    var isCornerPosition: Bool {
+        switch self {
+        case .topLeft, .topRight, .bottomLeft, .bottomRight:
+            return true
+        case .top, .bottom:
+            return false
+        }
+    }
+}
+
+// MARK: - Caption Display Mode Enum
+
+enum CaptionDisplayMode: String, Codable, CaseIterable {
+    case overlay
+    case outside
+
+    var displayName: String {
+        switch self {
+        case .overlay: return "Overlay on Media"
+        case .outside: return "Outside Media"
         }
     }
 }

@@ -3,6 +3,10 @@ import SwiftData
 import UniformTypeIdentifiers
 import OSLog
 
+extension Notification.Name {
+    static let playlistItemsChanged = Notification.Name("com.physicscloud.slidr.playlistItemsChanged")
+}
+
 @MainActor
 @Observable
 final class PlaylistService {
@@ -81,6 +85,8 @@ final class PlaylistService {
         guard playlist.isManualPlaylist else { return }
         playlist.addItem(item)
         save()
+        loadPlaylists()
+        NotificationCenter.default.post(name: .playlistItemsChanged, object: playlist.id)
         Logger.playlists.info("Added \(item.originalFilename) to \(playlist.name)")
     }
 
@@ -90,6 +96,8 @@ final class PlaylistService {
             playlist.addItem(item)
         }
         save()
+        loadPlaylists()
+        NotificationCenter.default.post(name: .playlistItemsChanged, object: playlist.id)
         Logger.playlists.info("Added \(items.count) items to \(playlist.name)")
     }
 
@@ -97,6 +105,8 @@ final class PlaylistService {
         guard playlist.isManualPlaylist else { return }
         playlist.removeItem(item)
         save()
+        loadPlaylists()
+        NotificationCenter.default.post(name: .playlistItemsChanged, object: playlist.id)
         Logger.playlists.info("Removed \(item.originalFilename) from \(playlist.name)")
     }
 
@@ -104,6 +114,7 @@ final class PlaylistService {
         guard playlist.isManualPlaylist else { return }
         playlist.moveItem(from: source, to: destination)
         save()
+        NotificationCenter.default.post(name: .playlistItemsChanged, object: playlist.id)
     }
 
     // MARK: - Smart Playlist

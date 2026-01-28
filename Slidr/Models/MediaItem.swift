@@ -34,9 +34,11 @@ final class MediaItem {
     var isFavorite: Bool
     var rating: Int?
     var tags: [String]
+    var source: String?
 
     // MARK: - Status
     var status: MediaStatus
+    var hasThumbnailErrorRaw: Bool?
 
     // MARK: - Verification
     var lastVerifiedDate: Date?
@@ -61,9 +63,11 @@ final class MediaItem {
         self.fileModifiedDate = fileModifiedDate
         self.importDate = Date()
         self.status = .available
+        self.hasThumbnailErrorRaw = false
         self.isFavorite = false
         self.rating = nil
         self.tags = []
+        self.source = nil
         self.lastVerifiedDate = nil
         self.playlists = []
     }
@@ -76,6 +80,11 @@ final class MediaItem {
 
     var isVideo: Bool { mediaType == .video }
     var isAnimated: Bool { mediaType == .gif }
+
+    var hasThumbnailError: Bool {
+        get { hasThumbnailErrorRaw ?? false }
+        set { hasThumbnailErrorRaw = newValue }
+    }
 
     var hasCaption: Bool {
         guard let caption = caption else { return false }
@@ -129,5 +138,16 @@ final class MediaItem {
     func removeTag(_ tag: String) {
         let normalized = tag.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         tags.removeAll { $0.lowercased() == normalized }
+    }
+
+    // MARK: - Source Helpers
+
+    var hasSource: Bool {
+        guard let source = source else { return false }
+        return !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var displaySource: String {
+        source?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 }

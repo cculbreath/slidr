@@ -292,8 +292,8 @@ final class SlideshowViewModel {
            videoDuration > playDuration {
             let maxOffset = videoDuration - playDuration
             let randomOffset = Double.random(in: 0...maxOffset)
-            scrubber.setClipRegion(start: randomOffset, duration: playDuration)
-            scrubber.seek(to: CMTime(seconds: randomOffset, preferredTimescale: 600))
+            let seekTime = CMTime(seconds: randomOffset, preferredTimescale: 600)
+            scrubber.setClipRegion(start: randomOffset, duration: playDuration, initialSeek: seekTime)
         } else {
             scrubber.setClipRegion(start: 0, duration: playDuration)
         }

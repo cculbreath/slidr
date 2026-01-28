@@ -5,6 +5,7 @@ import OSLog
 
 struct MediaGridView: View {
     @Environment(MediaLibrary.self) private var library
+    @Environment(PlaylistService.self) private var playlistService
     @Environment(\.modelContext) private var modelContext
     @Bindable var viewModel: GridViewModel
     @Query private var settingsQuery: [AppSettings]
@@ -12,6 +13,7 @@ struct MediaGridView: View {
     let items: [MediaItem]
     let onStartSlideshow: ([MediaItem], Int) -> Void
     var onQuickLook: ((MediaItem) -> Void)?
+    var activePlaylist: Playlist?
 
     @State private var showDeleteConfirmation = false
     @State private var itemsToDelete: [MediaItem] = []
@@ -19,261 +21,43 @@ struct MediaGridView: View {
     @State private var hoveredItemID: UUID?
     @FocusState private var isFocused: Bool
 
-    private var settings: AppSettings? {
-        settingsQuery.first
-    }
-
-    private var displayedItems: [MediaItem] {
-        viewModel.filteredItems(items)
-    }
+    private var settings: AppSettings? { settingsQuery.first }
+    private var displayedItems: [MediaItem] { viewModel.filteredItems(items) }
 
     var body: some View {
-        Group {
-            if items.isEmpty {
-                EmptyStateView(
-                    title: "No Media",
-                    subtitle: "Import images, GIFs, and videos to get started",
-                    systemImage: "photo.on.rectangle.angled",
-                    action: { importFiles() },
-                    actionLabel: "Import Files"
-                )
-            } else {
-                ScrollViewReader { scrollProxy in
-                    ScrollView {
-                        LazyVGrid(columns: viewModel.gridColumns, spacing: 8) {
-                            ForEach(displayedItems) { item in
-                                MediaThumbnailView(
-                                    item: item,
-                                    size: viewModel.thumbnailSize,
-                                    isSelected: viewModel.isSelected(item),
-                                    selectedItemIDs: viewModel.selectedItems,
-                                    hoveredItemID: $hoveredItemID,
-                                    onTap: { handleTap(item) },
-                                    onDoubleTap: { handleDoubleTap(item) }
-                                )
-                                .id(item.id)
-                                .contextMenu {
-                                    Button("Show in Finder") {
-                                        showInFinder(item)
-                                    }
-
-                                    if item.storageLocation == .referenced {
-                                        Button("Copy to Library") {
-                                            copyToLibrary(item)
-                                        }
-                                    }
-
-                                    Divider()
-
-                                    Button("Move to Trash", role: .destructive) {
-                                        itemsToDelete = [item]
-                                        showDeleteConfirmation = true
-                                    }
-                                }
-                            }
-                        }
-                        .overlayPreferenceValue(HoverCellAnchorKey.self) { anchor in
-                            GeometryReader { proxy in
-                                if let anchor,
-                                   let id = hoveredItemID,
-                                   let item = displayedItems.first(where: { $0.id == id }),
-                                   !item.isVideo {
-                                    let frame = proxy[anchor]
-                                    hoverRevealContent(for: item)
-                                        .id(id)
-                                        .position(x: frame.midX, y: frame.midY)
-                                }
-                            }
-                            .allowsHitTesting(false)
-                            .animation(.easeInOut(duration: 0.15), value: hoveredItemID)
-                        }
-                        .padding()
-                    }
-                    .animation(.easeInOut(duration: 0.25), value: viewModel.thumbnailSize)
-                    .focusable()
-                    .focused($isFocused)
-                    .onAppear {
-                        isFocused = true
-                        if let selectedID = viewModel.selectedItems.first {
-                            scrollProxy.scrollTo(selectedID, anchor: .center)
-                        }
-                    }
-                    .background {
-                        GeometryReader { geometry in
-                            Color.clear
-                                .onAppear { containerWidth = geometry.size.width }
-                                .onChange(of: geometry.size.width) { _, newWidth in
-                                    containerWidth = newWidth
-                                }
-                        }
-                    }
-                }
-            }
+        VStack(spacing: 0) {
+            externalDriveBanner
+            gridContent
         }
         .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    importFiles()
-                } label: {
-                    Label("Import", systemImage: "square.and.arrow.down")
-                }
+            GridToolbarContent(
+                viewModel: viewModel,
+                settings: settings,
+                itemsEmpty: items.isEmpty,
+                onImport: importFiles,
+                onToggleGIFAnimation: toggleGIFAnimation,
+                onToggleCaptions: toggleGridCaptions,
+                onToggleFilenames: toggleGridFilenames,
+                onStartSlideshow: startSlideshow
+            )
+        }
+        .gridKeyboardHandling(
+            viewModel: viewModel,
+            displayedItems: displayedItems,
+            containerWidth: containerWidth,
+            onDelete: deleteSelectedItems,
+            onQuickLook: quickLookSelected,
+            onStartSlideshow: startSlideshow,
+            onRevealInFinder: revealSelectedInFinder,
+            onToggleFilenames: toggleGridFilenames,
+            onToggleCaptions: toggleGridCaptions,
+            onSelectAll: { viewModel.selectAll(displayedItems) },
+            onDeselectAll: { viewModel.clearSelection() },
+            onMoveSelection: { direction in
+                let columns = viewModel.columnCount(for: containerWidth)
+                viewModel.moveSelection(direction: direction, in: displayedItems, columns: columns)
             }
-
-            ToolbarItem(placement: .automatic) {
-                Picker("Size", selection: $viewModel.thumbnailSize) {
-                    ForEach(ThumbnailSize.allCases, id: \.self) { size in
-                        Text(size.rawValue).tag(size)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-            }
-
-            ToolbarItem(placement: .automatic) {
-                Menu {
-                    Button {
-                        viewModel.mediaTypeFilter = []
-                    } label: {
-                        HStack {
-                            Text("All")
-                            if viewModel.mediaTypeFilter.isEmpty {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-
-                    Divider()
-
-                    ForEach(MediaType.allCases, id: \.self) { type in
-                        Button {
-                            if viewModel.mediaTypeFilter.contains(type) {
-                                viewModel.mediaTypeFilter.remove(type)
-                            } else {
-                                viewModel.mediaTypeFilter.insert(type)
-                            }
-                        } label: {
-                            HStack {
-                                Text(type.rawValue.capitalized)
-                                if viewModel.mediaTypeFilter.contains(type) {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-                } label: {
-                    Label("Filter", systemImage: viewModel.mediaTypeFilter.isEmpty ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-                }
-            }
-
-            ToolbarItem(placement: .automatic) {
-                Menu {
-                    ForEach(SortOrder.allCases, id: \.self) { order in
-                        Button {
-                            viewModel.sortOrder = order
-                        } label: {
-                            HStack {
-                                Text(order.rawValue)
-                                if viewModel.sortOrder == order {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-
-                    Divider()
-
-                    Toggle("Ascending", isOn: $viewModel.sortAscending)
-                } label: {
-                    Label("Sort", systemImage: "text.line.first.and.arrowtriangle.forward")
-                }
-            }
-
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    toggleGIFAnimation()
-                } label: {
-                    Label(
-                        settings?.animateGIFsInGrid == true ? "GIFs: On" : "GIFs: Off",
-                        image: settings?.animateGIFsInGrid == true ? "custom.gifs.pause" : "custom.gifs.play"
-                    )
-                }
-                .help("Toggle GIF animation in grid")
-            }
-
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    startSlideshow()
-                } label: {
-                    Label("Slideshow", systemImage: "play.rectangle.on.rectangle")
-                }
-                .disabled(items.isEmpty)
-            }
-
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    NotificationCenter.default.post(name: .toggleInspector, object: nil)
-                } label: {
-                    Label("Inspector", systemImage: "sidebar.right")
-                }
-            }
-        }
-        .onKeyPress(.delete) {
-            deleteSelectedItems()
-            return .handled
-        }
-        .onKeyPress(.upArrow) {
-            let columns = viewModel.columnCount(for: containerWidth)
-            viewModel.moveSelection(direction: .up, in: displayedItems, columns: columns)
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            let columns = viewModel.columnCount(for: containerWidth)
-            viewModel.moveSelection(direction: .down, in: displayedItems, columns: columns)
-            return .handled
-        }
-        .onKeyPress(.leftArrow) {
-            let columns = viewModel.columnCount(for: containerWidth)
-            viewModel.moveSelection(direction: .left, in: displayedItems, columns: columns)
-            return .handled
-        }
-        .onKeyPress(.rightArrow) {
-            let columns = viewModel.columnCount(for: containerWidth)
-            viewModel.moveSelection(direction: .right, in: displayedItems, columns: columns)
-            return .handled
-        }
-        .onKeyPress(.space) {
-            guard let selectedID = viewModel.selectedItems.first,
-                  let item = displayedItems.first(where: { $0.id == selectedID }) else {
-                return .ignored
-            }
-            onQuickLook?(item)
-            return .handled
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .selectAll)) { _ in
-            viewModel.selectAll(displayedItems)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .deselectAll)) { _ in
-            viewModel.clearSelection()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .deleteSelected)) { _ in
-            deleteSelectedItems()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .increaseThumbnailSize)) { _ in
-            viewModel.increaseThumbnailSize()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .decreaseThumbnailSize)) { _ in
-            viewModel.decreaseThumbnailSize()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .startSlideshow)) { _ in
-            startSlideshow()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .resetThumbnailSize)) { _ in
-            viewModel.resetThumbnailSize()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .revealInFinder)) { _ in
-            revealSelectedInFinder()
-        }
+        )
         .confirmationDialog(
             "Move \(itemsToDelete.count) item\(itemsToDelete.count == 1 ? "" : "s") to Trash?",
             isPresented: $showDeleteConfirmation,
@@ -295,7 +79,158 @@ struct MediaGridView: View {
         }
     }
 
-    // MARK: - Tap Handling
+    // MARK: - View Components
+
+    @ViewBuilder
+    private var externalDriveBanner: some View {
+        if !library.isExternalDriveConnected && library.externalItemCount > 0 {
+            HStack(spacing: 8) {
+                Image(systemName: "externaldrive.badge.xmark")
+                    .foregroundStyle(.orange)
+                Text("External drive not connected \u{2014} \(library.externalItemCount) item\(library.externalItemCount == 1 ? " is" : "s are") unavailable")
+                    .font(.callout)
+                Spacer()
+                Button("Locate...") {
+                    library.locateExternalLibrary()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(.orange.opacity(0.1))
+        }
+    }
+
+    @ViewBuilder
+    private var gridContent: some View {
+        if items.isEmpty {
+            EmptyStateView(
+                title: "No Media",
+                subtitle: "Import images, GIFs, and videos to get started",
+                systemImage: "photo.on.rectangle.angled",
+                action: importFiles,
+                actionLabel: "Import Files"
+            )
+        } else {
+            gridScrollView
+        }
+    }
+
+    private var gridScrollView: some View {
+        ScrollViewReader { scrollProxy in
+            ScrollView {
+                gridLazyVGrid
+            }
+            .animation(.easeInOut(duration: 0.25), value: viewModel.thumbnailSize)
+            .focusable()
+            .focused($isFocused)
+            .onAppear {
+                isFocused = true
+                if let selectedID = viewModel.selectedItems.first {
+                    scrollProxy.scrollTo(selectedID, anchor: .center)
+                }
+            }
+            .background {
+                GeometryReader { geometry in
+                    Color.clear
+                        .onAppear { containerWidth = geometry.size.width }
+                        .onChange(of: geometry.size.width) { _, newWidth in
+                            containerWidth = newWidth
+                        }
+                }
+            }
+        }
+    }
+
+    private var gridLazyVGrid: some View {
+        LazyVGrid(columns: viewModel.gridColumns, spacing: 8) {
+            ForEach(displayedItems) { item in
+                gridThumbnail(for: item)
+            }
+        }
+        .overlayPreferenceValue(HoverCellAnchorKey.self) { anchor in
+            hoverOverlay(anchor: anchor)
+        }
+        .padding()
+    }
+
+    @ViewBuilder
+    private func gridThumbnail(for item: MediaItem) -> some View {
+        MediaThumbnailView(
+            item: item,
+            size: viewModel.thumbnailSize,
+            isSelected: viewModel.isSelected(item),
+            selectedItemIDs: viewModel.selectedItems,
+            hoveredItemID: $hoveredItemID,
+            onTap: { handleTap(item) },
+            onDoubleTap: { handleDoubleTap(item) }
+        )
+        .id(item.id)
+        .contextMenu { thumbnailContextMenu(for: item) }
+    }
+
+    @ViewBuilder
+    private func thumbnailContextMenu(for item: MediaItem) -> some View {
+        Button("Show in Finder") { showInFinder(item) }
+
+        if item.storageLocation == .referenced {
+            Button("Copy to Library") { copyToLibrary(item) }
+        }
+
+        if let playlist = activePlaylist, playlist.isManualPlaylist {
+            Button("Remove from Playlist") { removeFromPlaylist(item, playlist: playlist) }
+        }
+
+        Divider()
+
+        Button("Move to Trash", role: .destructive) {
+            itemsToDelete = [item]
+            showDeleteConfirmation = true
+        }
+    }
+
+    @ViewBuilder
+    private func hoverOverlay(anchor: Anchor<CGRect>?) -> some View {
+        GeometryReader { proxy in
+            if let anchor,
+               let id = hoveredItemID,
+               let item = displayedItems.first(where: { $0.id == id }),
+               !item.isVideo {
+                let frame = proxy[anchor]
+                hoverRevealContent(for: item)
+                    .id(id)
+                    .position(x: frame.midX, y: frame.midY)
+            }
+        }
+        .allowsHitTesting(false)
+        .animation(.easeInOut(duration: 0.15), value: hoveredItemID)
+    }
+
+    @ViewBuilder
+    private func hoverRevealContent(for item: MediaItem) -> some View {
+        let pixelSize = viewModel.thumbnailSize.pixelSize
+        let revealedWidth = item.aspectWidth(for: pixelSize)
+        let revealedHeight = item.aspectHeight(for: pixelSize)
+
+        Group {
+            if item.isAnimated {
+                GIFFrameView(url: library.absoluteURL(for: item))
+            } else {
+                AsyncThumbnailImage(item: item, size: viewModel.thumbnailSize)
+            }
+        }
+        .frame(width: revealedWidth, height: revealedHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(viewModel.isSelected(item) ? Color.accentColor : Color.clear, lineWidth: 3)
+        )
+        .shadow(color: .black.opacity(0.3), radius: 8)
+        .scaleEffect(1.15)
+    }
+
+    // MARK: - Selection & Navigation
 
     private func handleTap(_ item: MediaItem) {
         if NSEvent.modifierFlags.contains(.command) {
@@ -323,11 +258,16 @@ struct MediaGridView: View {
         onStartSlideshow(displayedItems, startIndex)
     }
 
+    private func quickLookSelected() {
+        guard let selectedID = viewModel.selectedItems.first,
+              let item = displayedItems.first(where: { $0.id == selectedID }) else { return }
+        onQuickLook?(item)
+    }
+
     // MARK: - Delete
 
     private func deleteSelectedItems() {
         guard !viewModel.selectedItems.isEmpty else { return }
-
         let selectedItems = displayedItems.filter { viewModel.selectedItems.contains($0.id) }
         guard !selectedItems.isEmpty else { return }
 
@@ -339,8 +279,8 @@ struct MediaGridView: View {
         }
     }
 
-    private func performDelete(_ itemsToDelete: [MediaItem]) {
-        library.delete(itemsToDelete)
+    private func performDelete(_ items: [MediaItem]) {
+        library.delete(items)
         viewModel.clearSelection()
     }
 
@@ -358,55 +298,38 @@ struct MediaGridView: View {
     }
 
     private func copyToLibrary(_ item: MediaItem) {
-        Task {
-            try? await library.copyToLibrary(item)
-        }
+        Task { try? await library.copyToLibrary(item) }
     }
 
-    // MARK: - Hover Reveal Overlay
-
-    @ViewBuilder
-    private func hoverRevealContent(for item: MediaItem) -> some View {
-        let pixelSize = viewModel.thumbnailSize.pixelSize
-        let revealedWidth: CGFloat = {
-            guard let w = item.width, let h = item.height, h > 0, w > h else { return pixelSize }
-            return pixelSize * CGFloat(w) / CGFloat(h)
-        }()
-        let revealedHeight: CGFloat = {
-            guard let w = item.width, let h = item.height, w > 0, h > w else { return pixelSize }
-            return pixelSize * CGFloat(h) / CGFloat(w)
-        }()
-
-        Group {
-            if item.isAnimated {
-                GIFFrameView(url: library.absoluteURL(for: item))
-            } else {
-                AsyncThumbnailImage(item: item, size: viewModel.thumbnailSize)
-            }
-        }
-        .frame(width: revealedWidth, height: revealedHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(viewModel.isSelected(item) ? Color.accentColor : Color.clear, lineWidth: 3)
-        )
-        .shadow(color: .black.opacity(0.3), radius: 8)
-        .scaleEffect(1.15)
+    private func removeFromPlaylist(_ item: MediaItem, playlist: Playlist) {
+        playlistService.removeItem(item, from: playlist)
     }
 
-    // MARK: - GIF Animation
+    // MARK: - Settings Toggles
 
     private func toggleGIFAnimation() {
+        withSettings { $0.animateGIFsInGrid.toggle() }
+    }
+
+    private func toggleGridFilenames() {
+        withSettings { $0.gridShowFilenames.toggle() }
+    }
+
+    private func toggleGridCaptions() {
+        withSettings { $0.gridShowCaptions.toggle() }
+    }
+
+    private func withSettings(_ action: (AppSettings) -> Void) {
         let settings: AppSettings
         if let existing = settingsQuery.first {
             settings = existing
         } else {
-            Logger.library.error("AppSettings missing in toggleGIFAnimation — creating fallback defaults")
+            Logger.library.error("AppSettings missing — creating fallback defaults")
             let newSettings = AppSettings()
             modelContext.insert(newSettings)
             settings = newSettings
         }
-        settings.animateGIFsInGrid.toggle()
+        action(settings)
     }
 
     // MARK: - Import
@@ -415,20 +338,24 @@ struct MediaGridView: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
-        panel.allowedContentTypes = [
-            .image,
-            .gif,
-            .movie,
-            .video,
-            .mpeg4Movie,
-            .quickTimeMovie,
-            .avi
-        ]
+        panel.allowedContentTypes = [.image, .gif, .movie, .video, .mpeg4Movie, .quickTimeMovie, .avi]
 
         if panel.runModal() == .OK {
-            Task {
-                _ = try? await library.importFiles(urls: panel.urls)
-            }
+            Task { _ = try? await library.importFiles(urls: panel.urls) }
         }
+    }
+}
+
+// MARK: - MediaItem Helpers
+
+private extension MediaItem {
+    func aspectWidth(for baseSize: CGFloat) -> CGFloat {
+        guard let w = width, let h = height, h > 0, w > h else { return baseSize }
+        return baseSize * CGFloat(w) / CGFloat(h)
+    }
+
+    func aspectHeight(for baseSize: CGFloat) -> CGFloat {
+        guard let w = width, let h = height, w > 0, h > w else { return baseSize }
+        return baseSize * CGFloat(h) / CGFloat(w)
     }
 }

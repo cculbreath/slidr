@@ -61,7 +61,7 @@ struct GeneralSettingsView: View {
                     Text("Small").tag(ThumbnailSize.small)
                     Text("Medium").tag(ThumbnailSize.medium)
                     Text("Large").tag(ThumbnailSize.large)
-                    Text("Extra Large").tag(ThumbnailSize.extraLarge)
+                    
                 }
 
                 Toggle("Animate GIFs in grid", isOn: $settings.animateGIFsInGrid)

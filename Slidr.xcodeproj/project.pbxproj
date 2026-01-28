@@ -11,7 +11,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		5766637C2F28BB3E00FFF5A6 /* Slidr */ = {
+		576665C82F2A130000FFF5A6 /* Slidr */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Slidr;
 			sourceTree = SOURCE_ROOT;
@@ -32,8 +32,8 @@
 		579FD6C02F28241D0061CAFF = {
 			isa = PBXGroup;
 			children = (
-				5766637C2F28BB3E00FFF5A6 /* Slidr */,
 				579FD6CA2F28241D0061CAFF /* Products */,
+				576665C82F2A130000FFF5A6 /* Slidr */,
 			);
 			sourceTree = "<group>";
 		};
@@ -61,7 +61,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				5766637C2F28BB3E00FFF5A6 /* Slidr */,
+				576665C82F2A130000FFF5A6 /* Slidr */,
 			);
 			name = Slidr;
 			packageProductDependencies = (
@@ -255,21 +255,9 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SHTVYKLJHV;
-				ENABLE_APP_SANDBOX = YES;
-				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
-				ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
-				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
-				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
-				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
-				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
-				ENABLE_RESOURCE_ACCESS_USB = NO;
-				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (

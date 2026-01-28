@@ -20,7 +20,7 @@
       "blur-material" : null,
       "layers" : [
         {
-          "hidden" : true,
+          "hidden" : false,
           "image-name" : "Layer 3.png",
           "name" : "Layer 3",
           "position" : {
@@ -34,7 +34,7 @@
         {
           "blend-mode" : "normal",
           "glass" : false,
-          "hidden" : false,
+          "hidden" : true,
           "image-name" : "Layer.png",
           "name" : "Layer",
           "opacity" : 1,

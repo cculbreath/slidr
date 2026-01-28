@@ -12,6 +12,8 @@ final class MediaLibrary {
     private(set) var lastError: LibraryError?
     private(set) var libraryVersion: Int = 0
     private(set) var lastImportDate: Date?
+    private(set) var isExternalDriveConnected = false
+    private(set) var externalItemCount = 0
 
     // MARK: - Dependencies
     let modelContainer: ModelContainer
@@ -44,6 +46,20 @@ final class MediaLibrary {
             sortBy: [SortDescriptor(\.importDate, order: .reverse)]
         )
         return (try? modelContainer.mainContext.fetch(descriptor)) ?? []
+    }
+
+    /// All unique tags used across the library, sorted alphabetically
+    var allTags: [String] {
+        let tagSets = allItems.map { Set($0.tags) }
+        let allTags = tagSets.reduce(into: Set<String>()) { $0.formUnion($1) }
+        return allTags.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    /// All unique sources used across the library, sorted alphabetically
+    var allSources: [String] {
+        let sources = allItems.compactMap { $0.source }
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        return Array(Set(sources)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     func items(matching predicate: Predicate<MediaItem>? = nil, sortedBy sortOrder: SortOrder = .dateImported, ascending: Bool = false) -> [MediaItem] {
@@ -91,9 +107,10 @@ final class MediaLibrary {
         defer {
             isLoading = false
             updateItemCount()
+            updateExternalItemCount()
         }
 
-        let importer = MediaImporter(libraryRoot: libraryRoot, modelContext: modelContainer.mainContext, options: options)
+        let importer = MediaImporter(libraryRoot: libraryRoot, externalLibraryRoot: externalLibraryRoot, modelContext: modelContainer.mainContext, options: options)
         let result = try await importer.importFiles(urls: urls)
 
         if !result.imported.isEmpty {
@@ -110,6 +127,86 @@ final class MediaLibrary {
 
         Logger.library.info("Import complete: \(result.summary)")
         return result
+    }
+
+    // MARK: - Folder Import
+
+    func importFolders(urls: [URL], options: ImportOptions = .default) async throws -> (result: ImportResult, folderGroups: [(name: String, items: [MediaItem])]) {
+        isLoading = true
+        defer {
+            isLoading = false
+            updateItemCount()
+            updateExternalItemCount()
+        }
+
+        var combinedResult = ImportResult()
+        var folderGroups: [(name: String, items: [MediaItem])] = []
+        var looseFiles: [URL] = []
+
+        for url in urls {
+            var isDir: ObjCBool = false
+            if fileManager.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+                let mediaByFolder = collectMediaByFolder(in: url)
+                for (folderName, fileURLs) in mediaByFolder {
+                    let importer = MediaImporter(libraryRoot: libraryRoot, externalLibraryRoot: externalLibraryRoot, modelContext: modelContainer.mainContext, options: options)
+                    let folderResult = try await importer.importFiles(urls: fileURLs)
+                    combinedResult.merge(folderResult)
+                    if !folderResult.imported.isEmpty {
+                        folderGroups.append((name: folderName, items: folderResult.imported))
+                    }
+                }
+            } else {
+                looseFiles.append(url)
+            }
+        }
+
+        if !looseFiles.isEmpty {
+            let importer = MediaImporter(libraryRoot: libraryRoot, externalLibraryRoot: externalLibraryRoot, modelContext: modelContainer.mainContext, options: options)
+            let looseResult = try await importer.importFiles(urls: looseFiles)
+            combinedResult.merge(looseResult)
+        }
+
+        if !combinedResult.imported.isEmpty {
+            lastImportDate = Date()
+
+            let videoItems = combinedResult.imported.filter { $0.isVideo }
+            if !videoItems.isEmpty {
+                let descriptor = FetchDescriptor<AppSettings>()
+                let count = (try? modelContainer.mainContext.fetch(descriptor).first?.scrubThumbnailCount) ?? 100
+                generateScrubThumbnailsForVideos(videoItems, count: count)
+            }
+        }
+
+        Logger.library.info("Folder import complete: \(combinedResult.summary)")
+        return (result: combinedResult, folderGroups: folderGroups)
+    }
+
+    private func collectMediaByFolder(in url: URL) -> [(name: String, fileURLs: [URL])] {
+        var folderMap: [String: [URL]] = [:]
+
+        guard let enumerator = fileManager.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+
+        while let fileURL = enumerator.nextObject() as? URL {
+            guard let resourceValues = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]),
+                  resourceValues.isRegularFile == true else {
+                continue
+            }
+
+            guard FileTypeDetector.isSupported(fileURL) else { continue }
+
+            let parentDir = fileURL.deletingLastPathComponent()
+            folderMap[parentDir.path, default: []].append(fileURL)
+        }
+
+        // Sort by folder path for consistent ordering, use folder name as the group name
+        return folderMap.sorted { $0.key < $1.key }
+            .map { (name: URL(fileURLWithPath: $0.key).lastPathComponent, fileURLs: $0.value) }
     }
 
     // MARK: - Delete
@@ -156,42 +253,62 @@ final class MediaLibrary {
     // MARK: - Thumbnail Access
 
     func thumbnail(for item: MediaItem, size: ThumbnailSize) async throws -> NSImage {
-        try await thumbnailCache.thumbnail(for: item, size: size, libraryRoot: libraryRoot)
+        let root = (item.storageLocation == .external && externalLibraryRoot != nil) ? externalLibraryRoot! : libraryRoot
+        return try await thumbnailCache.thumbnail(for: item, size: size, libraryRoot: root)
     }
 
     func videoScrubThumbnails(for item: MediaItem, count: Int, size: ThumbnailSize) async throws -> [NSImage] {
-        try await thumbnailCache.videoScrubThumbnails(for: item, count: count, size: size, libraryRoot: libraryRoot)
+        let root = (item.storageLocation == .external && externalLibraryRoot != nil) ? externalLibraryRoot! : libraryRoot
+        return try await thumbnailCache.videoScrubThumbnails(for: item, count: count, size: size, libraryRoot: root)
     }
 
     // MARK: - Scrub Thumbnail Generation
 
     func generateScrubThumbnailsForVideos(_ items: [MediaItem], count: Int) {
-        let pregenItems = items
-            .filter { $0.isVideo }
+        let cache = thumbnailCache
+        let localRoot = libraryRoot
+        let extRoot = externalLibraryRoot
+
+        let localItems = items.filter { $0.isVideo && $0.storageLocation != .external }
             .map { PreGenerateItem(contentHash: $0.contentHash, relativePath: $0.relativePath, filename: $0.originalFilename) }
 
-        guard !pregenItems.isEmpty else { return }
+        let externalItems = items.filter { $0.isVideo && $0.storageLocation == .external }
+            .map { PreGenerateItem(contentHash: $0.contentHash, relativePath: $0.relativePath, filename: $0.originalFilename) }
 
-        let cache = thumbnailCache
-        let root = libraryRoot
+        if !localItems.isEmpty {
+            Task.detached(priority: .utility) {
+                await cache.preGenerateScrubThumbnails(for: localItems, count: count, libraryRoot: localRoot)
+            }
+        }
 
-        Task.detached(priority: .utility) {
-            await cache.preGenerateScrubThumbnails(for: pregenItems, count: count, libraryRoot: root)
+        if !externalItems.isEmpty, let extRoot {
+            Task.detached(priority: .utility) {
+                await cache.preGenerateScrubThumbnails(for: externalItems, count: count, libraryRoot: extRoot)
+            }
         }
     }
 
     func backgroundGenerateMissingScrubThumbnails(count: Int) {
-        let videoItems = allItems
-            .filter { $0.isVideo }
+        let cache = thumbnailCache
+        let localRoot = libraryRoot
+        let extRoot = externalLibraryRoot
+
+        let localItems = allItems.filter { $0.isVideo && $0.storageLocation != .external }
             .map { PreGenerateItem(contentHash: $0.contentHash, relativePath: $0.relativePath, filename: $0.originalFilename) }
 
-        guard !videoItems.isEmpty else { return }
+        let externalItems = allItems.filter { $0.isVideo && $0.storageLocation == .external }
+            .map { PreGenerateItem(contentHash: $0.contentHash, relativePath: $0.relativePath, filename: $0.originalFilename) }
 
-        let cache = thumbnailCache
-        let root = libraryRoot
+        if !localItems.isEmpty {
+            Task.detached(priority: .background) {
+                await cache.preGenerateScrubThumbnails(for: localItems, count: count, libraryRoot: localRoot)
+            }
+        }
 
-        Task.detached(priority: .background) {
-            await cache.preGenerateScrubThumbnails(for: videoItems, count: count, libraryRoot: root)
+        if !externalItems.isEmpty, let extRoot {
+            Task.detached(priority: .background) {
+                await cache.preGenerateScrubThumbnails(for: externalItems, count: count, libraryRoot: extRoot)
+            }
         }
     }
 
@@ -265,6 +382,15 @@ final class MediaLibrary {
             .filter { $0.importDate >= startOfDay }
     }
 
+    var unplayableVideoCount: Int {
+        allItems.filter { $0.isVideo && $0.hasThumbnailError }.count
+    }
+
+    func unplayableVideos(sortedBy sortOrder: SortOrder, ascending: Bool) -> [MediaItem] {
+        items(sortedBy: sortOrder, ascending: ascending)
+            .filter { $0.isVideo && $0.hasThumbnailError }
+    }
+
     // MARK: - Helpers
 
     private func updateItemCount() {
@@ -274,15 +400,71 @@ final class MediaLibrary {
     }
 
     func absoluteURL(for item: MediaItem) -> URL {
-        if item.storageLocation == .referenced {
+        switch item.storageLocation {
+        case .referenced:
             return URL(fileURLWithPath: item.relativePath)
+        case .external:
+            if let extRoot = externalLibraryRoot {
+                return extRoot.appendingPathComponent(item.relativePath)
+            }
+            // Fallback path that won't exist - caller should check accessibility
+            return libraryRoot.appendingPathComponent("External/\(item.relativePath)")
+        case .local:
+            return libraryRoot.appendingPathComponent(item.relativePath)
         }
-        return libraryRoot.appendingPathComponent(item.relativePath)
     }
 
     // MARK: - External Drive Support
 
+    func configureExternalDrive(path: String?) {
+        if let path, !path.isEmpty {
+            let url = URL(fileURLWithPath: path)
+            externalLibraryRoot = url
+            isExternalDriveConnected = fileManager.fileExists(atPath: url.path)
+        } else {
+            externalLibraryRoot = nil
+            isExternalDriveConnected = false
+        }
+        updateExternalItemCount()
+        Logger.library.info("External drive configured: \(path ?? "none"), connected: \(self.isExternalDriveConnected)")
+    }
+
+    func refreshExternalDriveStatus() {
+        if let extRoot = externalLibraryRoot {
+            isExternalDriveConnected = fileManager.fileExists(atPath: extRoot.path)
+        } else {
+            isExternalDriveConnected = false
+        }
+        updateExternalItemCount()
+    }
+
+    private func updateExternalItemCount() {
+        externalItemCount = items(in: .external).count
+    }
+
+    func locateExternalLibrary() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Locate the Slidr external library folder"
+        panel.prompt = "Select"
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let descriptor = FetchDescriptor<AppSettings>()
+        guard let settings = try? modelContainer.mainContext.fetch(descriptor).first else { return }
+
+        settings.externalDrivePath = url.path
+        try? modelContainer.mainContext.save()
+
+        configureExternalDrive(path: url.path)
+    }
+
     func isAccessible(_ item: MediaItem) -> Bool {
+        if item.storageLocation == .external && !isExternalDriveConnected {
+            return false
+        }
         let url = absoluteURL(for: item)
         return fileManager.fileExists(atPath: url.path)
     }
@@ -312,6 +494,9 @@ final class MediaLibrary {
                 }
                 item.lastVerifiedDate = Date()
                 verifiedCount += 1
+            } else if item.storageLocation == .external && !isExternalDriveConnected {
+                item.status = .externalNotMounted
+                item.lastVerifiedDate = Date()
             } else {
                 item.status = .missing
                 item.lastVerifiedDate = Date()

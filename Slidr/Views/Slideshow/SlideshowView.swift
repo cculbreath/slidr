@@ -11,6 +11,8 @@ struct SlideshowView: View {
     @State private var showControls = false
     @State private var hideControlsTask: Task<Void, Never>?
     @State private var showCaptions: Bool = false
+    @State private var showVideoCaptions: Bool = false
+    @State private var videoCaptionTask: Task<Void, Never>?
     @State private var showInfoOverlay: Bool = false
     @State private var ratingFeedback: Int? = nil
     @State private var navigationDirection: NavigationDirection = .forward
@@ -37,6 +39,14 @@ struct SlideshowView: View {
 
     private var transitionDuration: Double {
         settings?.slideshowTransitionDuration ?? 0.5
+    }
+
+    private var shouldShowCaptions: Bool {
+        guard showCaptions else { return false }
+        if viewModel.currentItemIsVideo {
+            return showVideoCaptions
+        }
+        return true
     }
 
     var body: some View {
@@ -67,6 +77,17 @@ struct SlideshowView: View {
             .onChange(of: viewModel.volume) { _, _ in viewModel.persistToSettings() }
             .onChange(of: viewModel.isMuted) { _, _ in viewModel.persistToSettings() }
             .onChange(of: viewModel.isRandomMode) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.currentIndex) { _, _ in
+                startVideoCaptionTimer()
+            }
+            .onChange(of: showCaptions) { _, newValue in
+                if newValue {
+                    startVideoCaptionTimer()
+                } else {
+                    videoCaptionTask?.cancel()
+                    showVideoCaptions = false
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
                 isFullscreen = true
             }
@@ -172,34 +193,38 @@ struct SlideshowView: View {
     @ViewBuilder
     private var mediaContent: some View {
         if let item = viewModel.currentItem {
-            Group {
-                if item.isVideo {
-                    VideoPlayerView(
-                        item: item,
-                        libraryRoot: library.libraryRoot,
-                        isPlaying: $viewModel.isPlaying,
-                        volume: $viewModel.volume,
-                        isMuted: $viewModel.isMuted,
-                        scrubber: viewModel.scrubber,
-                        onVideoEnded: { viewModel.onVideoEnded() }
-                    )
-                } else if item.isAnimated {
-                    AsyncAnimatedGIFView(item: item)
-                } else {
-                    AsyncThumbnailImage(item: item, size: .extraLarge, contentMode: .fit)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .caption(
-                for: item,
-                show: showCaptions,
-                template: settings?.captionTemplate ?? "{filename}",
-                position: settings?.captionPosition ?? .bottom,
-                fontSize: settings?.captionFontSize ?? 16,
-                backgroundOpacity: settings?.captionBackgroundOpacity ?? 0.6
+            contentView(for: item)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .caption(
+                    for: item,
+                    show: shouldShowCaptions,
+                    template: settings?.captionTemplate ?? "{filename}",
+                    position: settings?.captionPosition ?? .bottom,
+                    displayMode: settings?.captionDisplayMode ?? .overlay,
+                    fontSize: settings?.captionFontSize ?? 16,
+                    backgroundOpacity: settings?.captionBackgroundOpacity ?? 0.6
+                )
+                .id(item.id)
+                .transition(currentTransition)
+        }
+    }
+
+    @ViewBuilder
+    private func contentView(for item: MediaItem) -> some View {
+        if item.isVideo {
+            VideoPlayerView(
+                item: item,
+                libraryRoot: library.libraryRoot,
+                isPlaying: $viewModel.isPlaying,
+                volume: $viewModel.volume,
+                isMuted: $viewModel.isMuted,
+                scrubber: viewModel.scrubber,
+                onVideoEnded: { viewModel.onVideoEnded() }
             )
-            .id(item.id)
-            .transition(currentTransition)
+        } else if item.isAnimated {
+            AsyncAnimatedGIFView(item: item)
+        } else {
+            AsyncThumbnailImage(item: item, size: .large, contentMode: .fit)
         }
     }
 
@@ -390,6 +415,8 @@ struct SlideshowView: View {
                         }
                     }
                     .padding()
+                    .foregroundStyle(.primary)
+                    .preferredColorScheme(.light)
                 }
                 .help("Timer Duration")
 
@@ -454,13 +481,14 @@ struct SlideshowView: View {
                     .padding()
                     .frame(width: 280)
                     .foregroundStyle(.primary)
+                    .preferredColorScheme(.light)
                 }
                 .help("Video Playback Duration")
             }
 
             Divider().frame(height: 28)
 
-            // Group 4: Show Timer Bar, Show Info
+            // Group 4: Show Timer Bar, Show Info, Show Captions
             HStack(spacing: 20) {
                 Button {
                     viewModel.showTimerBar.toggle()
@@ -478,6 +506,15 @@ struct SlideshowView: View {
                         .font(.title)
                 }
                 .help("Info (I)")
+
+                Button {
+                    showCaptions.toggle()
+                } label: {
+                    Image(systemName: showCaptions ? "text.bubble.fill" : "text.bubble")
+                        .font(.title)
+                        .toggleGlow(showCaptions)
+                }
+                .help("Toggle Captions (C)")
             }
 
             Divider().frame(height: 28)
@@ -530,6 +567,30 @@ struct SlideshowView: View {
     private func goPrevious() {
         navigationDirection = .backward
         viewModel.previous()
+    }
+
+    private func startVideoCaptionTimer() {
+        videoCaptionTask?.cancel()
+
+        guard showCaptions else {
+            showVideoCaptions = false
+            return
+        }
+
+        if viewModel.currentItemIsVideo {
+            showVideoCaptions = true
+            let duration = settings?.videoCaptionDuration ?? 5.0
+            videoCaptionTask = Task {
+                try? await Task.sleep(for: .seconds(duration))
+                if !Task.isCancelled {
+                    withAnimation {
+                        showVideoCaptions = false
+                    }
+                }
+            }
+        } else {
+            showVideoCaptions = true
+        }
     }
 
     private func timerProgress(at date: Date) -> Double {
@@ -598,7 +659,7 @@ private struct SlideshowKeyboardModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .modifier(BasicNavigationKeys(onDismiss: onDismiss, goNext: goNext, goPrevious: goPrevious, togglePlayback: { viewModel.togglePlayback() }))
-            .modifier(VideoSeekKeys(viewModel: viewModel))
+            .modifier(ArrowKeys(viewModel: viewModel, goNext: goNext, goPrevious: goPrevious))
             .modifier(VolumeKeys(viewModel: viewModel))
     }
 }
@@ -619,50 +680,50 @@ private struct BasicNavigationKeys: ViewModifier {
                 onDismiss()
                 return .handled
             }
-            .onKeyPress(keys: [.rightArrow, .leftArrow]) { press in
-                guard press.modifiers.subtracting(.numericPad).isEmpty else { return .ignored }
-                if press.key == .rightArrow {
-                    goNext()
-                } else {
-                    goPrevious()
-                }
-                return .handled
-            }
     }
 }
 
-private struct VideoSeekKeys: ViewModifier {
+private struct ArrowKeys: ViewModifier {
     let viewModel: SlideshowViewModel
+    let goNext: () -> Void
+    let goPrevious: () -> Void
 
     func body(content: Content) -> some View {
         content
             .onKeyPress(phases: .down) { press in
-                handleVideoSeek(press)
+                handleArrowKey(press)
             }
     }
 
-    private func handleVideoSeek(_ press: KeyPress) -> KeyPress.Result {
+    private func handleArrowKey(_ press: KeyPress) -> KeyPress.Result {
         let hasShift = press.modifiers.contains(.shift)
         let hasOption = press.modifiers.contains(.option)
 
-        // Shift + right arrow = seek forward 5s
+        // Shift + arrow = seek 5s
         if press.key == .rightArrow && hasShift {
             viewModel.seekVideo(by: .fiveSeconds, forward: true)
             return .handled
         }
-        // Shift + left arrow = seek back 5s
         if press.key == .leftArrow && hasShift {
             viewModel.seekVideo(by: .fiveSeconds, forward: false)
             return .handled
         }
-        // Option + right arrow = seek forward 30s
+        // Option + arrow = seek 30s
         if press.key == .rightArrow && hasOption {
             viewModel.seekVideo(by: .thirtySeconds, forward: true)
             return .handled
         }
-        // Option + left arrow = seek back 30s
         if press.key == .leftArrow && hasOption {
             viewModel.seekVideo(by: .thirtySeconds, forward: false)
+            return .handled
+        }
+        // Plain arrow = next/previous
+        if press.key == .rightArrow {
+            goNext()
+            return .handled
+        }
+        if press.key == .leftArrow {
+            goPrevious()
             return .handled
         }
         // Comma = step frame backward

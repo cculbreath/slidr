@@ -41,6 +41,9 @@ struct AsyncThumbnailImage: View {
             image = try await library.thumbnail(for: item, size: size)
         } catch {
             loadError = error
+            if item.isVideo {
+                item.hasThumbnailError = true
+            }
         }
 
         isLoading = false

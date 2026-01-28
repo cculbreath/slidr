@@ -106,19 +106,23 @@ final class SmoothScrubber {
         isSeeking = false
         isSeekInProgress = false
         pendingSeekTime = nil
-        initialSeekTime = nil
         clipStartSeconds = 0
         clipDurationSeconds = nil
     }
 
     // MARK: - Clip Region
 
-    func setClipRegion(start: Double, duration: Double) {
+    /// Set the clip region and optionally queue an initial seek for the next player.
+    /// The initialSeek is deferred until a player attaches and becomes readyToPlay,
+    /// avoiding seeks on a stale player during SwiftUI view transitions.
+    func setClipRegion(start: Double, duration: Double, initialSeek: CMTime? = nil) {
+        initialSeekTime = initialSeek
         clipStartSeconds = start
         clipDurationSeconds = duration
     }
 
     func clearClipRegion() {
+        initialSeekTime = nil
         clipStartSeconds = 0
         clipDurationSeconds = nil
     }

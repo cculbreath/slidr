@@ -28,7 +28,7 @@ struct MultiSelectInspectorView: View {
                 Divider()
 
                 // Playlist section
-                playlistSection
+//                playlistSection
 
                 Divider()
 

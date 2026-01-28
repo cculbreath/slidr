@@ -8,7 +8,7 @@ enum StorageLocation: String, Codable, Sendable, CaseIterable {
     var displayName: String {
         switch self {
         case .local: return "Local Library"
-        case .external: return "External Drive"
+        case .external: return "External Library"
         case .referenced: return "Referenced"
         }
     }

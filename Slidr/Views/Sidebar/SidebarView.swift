@@ -4,9 +4,9 @@ import UniformTypeIdentifiers
 struct SidebarView: View {
     @Environment(MediaLibrary.self) private var library
     @Environment(PlaylistService.self) private var playlistService
+    @Environment(\.openWindow) private var openWindow
     @Bindable var viewModel: SidebarViewModel
 
-    @State private var playlistToEdit: Playlist?
     @State private var playlistDropTargetID: UUID?
 
     var body: some View {
@@ -17,29 +17,23 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .frame(minWidth: 200)
-        .sheet(item: $playlistToEdit) { playlist in
-            PlaylistEditorView(playlist: playlist)
-        }
-        .confirmationDialog(
-            "Delete Playlist",
-            isPresented: $viewModel.showDeleteConfirmation,
-            presenting: viewModel.playlistToDelete
-        ) { playlist in
-            Button("Delete \"\(playlist.name)\"", role: .destructive) {
-                viewModel.confirmDelete()
-            }
-            Button("Cancel", role: .cancel) {
-                viewModel.cancelDelete()
-            }
-        } message: { playlist in
-            Text("Are you sure you want to delete \"\(playlist.name)\"? This cannot be undone.")
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .newPlaylist)) { _ in
-            viewModel.createPlaylist()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .newSmartPlaylist)) { _ in
-            viewModel.createSmartPlaylist()
-        }
+        // DEBUG: Commenting out confirmationDialog to test if SwiftData model access causes freeze
+        // .confirmationDialog(
+        //     "Delete Playlist?",
+        //     isPresented: $viewModel.showDeleteConfirmation,
+        //     titleVisibility: .visible
+        // ) {
+        //     Button("Delete", role: .destructive) {
+        //         viewModel.confirmDelete()
+        //     }
+        //     Button("Cancel", role: .cancel) {
+        //         viewModel.cancelDelete()
+        //     }
+        // } message: {
+        //     if let playlist = viewModel.playlistToDelete {
+        //         Text("Are you sure you want to delete \"\(playlist.name)\"?")
+        //     }
+        // }
         .onAppear {
             viewModel.configure(with: playlistService)
         }
@@ -55,6 +49,27 @@ struct SidebarView: View {
                 .tag(SidebarItem.lastImport)
             Label("Imported Today", systemImage: "calendar")
                 .tag(SidebarItem.importedToday)
+            unplayableVideosRow
+        }
+    }
+
+    @ViewBuilder
+    private var unplayableVideosRow: some View {
+        let count = library.unplayableVideoCount
+        if count > 0 {
+            Label {
+                HStack {
+                    Text("Unplayable Videos")
+                    Spacer()
+                    Text("\(count)")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+            }
+            .tag(SidebarItem.unplayableVideos)
         }
     }
 
@@ -119,7 +134,7 @@ struct SidebarView: View {
             } else {
                 PlaylistRow(
                     playlist: playlist,
-                    onEdit: { playlistToEdit = playlist },
+                    onEdit: { openWindow(value: playlist.id) },
                     onDelete: { viewModel.deletePlaylist(playlist) }
                 )
             }
@@ -148,7 +163,7 @@ struct SidebarView: View {
             ForEach(viewModel.smartPlaylists) { playlist in
                 PlaylistRow(
                     playlist: playlist,
-                    onEdit: { playlistToEdit = playlist },
+                    onEdit: { openWindow(value: playlist.id) },
                     onDelete: { viewModel.deletePlaylist(playlist) }
                 )
                 .tag(SidebarItem.playlist(playlist.id))
@@ -206,7 +221,7 @@ struct SidebarView: View {
         let items = library.allItems.filter { itemIDs.contains($0.id) }
         guard !items.isEmpty else { return false }
 
-        playlistService.addItems(items, to: playlist)
+//        playlistService.addItems(items, to: playlist)
         return true
     }
 }
@@ -218,6 +233,7 @@ enum SidebarItem: Hashable, Identifiable {
     case favorites
     case lastImport
     case importedToday
+    case unplayableVideos
     case playlist(UUID)
 
     var id: String {
@@ -226,6 +242,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .favorites: return "favorites"
         case .lastImport: return "lastImport"
         case .importedToday: return "importedToday"
+        case .unplayableVideos: return "unplayableVideos"
         case .playlist(let uuid): return "playlist-\(uuid.uuidString)"
         }
     }

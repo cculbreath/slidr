@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import OSLog
+import AppKit
 
 @main
 struct SlidrApp: App {
@@ -14,7 +15,7 @@ struct SlidrApp: App {
 
     init() {
         // Initialize SwiftData container with versioned schema and migration plan
-        let schema = Schema(versionedSchema: SlidrSchemaV2.self)
+        let schema = Schema(versionedSchema: SlidrSchemaV4.self)
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let slidrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
 
@@ -31,7 +32,37 @@ struct SlidrApp: App {
                 configurations: config
             )
         } catch {
-            fatalError("Failed to create ModelContainer: \(error)")
+            // NEVER delete the data store automatically - user data is precious
+            // Instead, log the error and present it to the user
+            Logger.library.error("ModelContainer creation failed: \(error.localizedDescription)")
+            Logger.library.error("Store URL: \(storeURL.path)")
+
+            // Show an alert to the user about the database issue
+            let alert = NSAlert()
+            alert.messageText = "Database Migration Failed"
+            alert.informativeText = """
+                Slidr could not open your media library due to a database compatibility issue.
+
+                Error: \(error.localizedDescription)
+
+                Your data has NOT been deleted. You can:
+                • Restore from a backup
+                • Contact support for help with migration
+                • Move the database file to reset (at your own risk)
+
+                Database location:
+                \(storeURL.path)
+                """
+            alert.alertStyle = .critical
+            alert.addButton(withTitle: "Reveal in Finder")
+            alert.addButton(withTitle: "Quit")
+
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                NSWorkspace.shared.selectFile(storeURL.path, inFileViewerRootedAtPath: slidrDir.path)
+            }
+
+            fatalError("Cannot continue without a valid database. Please resolve the migration issue and relaunch.")
         }
 
         // Ensure AppSettings exists
@@ -49,10 +80,21 @@ struct SlidrApp: App {
 
         thumbnailCache = ThumbnailCache(cacheDirectory: thumbnailDir)
         mediaLibrary = MediaLibrary(modelContainer: modelContainer, thumbnailCache: thumbnailCache)
+
+        // Configure external drive from settings
+        if let settings = try? context.fetch(FetchDescriptor<AppSettings>()).first {
+            mediaLibrary.configureExternalDrive(path: settings.externalDrivePath)
+        }
+
         folderWatcher = FolderWatcher()
         playlistService = PlaylistService(modelContainer: modelContainer, mediaLibrary: mediaLibrary, folderWatcher: folderWatcher)
         hoverVideoPlayer = HoverVideoPlayer()
     }
+
+    @FocusedValue(\.importDestination) var importDestination
+    @FocusedValue(\.gridShowFilenames) var gridShowFilenames
+    @FocusedValue(\.gridShowCaptions) var gridShowCaptions
+    @FocusedValue(\.animateGIFs) var animateGIFs
 
     var body: some Scene {
         WindowGroup {
@@ -62,6 +104,7 @@ struct SlidrApp: App {
                 .environment(hoverVideoPlayer)
         }
         .modelContainer(modelContainer)
+        .windowToolbarStyle(.expanded)
         .commands {
             CommandGroup(replacing: .help) {
                 Button("Slidr Help") {
@@ -120,6 +163,23 @@ struct SlidrApp: App {
                 }
                 .keyboardShortcut("i", modifiers: .command)
 
+                Menu("Import Destination") {
+                    if let importDestination {
+                        Picker(selection: importDestination) {
+                            Text("Local Library").tag(StorageLocation.local)
+                            Text("External Library").tag(StorageLocation.external)
+                            Text("Reference in Place").tag(StorageLocation.referenced)
+                        } label: {
+                            EmptyView()
+                        }
+                        .pickerStyle(.inline)
+                    }
+                }
+
+                Button("Locate External Library...") {
+                    NotificationCenter.default.post(name: .locateExternalLibrary, object: nil)
+                }
+
                 Divider()
 
                 Button("New Playlist") {
@@ -159,6 +219,20 @@ struct SlidrApp: App {
 
                 Divider()
 
+                if let gridShowFilenames {
+                    Toggle("Show Grid Filenames", isOn: gridShowFilenames)
+                }
+
+                if let gridShowCaptions {
+                    Toggle("Show Grid Captions", isOn: gridShowCaptions)
+                }
+
+                if let animateGIFs {
+                    Toggle("Animate GIFs in Grid", isOn: animateGIFs)
+                }
+
+                Divider()
+
                 Button("Enter Fullscreen Slideshow") {
                     NotificationCenter.default.post(name: .startSlideshow, object: nil)
                 }
@@ -189,5 +263,15 @@ struct SlidrApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+
+        // DEBUG: Commenting out playlist editor to test if it causes freeze
+        // WindowGroup("Edit Playlist", for: UUID.self) { $playlistID in
+        //     if let playlistID, let playlist = playlistService.playlist(withID: playlistID) {
+        //         PlaylistEditorView(playlist: playlist)
+        //             .environment(playlistService)
+        //     }
+        // }
+        // .modelContainer(modelContainer)
+        // .windowResizability(.contentSize)
     }
 }

@@ -5,17 +5,6 @@ struct SlideshowSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Timing") {
-                HStack {
-                    Text("Slide duration")
-                    Spacer()
-                    TextField("", value: $settings.defaultImageDuration, format: .number)
-                        .frame(width: 60)
-                        .textFieldStyle(.roundedBorder)
-                    Text("seconds")
-                }
-            }
-
             Section("Transitions") {
                 Picker("Effect", selection: $settings.slideshowTransition) {
                     ForEach(TransitionType.allCases, id: \.self) { type in
@@ -33,33 +22,6 @@ struct SlideshowSettingsView: View {
                 }
             }
 
-            Section("Playback") {
-                Toggle("Loop slideshow", isOn: $settings.loopSlideshow)
-                Toggle("Shuffle order", isOn: $settings.shuffleSlideshow)
-            }
-
-            Section("Video & GIF Playback") {
-                Toggle("Limit video playback duration", isOn: Binding(
-                    get: { !settings.videoPlayDuration.isFullVideo },
-                    set: { settings.videoPlayDuration = $0 ? .fixed(30) : .fullVideo }
-                ))
-
-                Text("When on, videos advance after a set duration instead of playing to the end")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Audio") {
-                HStack {
-                    Text("Default volume")
-                    Slider(value: $settings.defaultVolume, in: 0...1)
-                    Text("\(Int(settings.defaultVolume * 100))%")
-                        .frame(width: 40)
-                }
-
-                Toggle("Mute by default", isOn: $settings.muteByDefault)
-            }
-
             Section("Captions") {
                 Toggle("Show captions", isOn: $settings.showCaptions)
 
@@ -67,17 +29,37 @@ struct SlideshowSettingsView: View {
                     TextField("Caption template", text: $settings.captionTemplate)
                         .textFieldStyle(.roundedBorder)
 
-                    Text("Variables: {filename}, {date}, {size}, {dimensions}, {duration}")
+                    Text("Variables: {filename}, {date}, {size}, {dimensions}, {duration}, {type}")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                    Text("Per-item captions take priority over the template. Variables work in custom captions too.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Picker("Display mode", selection: $settings.captionDisplayMode) {
+                        ForEach(CaptionDisplayMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+
                     Picker("Position", selection: $settings.captionPosition) {
-                        Text("Top").tag(CaptionPosition.top)
-                        Text("Bottom").tag(CaptionPosition.bottom)
-                        Text("Top Left").tag(CaptionPosition.topLeft)
-                        Text("Top Right").tag(CaptionPosition.topRight)
-                        Text("Bottom Left").tag(CaptionPosition.bottomLeft)
-                        Text("Bottom Right").tag(CaptionPosition.bottomRight)
+                        if settings.captionDisplayMode == .overlay {
+                            Text("Top").tag(CaptionPosition.top)
+                            Text("Bottom").tag(CaptionPosition.bottom)
+                            Text("Top Left").tag(CaptionPosition.topLeft)
+                            Text("Top Right").tag(CaptionPosition.topRight)
+                            Text("Bottom Left").tag(CaptionPosition.bottomLeft)
+                            Text("Bottom Right").tag(CaptionPosition.bottomRight)
+                        } else {
+                            Text("Top").tag(CaptionPosition.top)
+                            Text("Bottom").tag(CaptionPosition.bottom)
+                        }
+                    }
+                    .onChange(of: settings.captionDisplayMode) { _, newMode in
+                        if newMode == .outside && settings.captionPosition.isCornerPosition {
+                            settings.captionPosition = .bottom
+                        }
                     }
 
                     HStack {
@@ -93,6 +75,17 @@ struct SlideshowSettingsView: View {
                         Text("\(Int(settings.captionBackgroundOpacity * 100))%")
                             .frame(width: 40)
                     }
+
+                    HStack {
+                        Text("Video caption duration")
+                        Slider(value: $settings.videoCaptionDuration, in: 3...15, step: 1)
+                        Text("\(Int(settings.videoCaptionDuration))s")
+                            .frame(width: 40)
+                    }
+
+                    Text("Captions on videos will show for this duration then fade out")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 

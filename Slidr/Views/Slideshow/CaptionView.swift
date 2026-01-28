@@ -19,14 +19,25 @@ struct CaptionView: View {
     }
 
     private var processedCaption: String {
-        var result = template
-        result = result.replacingOccurrences(of: "{filename}", with: item.originalFilename)
+        // Per-item caption takes priority, but still process variables
+        let baseText = item.caption ?? template
+
+        var result = baseText
+        result = result.replacingOccurrences(of: "{filename}", with: filenameWithoutExtension)
         result = result.replacingOccurrences(of: "{date}", with: formattedDate)
         result = result.replacingOccurrences(of: "{size}", with: formattedSize)
         result = result.replacingOccurrences(of: "{dimensions}", with: formattedDimensions)
         result = result.replacingOccurrences(of: "{duration}", with: formattedDuration)
         result = result.replacingOccurrences(of: "{type}", with: item.mediaType.rawValue.capitalized)
         return result
+    }
+
+    private var filenameWithoutExtension: String {
+        let filename = item.originalFilename
+        if let dotIndex = filename.lastIndex(of: ".") {
+            return String(filename[..<dotIndex])
+        }
+        return filename
     }
 
     private var formattedDate: String {
@@ -62,12 +73,41 @@ struct CaptionOverlay: ViewModifier {
     let showCaptions: Bool
     let template: String
     let position: CaptionPosition
+    let displayMode: CaptionDisplayMode
     let fontSize: Double
     var backgroundOpacity: Double = 0.6
 
+    @ViewBuilder
     func body(content: Content) -> some View {
+        if displayMode == .outside {
+            outsideLayout(content: content)
+        } else {
+            overlayLayout(content: content)
+        }
+    }
+
+    @ViewBuilder
+    private func overlayLayout(content: Content) -> some View {
         content.overlay(alignment: position.alignment) {
             if showCaptions {
+                CaptionView(item: item, template: template, position: position, fontSize: fontSize, backgroundOpacity: backgroundOpacity)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func outsideLayout(content: Content) -> some View {
+        VStack(spacing: 0) {
+            if showCaptions && position == .top {
+                CaptionView(item: item, template: template, position: position, fontSize: fontSize, backgroundOpacity: backgroundOpacity)
+                    .transition(.opacity)
+            }
+
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if showCaptions && position == .bottom {
                 CaptionView(item: item, template: template, position: position, fontSize: fontSize, backgroundOpacity: backgroundOpacity)
                     .transition(.opacity)
             }
@@ -76,7 +116,7 @@ struct CaptionOverlay: ViewModifier {
 }
 
 extension View {
-    func caption(for item: MediaItem, show: Bool, template: String, position: CaptionPosition, fontSize: Double, backgroundOpacity: Double = 0.6) -> some View {
-        modifier(CaptionOverlay(item: item, showCaptions: show, template: template, position: position, fontSize: fontSize, backgroundOpacity: backgroundOpacity))
+    func caption(for item: MediaItem, show: Bool, template: String, position: CaptionPosition, displayMode: CaptionDisplayMode, fontSize: Double, backgroundOpacity: Double = 0.6) -> some View {
+        modifier(CaptionOverlay(item: item, showCaptions: show, template: template, position: position, displayMode: displayMode, fontSize: fontSize, backgroundOpacity: backgroundOpacity))
     }
 }

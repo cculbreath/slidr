@@ -5,23 +5,22 @@ struct ImportSettingsView: View {
 
     var body: some View {
         Form {
-            Section("File Handling") {
-                Toggle("Copy new files to library", isOn: $settings.copyFilesToLibrary)
+            Section("Import Behavior") {
+                Picker("When importing files", selection: $settings.importMode) {
+                    Text("Copy to Library").tag(ImportMode.copy)
+                    Text("Move to Library").tag(ImportMode.move)
+                    Text("Reference in Place").tag(ImportMode.reference)
+                }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("When enabled, imported files are copied to the library folder.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                Text(settings.importMode.description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-                    Text("When disabled, files remain in their original location and are referenced by the library. Referenced files become unavailable if moved or deleted.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
+                if settings.importMode == .reference {
                     Text("This setting only affects new imports. Existing files are not changed.")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
-                .padding(.top, 2)
 
                 Toggle("Skip duplicate files", isOn: $settings.skipDuplicates)
             }
@@ -52,18 +51,35 @@ struct ImportSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                Toggle("Create playlists from folders", isOn: $settings.createPlaylistsFromFolders)
+
+                if settings.createPlaylistsFromFolders {
+                    Text("When importing folders, a playlist will be created for each folder that contains media files.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
-            Section("Storage") {
+            Section("Storage Target") {
                 Picker("Default import location", selection: $settings.defaultImportLocation) {
                     Text("Local Library").tag(StorageLocation.local)
                     Text("External Drive").tag(StorageLocation.external)
+                }
+
+                if settings.defaultImportLocation == .external && settings.externalDrivePath == nil {
+                    Text("Configure an external storage path below to import to an external drive.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                 }
             }
 
             Section("External Storage") {
                 HStack {
                     if let path = settings.externalDrivePath {
+                        let isConnected = FileManager.default.fileExists(atPath: path)
+                        Image(systemName: isConnected ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundStyle(isConnected ? .green : .red)
                         Text(path)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -85,7 +101,7 @@ struct ImportSettingsView: View {
                     }
                 }
 
-                Text("Secondary library location on external drive.")
+                Text("Location for the external media library. Files imported with 'External Drive' storage will be stored here.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

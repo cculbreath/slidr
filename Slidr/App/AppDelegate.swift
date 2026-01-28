@@ -112,4 +112,48 @@ extension Notification.Name {
     static let importFiles = Notification.Name("com.slidr.importFiles")
     static let resetThumbnailSize = Notification.Name("com.slidr.resetThumbnailSize")
     static let revealInFinder = Notification.Name("com.slidr.revealInFinder")
+    static let toggleGridFilenames = Notification.Name("com.slidr.toggleGridFilenames")
+    static let toggleGridCaptions = Notification.Name("com.slidr.toggleGridCaptions")
+
+    static let locateExternalLibrary = Notification.Name("com.slidr.locateExternalLibrary")
+}
+
+// MARK: - Focused Values
+
+struct ImportDestinationKey: FocusedValueKey {
+    typealias Value = Binding<StorageLocation>
+}
+
+struct GridFilenamesKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+struct GridCaptionsKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+struct AnimateGIFsKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+extension FocusedValues {
+    var importDestination: Binding<StorageLocation>? {
+        get { self[ImportDestinationKey.self] }
+        set { self[ImportDestinationKey.self] = newValue }
+    }
+
+    var gridShowFilenames: Binding<Bool>? {
+        get { self[GridFilenamesKey.self] }
+        set { self[GridFilenamesKey.self] = newValue }
+    }
+
+    var gridShowCaptions: Binding<Bool>? {
+        get { self[GridCaptionsKey.self] }
+        set { self[GridCaptionsKey.self] = newValue }
+    }
+
+    var animateGIFs: Binding<Bool>? {
+        get { self[AnimateGIFsKey.self] }
+        set { self[AnimateGIFsKey.self] = newValue }
+    }
 }
