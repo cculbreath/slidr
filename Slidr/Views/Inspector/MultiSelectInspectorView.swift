@@ -7,6 +7,7 @@ struct MultiSelectInspectorView: View {
     let playlistService: PlaylistService
 
     @State private var newTag: String = ""
+    @State private var sourceText: String = ""
     @State private var showDeleteConfirmation = false
 
     var body: some View {
@@ -24,6 +25,11 @@ struct MultiSelectInspectorView: View {
 
                 // Tag section
                 tagSection
+
+                Divider()
+
+                // Source section
+                sourceSection
 
                 Divider()
 
@@ -176,6 +182,33 @@ struct MultiSelectInspectorView: View {
         guard !tag.isEmpty else { return }
         items.forEach { $0.addTag(tag) }
         newTag = ""
+    }
+
+    // MARK: - Source Section
+
+    private var sourceSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Set Source")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                TextField("Attribution or origin", text: $sourceText)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { setSourceForAll() }
+
+                Button("Set") { setSourceForAll() }
+                    .disabled(sourceText.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+    }
+
+    private func setSourceForAll() {
+        let source = sourceText.trimmingCharacters(in: .whitespaces)
+        guard !source.isEmpty else { return }
+        items.forEach { $0.source = source }
+        sourceText = ""
     }
 
     // MARK: - Playlist Section

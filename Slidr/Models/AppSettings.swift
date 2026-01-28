@@ -60,10 +60,26 @@ final class AppSettings {
     var gridShowFilenames: Bool
     var gridShowCaptionsRaw: Bool?
     var gridVideoHoverScrub: Bool
+    var gridMediaTypeFilterRaw: String?
 
     var gridShowCaptions: Bool {
         get { gridShowCaptionsRaw ?? true }
         set { gridShowCaptionsRaw = newValue }
+    }
+
+    var gridMediaTypeFilter: Set<MediaType> {
+        get {
+            guard let raw = gridMediaTypeFilterRaw else { return [] }
+            let types = raw.split(separator: ",").compactMap { MediaType(rawValue: String($0)) }
+            return Set(types)
+        }
+        set {
+            if newValue.isEmpty {
+                gridMediaTypeFilterRaw = nil
+            } else {
+                gridMediaTypeFilterRaw = newValue.map(\.rawValue).sorted().joined(separator: ",")
+            }
+        }
     }
 
     var captionDisplayMode: CaptionDisplayMode {
@@ -143,6 +159,7 @@ final class AppSettings {
         self.gridShowFilenames = false
         self.gridShowCaptionsRaw = true
         self.gridVideoHoverScrub = true
+        self.gridMediaTypeFilterRaw = nil
 
         // Verification defaults
         self.verifyFilesOnLaunch = false

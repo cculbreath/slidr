@@ -123,6 +123,7 @@ struct SidebarView: View {
                 }
                 .buttonStyle(.plain)
             }
+            .padding(.trailing, 8)
         }
     }
 
@@ -180,6 +181,7 @@ struct SidebarView: View {
                 }
                 .buttonStyle(.plain)
             }
+            .padding(.trailing, 8)
         }
     }
 

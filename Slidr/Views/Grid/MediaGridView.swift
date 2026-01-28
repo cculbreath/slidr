@@ -36,6 +36,7 @@ struct MediaGridView: View {
                 itemsEmpty: items.isEmpty,
                 onImport: importFiles,
                 onToggleGIFAnimation: toggleGIFAnimation,
+                onToggleHoverScrub: toggleHoverScrub,
                 onToggleCaptions: toggleGridCaptions,
                 onToggleFilenames: toggleGridFilenames,
                 onStartSlideshow: startSlideshow
@@ -58,15 +59,15 @@ struct MediaGridView: View {
                 viewModel.moveSelection(direction: direction, in: displayedItems, columns: columns)
             }
         )
-        .confirmationDialog(
-            "Move \(itemsToDelete.count) item\(itemsToDelete.count == 1 ? "" : "s") to Trash?",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
+        .alert(
+            "Move to Trash?",
+            isPresented: $showDeleteConfirmation
         ) {
             Button("Move to Trash", role: .destructive) {
                 performDelete(itemsToDelete)
                 itemsToDelete = []
             }
+            .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) {
                 itemsToDelete = []
             }
@@ -125,6 +126,7 @@ struct MediaGridView: View {
             .animation(.easeInOut(duration: 0.25), value: viewModel.thumbnailSize)
             .focusable()
             .focused($isFocused)
+            .focusEffectDisabled()
             .onAppear {
                 isFocused = true
                 if let selectedID = viewModel.selectedItems.first {
@@ -271,6 +273,16 @@ struct MediaGridView: View {
         let selectedItems = displayedItems.filter { viewModel.selectedItems.contains($0.id) }
         guard !selectedItems.isEmpty else { return }
 
+        // In a manual playlist: remove from playlist instead of deleting
+        if let playlist = activePlaylist, playlist.isManualPlaylist {
+            for item in selectedItems {
+                playlistService.removeItem(item, from: playlist)
+            }
+            viewModel.clearSelection()
+            return
+        }
+
+        // In All Media or smart playlist: move to trash with confirmation
         if settings?.confirmBeforeDelete == true {
             itemsToDelete = selectedItems
             showDeleteConfirmation = true
@@ -317,6 +329,10 @@ struct MediaGridView: View {
 
     private func toggleGridCaptions() {
         withSettings { $0.gridShowCaptions.toggle() }
+    }
+
+    private func toggleHoverScrub() {
+        withSettings { $0.gridVideoHoverScrub.toggle() }
     }
 
     private func withSettings(_ action: (AppSettings) -> Void) {

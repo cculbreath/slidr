@@ -8,6 +8,7 @@ struct MediaInspectorView: View {
 
     @State private var isCopyingToLibrary = false
     @State private var showCopySuccess = false
+    @State private var newTag: String = ""
 
     var body: some View {
         ScrollView {
@@ -19,6 +20,16 @@ struct MediaInspectorView: View {
 
                 // Caption
                 CaptionEditorView(caption: $item.caption)
+
+                Divider()
+
+                // Source/Attribution
+                sourceSection
+
+                Divider()
+
+                // Tags
+                tagsSection
 
                 Divider()
 
@@ -115,6 +126,62 @@ struct MediaInspectorView: View {
             .buttonStyle(.bordered)
             .tint(item.isFavorite ? .pink : nil)
         }
+    }
+
+    // MARK: - Source Section
+
+    private var sourceSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Source")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            TextField("Attribution or origin", text: Binding(
+                get: { item.source ?? "" },
+                set: { item.source = $0.isEmpty ? nil : $0 }
+            ))
+            .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    // MARK: - Tags Section
+
+    private var tagsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Tags")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            // Existing tags
+            if !item.tags.isEmpty {
+                FlowLayout(spacing: 4) {
+                    ForEach(item.tags, id: \.self) { tag in
+                        TagChip(tag: tag) {
+                            item.removeTag(tag)
+                        }
+                    }
+                }
+            }
+
+            // Add new tag
+            HStack {
+                TextField("Add tag", text: $newTag)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { addTag() }
+
+                Button("Add") { addTag() }
+                    .disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+    }
+
+    private func addTag() {
+        let tag = newTag.trimmingCharacters(in: .whitespaces)
+        guard !tag.isEmpty else { return }
+        item.addTag(tag)
+        newTag = ""
     }
 
     // MARK: - Actions

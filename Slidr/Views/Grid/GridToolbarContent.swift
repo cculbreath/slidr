@@ -7,6 +7,7 @@ struct GridToolbarContent: ToolbarContent {
     let itemsEmpty: Bool
     let onImport: () -> Void
     let onToggleGIFAnimation: () -> Void
+    let onToggleHoverScrub: () -> Void
     let onToggleCaptions: () -> Void
     let onToggleFilenames: () -> Void
     let onStartSlideshow: () -> Void
@@ -32,33 +33,48 @@ struct GridToolbarContent: ToolbarContent {
 
         // MARK: - Secondary Actions (center-left)
         ToolbarItem(placement: .secondaryAction) {
-            Picker("Size", selection: $viewModel.thumbnailSize) {
-                Label("Large", systemImage: "square.grid.2x2").tag(ThumbnailSize.large)
-                Label("Medium", systemImage: "square.grid.3x2").tag(ThumbnailSize.medium)
-                Label("Small", systemImage: "square.grid.3x3").tag(ThumbnailSize.small)
+            LabeledContent("Thumbnail Size") {
+                Picker("Size", selection: $viewModel.thumbnailSize) {
+                    Label("Large", systemImage: "square.grid.2x2").tag(ThumbnailSize.large)
+                    Label("Medium", systemImage: "square.grid.3x2").tag(ThumbnailSize.medium)
+                    Label("Small", systemImage: "square.grid.3x3").tag(ThumbnailSize.small)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
         }
 
-        ToolbarItem(placement: .secondaryAction) {
-            showMenu
-        }
-
+        // Hover behavior toggles
         ToolbarItem(placement: .secondaryAction) {
             Button {
                 onToggleGIFAnimation()
             } label: {
                 Label(
-                    settings?.animateGIFsInGrid == true ? "GIFs: On" : "GIFs: Off",
+                    settings?.animateGIFsInGrid == true ? "Pause Gifs" : "Play Gifs",
                     image: settings?.animateGIFsInGrid == true ? "custom.gifs.pause" : "custom.gifs.play"
                 )
+                .foregroundStyle(settings?.animateGIFsInGrid == true ? Color.accentColor : .primary)
             }
             .help("Toggle GIF animation in grid")
         }
 
+        ToolbarItem(placement: .secondaryAction) {
+            Button {
+                onToggleHoverScrub()
+            } label: {
+                Label(
+                    settings?.gridVideoHoverScrub == true ? "Disable Scrubbing" : "Enable Scrubbing",
+                    systemImage: "camera.metering.multispot"
+                )
+                .foregroundStyle(settings?.gridVideoHoverScrub == true ? Color.accentColor : .primary)
+            }
+            .help("Toggle video scrub on hover")
+        }
+
+        // View options
         ToolbarItemGroup(placement: .secondaryAction) {
+            showMenu
             filterMenu
             sortMenu
         }
@@ -147,3 +163,4 @@ struct GridToolbarContent: ToolbarContent {
         }
     }
 }
+

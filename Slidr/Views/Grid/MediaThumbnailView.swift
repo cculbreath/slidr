@@ -36,6 +36,10 @@ struct MediaThumbnailView: View {
         settings?.gridShowCaptions ?? true
     }
 
+    private var hoverEnabled: Bool {
+        settings?.gridVideoHoverScrub ?? true
+    }
+
     private var isImageHovering: Bool {
         hoveredItemID == item.id
     }
@@ -117,12 +121,21 @@ struct MediaThumbnailView: View {
             }
         }
         .shadow(color: .black.opacity(isSelected ? 0.3 : 0.1), radius: isSelected ? 8 : 4)
-        .scaleEffect(hoverState.isActive ? 1.15 : 1.0)
+        .scaleEffect(hoverEnabled && hoverState.isActive ? 1.15 : 1.0)
         .animation(.easeInOut(duration: 0.15), value: hoverState.isActive)
+        .onChange(of: hoverEnabled) { _, enabled in
+            if !enabled {
+                hoverState = .idle
+                if hoveredItemID == item.id {
+                    hoveredItemID = nil
+                }
+            }
+        }
         .anchorPreference(key: HoverCellAnchorKey.self, value: .bounds) { anchor in
             isImageHovering ? anchor : nil
         }
         .onContinuousHover { phase in
+            guard hoverEnabled else { return }
             switch phase {
             case .active(let location):
                 if item.isVideo {

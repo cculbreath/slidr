@@ -15,7 +15,7 @@ struct SlidrApp: App {
 
     init() {
         // Initialize SwiftData container with versioned schema and migration plan
-        let schema = Schema(versionedSchema: SlidrSchemaV4.self)
+        let schema = Schema(versionedSchema: SlidrSchemaV5.self)
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let slidrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
 
@@ -104,7 +104,8 @@ struct SlidrApp: App {
                 .environment(hoverVideoPlayer)
         }
         .modelContainer(modelContainer)
-        .windowToolbarStyle(.expanded)
+        .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(replacing: .help) {
                 Button("Slidr Help") {
@@ -264,14 +265,14 @@ struct SlidrApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
 
-        // DEBUG: Commenting out playlist editor to test if it causes freeze
-        // WindowGroup("Edit Playlist", for: UUID.self) { $playlistID in
-        //     if let playlistID, let playlist = playlistService.playlist(withID: playlistID) {
-        //         PlaylistEditorView(playlist: playlist)
-        //             .environment(playlistService)
-        //     }
-        // }
-        // .modelContainer(modelContainer)
+        WindowGroup("Edit Playlist", for: UUID.self) { $playlistID in
+            if let playlistID, let playlist = playlistService.playlist(withID: playlistID) {
+                PlaylistEditorView(playlist: playlist)
+                    .environment(playlistService)
+            }
+        }
+        .modelContainer(modelContainer)
+        .windowResizability(.contentSize)
         // .windowResizability(.contentSize)
     }
 }

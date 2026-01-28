@@ -65,10 +65,15 @@ struct ContentView: View {
                 if let settings = settingsQuery.first {
                     gridViewModel.sortOrder = settings.defaultSortOrder
                     gridViewModel.sortAscending = settings.defaultSortAscending
+                    gridViewModel.mediaTypeFilter = settings.gridMediaTypeFilter
                 }
                 refreshItems()
                 let count = settingsQuery.first?.scrubThumbnailCount ?? 100
                 library.backgroundGenerateMissingScrubThumbnails(count: count)
+            }
+            .onChange(of: gridViewModel.mediaTypeFilter) { _, newFilter in
+                refreshItems()
+                settingsQuery.first?.gridMediaTypeFilter = newFilter
             }
     }
 
@@ -81,7 +86,8 @@ struct ContentView: View {
 
     private var navigationViewWithNotifications: some View {
         navigationView
-            .focusedSceneValue(\.importDestination, importDestinationBinding)
+            // DEBUG: Commenting out all focusedSceneValue to test
+            // .focusedSceneValue(\.importDestination, importDestinationBinding)
             .onReceive(NotificationCenter.default.publisher(for: .toggleInspector)) { _ in
                 showInspector.toggle()
             }
@@ -127,14 +133,18 @@ struct ContentView: View {
             detailContent
         }
         .animation(.easeInOut(duration: 0.25), value: previewItem != nil)
-        .searchable(text: $gridViewModel.searchText, prompt: "Search media")
-        // DEBUG: Commenting out .inspector() entirely to test if it causes freeze
-        // .inspector(isPresented: $showInspector) {
-        //     inspectorContent
-        // }
-        .focusedSceneValue(\.gridShowFilenames, gridFilenamesBinding)
-        .focusedSceneValue(\.gridShowCaptions, gridCaptionsBinding)
-        .focusedSceneValue(\.animateGIFs, animateGIFsBinding)
+        .searchable(
+            text: $gridViewModel.searchText,
+            placement: .sidebar,
+            prompt: "Search media"
+        )
+        .inspector(isPresented: $showInspector) {
+            inspectorContent
+        }
+        // DEBUG: focusedSceneValue with SwiftData bindings causes infinite loop - need different approach
+        // .focusedSceneValue(\.gridShowFilenames, gridFilenamesBinding)
+        // .focusedSceneValue(\.gridShowCaptions, gridCaptionsBinding)
+        // .focusedSceneValue(\.animateGIFs, animateGIFsBinding)
         .dropZone(isTargeted: $isDropTargeted) { urls in
             handleDrop(urls: urls)
         }
@@ -339,13 +349,13 @@ struct ContentView: View {
 
     @ViewBuilder
     private var actualInspectorContent: some View {
-//        if gridViewModel.selectedItems.count > 1 {
-//            let selectedMediaItems = cachedItems.filter { gridViewModel.selectedItems.contains($0.id) }
-//            MultiSelectInspectorView(items: selectedMediaItems, library: library, playlistService: playlistService)
-//        } else if let selectedID = gridViewModel.selectedItems.first,
-//                  let item = cachedItems.first(where: { $0.id == selectedID }) {
-//            MediaInspectorView(item: item)
-//        } else {
+        if gridViewModel.selectedItems.count > 1 {
+            let selectedMediaItems = cachedItems.filter { gridViewModel.selectedItems.contains($0.id) }
+            MultiSelectInspectorView(items: selectedMediaItems, library: library, playlistService: playlistService)
+        } else if let selectedID = gridViewModel.selectedItems.first,
+                  let item = cachedItems.first(where: { $0.id == selectedID }) {
+            MediaInspectorView(item: item)
+        } else {
             VStack {
                 Image(systemName: "sidebar.right")
                     .font(.largeTitle)
@@ -354,6 +364,6 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
             .frame(minWidth: 280)
-//        }
+        }
     }
 }
