@@ -16,3 +16,19 @@ extension Color {
         self.init(red: r, green: g, blue: b)
     }
 }
+
+// MARK: - Toolbar Background Modifier
+
+struct ToolbarBackgroundModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+                .scrollEdgeEffectStyle(.soft, for: .top)
+        } else if #available(macOS 15.0, *) {
+            content.toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        } else {
+            content.toolbarBackground(.visible, for: .windowToolbar)
+        }
+    }
+}

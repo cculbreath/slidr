@@ -72,9 +72,9 @@ struct MediaPreviewView: View {
     @ViewBuilder
     private var mediaContent: some View {
         if currentItem.isVideo {
-            VideoPlayerView(
+            VideoPlayerView	(
                 item: currentItem,
-                libraryRoot: library.libraryRoot,
+                fileURL: library.absoluteURL(for: currentItem),
                 isPlaying: $isPlaying,
                 volume: $volume,
                 isMuted: $isMuted,

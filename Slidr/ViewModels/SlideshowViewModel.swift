@@ -39,11 +39,12 @@ enum VideoPlayDuration: Hashable {
 final class SlideshowViewModel {
     // MARK: - Configuration
     var slideDuration: TimeInterval = 5.0
-    var isPlaying: Bool = true
+    var isPlaying: Bool = false
     var loop: Bool = true
     var videoPlayDuration: VideoPlayDuration = .fixed(30)
     var randomizeClipLocation: Bool = false
     var playFullGIF: Bool = false
+    var showCaptions: Bool = false
 
     // MARK: - Video Configuration
     var volume: Float = 1.0
@@ -313,6 +314,8 @@ final class SlideshowViewModel {
         playFullGIF = settings.playFullGIF
         volume = settings.defaultVolume
         isMuted = settings.muteByDefault
+        showCaptions = settings.showCaptions
+        showTimerBar = settings.showTimerBar
     }
 
     func persistToSettings() {
@@ -325,6 +328,8 @@ final class SlideshowViewModel {
         settings.playFullGIF = playFullGIF
         settings.defaultVolume = volume
         settings.muteByDefault = isMuted
+        settings.showCaptions = showCaptions
+        settings.showTimerBar = showTimerBar
     }
 
     func configure(library: MediaLibrary) {

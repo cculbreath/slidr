@@ -32,7 +32,7 @@ struct VideoHoverView: View {
                 AsyncThumbnailImage(item: item, size: size)
                     .overlay {
                         ProgressView()
-                            .scaleEffect(0.5)
+                            .controlSize(.small)
                     }
             }
 

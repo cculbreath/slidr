@@ -10,7 +10,6 @@ struct SlideshowView: View {
     @FocusState private var isFocused: Bool
     @State private var showControls = false
     @State private var hideControlsTask: Task<Void, Never>?
-    @State private var showCaptions: Bool = false
     @State private var showVideoCaptions: Bool = false
     @State private var videoCaptionTask: Task<Void, Never>?
     @State private var showInfoOverlay: Bool = false
@@ -19,7 +18,10 @@ struct SlideshowView: View {
     @State private var isFullscreen: Bool = false
     @State private var showTimerPopover: Bool = false
     @State private var showVideoPopover: Bool = false
-    @State private var isHoveringControls: Bool = false
+    @State private var lastMouseLocation: CGPoint = .zero
+    @State private var controlsOffset: CGSize = .zero
+    @State private var controlsDragOffset: CGSize = .zero
+    @State private var isDraggingControls: Bool = false
 
     private var settings: AppSettings? { settingsQuery.first }
 
@@ -42,7 +44,7 @@ struct SlideshowView: View {
     }
 
     private var shouldShowCaptions: Bool {
-        guard showCaptions else { return false }
+        guard viewModel.showCaptions else { return false }
         if viewModel.currentItemIsVideo {
             return showVideoCaptions
         }
@@ -54,7 +56,7 @@ struct SlideshowView: View {
             .focusable()
             .focused($isFocused)
             .modifier(SlideshowKeyboardModifier(viewModel: viewModel, onDismiss: onDismiss, goNext: goNext, goPrevious: goPrevious))
-            .modifier(CaptionKeys(showCaptions: $showCaptions))
+            .modifier(CaptionKeys(viewModel: viewModel))
             .modifier(RatingKeys(viewModel: viewModel, ratingFeedback: $ratingFeedback))
             .modifier(ExtraNavigationKeys(
                 viewModel: viewModel,
@@ -77,10 +79,12 @@ struct SlideshowView: View {
             .onChange(of: viewModel.volume) { _, _ in viewModel.persistToSettings() }
             .onChange(of: viewModel.isMuted) { _, _ in viewModel.persistToSettings() }
             .onChange(of: viewModel.isRandomMode) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.showTimerBar) { _, _ in viewModel.persistToSettings() }
             .onChange(of: viewModel.currentIndex) { _, _ in
                 startVideoCaptionTimer()
             }
-            .onChange(of: showCaptions) { _, newValue in
+            .onChange(of: viewModel.showCaptions) { _, newValue in
+                viewModel.persistToSettings()
                 if newValue {
                     startVideoCaptionTimer()
                 } else {
@@ -93,6 +97,12 @@ struct SlideshowView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in
                 isFullscreen = false
+            }
+            .onChange(of: showTimerPopover) { _, isOpen in
+                if !isOpen { showControlsTemporarily() }
+            }
+            .onChange(of: showVideoPopover) { _, isOpen in
+                if !isOpen { showControlsTemporarily() }
             }
     }
 
@@ -183,9 +193,16 @@ struct SlideshowView: View {
         .onAppear {
             showControlsTemporarily()
         }
-        .onHover { hovering in
-            if hovering {
-                showControlsTemporarily()
+        .onContinuousHover { phase in
+            switch phase {
+            case .active(let location):
+                // Only trigger if mouse actually moved
+                if location != lastMouseLocation {
+                    lastMouseLocation = location
+                    showControlsTemporarily()
+                }
+            case .ended:
+                break
             }
         }
     }
@@ -214,7 +231,7 @@ struct SlideshowView: View {
         if item.isVideo {
             VideoPlayerView(
                 item: item,
-                libraryRoot: library.libraryRoot,
+                fileURL: library.absoluteURL(for: item),
                 isPlaying: $viewModel.isPlaying,
                 volume: $viewModel.volume,
                 isMuted: $viewModel.isMuted,
@@ -236,20 +253,37 @@ struct SlideshowView: View {
             if viewModel.currentItemIsVideo {
                 videoScrubber
             }
-            bottomControls
+            draggableBottomControls
         }
         .foregroundStyle(.white)
         .transition(.opacity)
         .animation(nil, value: viewModel.currentIndex)
-        .onHover { hovering in
-            isHoveringControls = hovering
-            if hovering {
-                hideControlsTask?.cancel()
-                showControls = true
-            } else {
-                showControlsTemporarily()
-            }
-        }
+    }
+
+    @ViewBuilder
+    private var draggableBottomControls: some View {
+        bottomControls
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        isDraggingControls = true
+                        hideControlsTask?.cancel()
+                        controlsDragOffset = value.translation
+                    }
+                    .onEnded { value in
+                        isDraggingControls = false
+                        controlsOffset = CGSize(
+                            width: controlsOffset.width + value.translation.width,
+                            height: controlsOffset.height + value.translation.height
+                        )
+                        controlsDragOffset = .zero
+                        scheduleHideControls()
+                    }
+            )
+            .offset(
+                x: controlsOffset.width + controlsDragOffset.width,
+                y: controlsOffset.height + controlsDragOffset.height
+            )
     }
 
     @ViewBuilder
@@ -508,11 +542,11 @@ struct SlideshowView: View {
                 .help("Info (I)")
 
                 Button {
-                    showCaptions.toggle()
+                    viewModel.showCaptions.toggle()
                 } label: {
-                    Image(systemName: showCaptions ? "text.bubble.fill" : "text.bubble")
+                    Image(systemName: viewModel.showCaptions ? "text.bubble.fill" : "text.bubble")
                         .font(.title)
-                        .toggleGlow(showCaptions)
+                        .toggleGlow(viewModel.showCaptions)
                 }
                 .help("Toggle Captions (C)")
             }
@@ -547,13 +581,21 @@ struct SlideshowView: View {
         .padding()
     }
 
+    private var isAnyPopoverOpen: Bool {
+        showTimerPopover || showVideoPopover
+    }
+
     private func showControlsTemporarily() {
-        hideControlsTask?.cancel()
         showControls = true
-        guard !isHoveringControls else { return }
+        scheduleHideControls()
+    }
+
+    private func scheduleHideControls() {
+        hideControlsTask?.cancel()
+        guard !isAnyPopoverOpen && !isDraggingControls else { return }
         hideControlsTask = Task {
-            try? await Task.sleep(for: .seconds(3))
-            if !Task.isCancelled && !isHoveringControls {
+            try? await Task.sleep(for: .seconds(2))
+            if !Task.isCancelled && !isAnyPopoverOpen && !isDraggingControls {
                 showControls = false
             }
         }
@@ -572,7 +614,7 @@ struct SlideshowView: View {
     private func startVideoCaptionTimer() {
         videoCaptionTask?.cancel()
 
-        guard showCaptions else {
+        guard viewModel.showCaptions else {
             showVideoCaptions = false
             return
         }
@@ -776,12 +818,12 @@ private struct VolumeKeys: ViewModifier {
 }
 
 private struct CaptionKeys: ViewModifier {
-    @Binding var showCaptions: Bool
+    @Bindable var viewModel: SlideshowViewModel
 
     func body(content: Content) -> some View {
         content.onKeyPress(phases: .down) { press in
             if press.key == KeyEquivalent("c") {
-                showCaptions.toggle()
+                viewModel.showCaptions.toggle()
                 return .handled
             }
             return .ignored

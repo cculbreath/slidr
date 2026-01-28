@@ -3,7 +3,7 @@ import AVKit
 
 struct VideoPlayerView: View {
     let item: MediaItem
-    let libraryRoot: URL
+    let fileURL: URL
     @Binding var isPlaying: Bool
     @Binding var volume: Float
     @Binding var isMuted: Bool
@@ -49,7 +49,6 @@ struct VideoPlayerView: View {
     }
 
     private func setupPlayer() {
-        let fileURL = libraryRoot.appendingPathComponent(item.relativePath)
         let playerItem = AVPlayerItem(url: fileURL)
         let newPlayer = AVPlayer(playerItem: playerItem)
 

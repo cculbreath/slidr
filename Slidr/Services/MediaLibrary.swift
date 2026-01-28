@@ -15,6 +15,10 @@ final class MediaLibrary {
     private(set) var isExternalDriveConnected = false
     private(set) var externalItemCount = 0
 
+    // Import progress
+    private(set) var importProgress: ImportProgress?
+    private(set) var importCancelled = false
+
     // MARK: - Dependencies
     let modelContainer: ModelContainer
     let thumbnailCache: ThumbnailCache
@@ -102,16 +106,31 @@ final class MediaLibrary {
 
     // MARK: - Import
 
+    func cancelImport() {
+        importCancelled = true
+        isLoading = false
+        importProgress = nil
+        Logger.library.info("Import cancelled by user")
+    }
+
     func importFiles(urls: [URL], options: ImportOptions = .default) async throws -> ImportResult {
         isLoading = true
+        importCancelled = false
+        importProgress = ImportProgress(currentItem: 0, totalItems: urls.count, currentFilename: "", phase: .importing)
         defer {
             isLoading = false
+            importProgress = nil
             updateItemCount()
             updateExternalItemCount()
         }
 
         let importer = MediaImporter(libraryRoot: libraryRoot, externalLibraryRoot: externalLibraryRoot, modelContext: modelContainer.mainContext, options: options)
-        let result = try await importer.importFiles(urls: urls)
+        let result = try await importer.importFiles(urls: urls) { [weak self] progress in
+            Task { @MainActor in
+                guard self?.isLoading == true else { return }
+                self?.importProgress = progress
+            }
+        }
 
         if !result.imported.isEmpty {
             lastImportDate = Date()
@@ -133,36 +152,76 @@ final class MediaLibrary {
 
     func importFolders(urls: [URL], options: ImportOptions = .default) async throws -> (result: ImportResult, folderGroups: [(name: String, items: [MediaItem])]) {
         isLoading = true
+        importCancelled = false
         defer {
             isLoading = false
+            importProgress = nil
             updateItemCount()
             updateExternalItemCount()
         }
 
-        var combinedResult = ImportResult()
-        var folderGroups: [(name: String, items: [MediaItem])] = []
+        // First pass: collect all files to get total count
+        var allFolderFiles: [(name: String, fileURLs: [URL])] = []
         var looseFiles: [URL] = []
+        var totalFileCount = 0
 
         for url in urls {
             var isDir: ObjCBool = false
             if fileManager.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
                 let mediaByFolder = collectMediaByFolder(in: url)
                 for (folderName, fileURLs) in mediaByFolder {
-                    let importer = MediaImporter(libraryRoot: libraryRoot, externalLibraryRoot: externalLibraryRoot, modelContext: modelContainer.mainContext, options: options)
-                    let folderResult = try await importer.importFiles(urls: fileURLs)
-                    combinedResult.merge(folderResult)
-                    if !folderResult.imported.isEmpty {
-                        folderGroups.append((name: folderName, items: folderResult.imported))
-                    }
+                    allFolderFiles.append((name: folderName, fileURLs: fileURLs))
+                    totalFileCount += fileURLs.count
                 }
             } else {
                 looseFiles.append(url)
             }
         }
+        totalFileCount += looseFiles.count
 
+        importProgress = ImportProgress(currentItem: 0, totalItems: totalFileCount, currentFilename: "", phase: .importing)
+
+        var combinedResult = ImportResult()
+        var folderGroups: [(name: String, items: [MediaItem])] = []
+        var processedCount = 0
+
+        // Import folder files
+        for (folderName, fileURLs) in allFolderFiles {
+            let importer = MediaImporter(libraryRoot: libraryRoot, externalLibraryRoot: externalLibraryRoot, modelContext: modelContainer.mainContext, options: options)
+            let baseCount = processedCount
+            let folderResult = try await importer.importFiles(urls: fileURLs) { [weak self] progress in
+                Task { @MainActor in
+                    guard self?.isLoading == true else { return }
+                    self?.importProgress = ImportProgress(
+                        currentItem: baseCount + progress.currentItem,
+                        totalItems: totalFileCount,
+                        currentFilename: progress.currentFilename,
+                        phase: progress.phase
+                    )
+                }
+            }
+            combinedResult.merge(folderResult)
+            processedCount += fileURLs.count
+            if !folderResult.imported.isEmpty {
+                folderGroups.append((name: folderName, items: folderResult.imported))
+            }
+        }
+
+        // Import loose files
         if !looseFiles.isEmpty {
             let importer = MediaImporter(libraryRoot: libraryRoot, externalLibraryRoot: externalLibraryRoot, modelContext: modelContainer.mainContext, options: options)
-            let looseResult = try await importer.importFiles(urls: looseFiles)
+            let baseCount = processedCount
+            let looseResult = try await importer.importFiles(urls: looseFiles) { [weak self] progress in
+                Task { @MainActor in
+                    guard self?.isLoading == true else { return }
+                    self?.importProgress = ImportProgress(
+                        currentItem: baseCount + progress.currentItem,
+                        totalItems: totalFileCount,
+                        currentFilename: progress.currentFilename,
+                        phase: progress.phase
+                    )
+                }
+            }
             combinedResult.merge(looseResult)
         }
 

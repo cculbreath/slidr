@@ -23,6 +23,9 @@ struct MediaGridView: View {
 
     private var settings: AppSettings? { settingsQuery.first }
     private var displayedItems: [MediaItem] { viewModel.filteredItems(items) }
+    private var allTags: [String] {
+        Array(Set(items.flatMap(\.tags))).sorted()
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,6 +37,7 @@ struct MediaGridView: View {
                 viewModel: viewModel,
                 settings: settings,
                 itemsEmpty: items.isEmpty,
+                allTags: allTags,
                 onImport: importFiles,
                 onToggleGIFAnimation: toggleGIFAnimation,
                 onToggleHoverScrub: toggleHoverScrub,
@@ -42,6 +46,7 @@ struct MediaGridView: View {
                 onStartSlideshow: startSlideshow
             )
         }
+        .modifier(ToolbarBackgroundModifier())
         .gridKeyboardHandling(
             viewModel: viewModel,
             displayedItems: displayedItems,
@@ -351,14 +356,7 @@ struct MediaGridView: View {
     // MARK: - Import
 
     private func importFiles() {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.image, .gif, .movie, .video, .mpeg4Movie, .quickTimeMovie, .avi]
-
-        if panel.runModal() == .OK {
-            Task { _ = try? await library.importFiles(urls: panel.urls) }
-        }
+        NotificationCenter.default.post(name: .importFiles, object: nil)
     }
 }
 

@@ -12,6 +12,11 @@ final class GridViewModel {
 
     // MARK: - Filter
     var mediaTypeFilter: Set<MediaType> = []
+    var tagFilter: Set<String> = []
+
+    // Rating filter: nil means include all, empty set with enabled means show nothing
+    var ratingFilterEnabled: Bool = false
+    var ratingFilter: Set<Int> = [] // 0-5, where 0 means "no rating"
 
     // MARK: - Search
     var searchText: String = ""
@@ -71,6 +76,24 @@ final class GridViewModel {
 
         if !mediaTypeFilter.isEmpty {
             result = result.filter { mediaTypeFilter.contains($0.mediaType) }
+        }
+
+        if !tagFilter.isEmpty {
+            result = result.filter { item in
+                tagFilter.contains { tag in item.hasTag(tag) }
+            }
+        }
+
+        if ratingFilterEnabled && !ratingFilter.isEmpty {
+            result = result.filter { item in
+                let itemRating = item.rating ?? 0
+                // 0 in filter means "no rating" (nil or 0)
+                if ratingFilter.contains(0) && (item.rating == nil || item.rating == 0) {
+                    return true
+                }
+                // 1-5 means that specific rating
+                return ratingFilter.contains(itemRating)
+            }
         }
 
         guard !searchText.isEmpty else { return result }

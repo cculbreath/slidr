@@ -17,23 +17,20 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .frame(minWidth: 200)
-        // DEBUG: Commenting out confirmationDialog to test if SwiftData model access causes freeze
-        // .confirmationDialog(
-        //     "Delete Playlist?",
-        //     isPresented: $viewModel.showDeleteConfirmation,
-        //     titleVisibility: .visible
-        // ) {
-        //     Button("Delete", role: .destructive) {
-        //         viewModel.confirmDelete()
-        //     }
-        //     Button("Cancel", role: .cancel) {
-        //         viewModel.cancelDelete()
-        //     }
-        // } message: {
-        //     if let playlist = viewModel.playlistToDelete {
-        //         Text("Are you sure you want to delete \"\(playlist.name)\"?")
-        //     }
-        // }
+        .confirmationDialog(
+            "Delete Playlist?",
+            isPresented: $viewModel.showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                viewModel.confirmDelete()
+            }
+            Button("Cancel", role: .cancel) {
+                viewModel.cancelDelete()
+            }
+        } message: {
+            Text("Are you sure you want to delete \"\(viewModel.playlistToDeleteName)\"?")
+        }
         .onAppear {
             viewModel.configure(with: playlistService)
         }

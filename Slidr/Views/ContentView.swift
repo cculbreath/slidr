@@ -18,6 +18,12 @@ struct ContentView: View {
     @State private var previewItem: MediaItem?
     @State private var cachedItems: [MediaItem] = []
 
+    // Local state for menu bindings (avoids SwiftData infinite loop)
+    @State private var importDestination: StorageLocation = .local
+    @State private var gridShowFilenames: Bool = false
+    @State private var gridShowCaptions: Bool = true
+    @State private var animateGIFs: Bool = false
+
     var body: some View {
         ZStack {
             mainContent
@@ -35,6 +41,18 @@ struct ContentView: View {
             guard newIndex >= 0, newIndex < active.count else { return }
             gridViewModel.selectedItems = [active[newIndex].id]
         }
+        .progressOverlay(
+            isPresented: library.importProgress != nil,
+            title: "Importing",
+            subtitle: importProgressSubtitle,
+            progress: library.importProgress?.overallProgress,
+            onCancel: { library.cancelImport() }
+        )
+    }
+
+    private var importProgressSubtitle: String? {
+        guard let progress = library.importProgress else { return nil }
+        return "\(progress.currentItem + 1) of \(progress.totalItems): \(progress.currentFilename)"
     }
 
     private var mainContent: some View {
@@ -66,6 +84,11 @@ struct ContentView: View {
                     gridViewModel.sortOrder = settings.defaultSortOrder
                     gridViewModel.sortAscending = settings.defaultSortAscending
                     gridViewModel.mediaTypeFilter = settings.gridMediaTypeFilter
+                    // Initialize menu state from settings
+                    importDestination = settings.defaultImportLocation
+                    gridShowFilenames = settings.gridShowFilenames
+                    gridShowCaptions = settings.gridShowCaptions
+                    animateGIFs = settings.animateGIFsInGrid
                 }
                 refreshItems()
                 let count = settingsQuery.first?.scrubThumbnailCount ?? 100
@@ -77,17 +100,24 @@ struct ContentView: View {
             }
     }
 
-    private var importDestinationBinding: Binding<StorageLocation> {
-        Binding(
-            get: { settingsQuery.first?.defaultImportLocation ?? .local },
-            set: { settingsQuery.first?.defaultImportLocation = $0 }
-        )
-    }
-
     private var navigationViewWithNotifications: some View {
         navigationView
-            // DEBUG: Commenting out all focusedSceneValue to test
-            // .focusedSceneValue(\.importDestination, importDestinationBinding)
+            .focusedSceneValue(\.importDestination, $importDestination)
+            .focusedSceneValue(\.gridShowFilenames, $gridShowFilenames)
+            .focusedSceneValue(\.gridShowCaptions, $gridShowCaptions)
+            .focusedSceneValue(\.animateGIFs, $animateGIFs)
+            .onChange(of: importDestination) { _, newValue in
+                settingsQuery.first?.defaultImportLocation = newValue
+            }
+            .onChange(of: gridShowFilenames) { _, newValue in
+                settingsQuery.first?.gridShowFilenames = newValue
+            }
+            .onChange(of: gridShowCaptions) { _, newValue in
+                settingsQuery.first?.gridShowCaptions = newValue
+            }
+            .onChange(of: animateGIFs) { _, newValue in
+                settingsQuery.first?.animateGIFsInGrid = newValue
+            }
             .onReceive(NotificationCenter.default.publisher(for: .toggleInspector)) { _ in
                 showInspector.toggle()
             }
@@ -105,33 +135,13 @@ struct ContentView: View {
             }
     }
 
-    private var gridFilenamesBinding: Binding<Bool> {
-        Binding(
-            get: { settingsQuery.first?.gridShowFilenames ?? false },
-            set: { settingsQuery.first?.gridShowFilenames = $0 }
-        )
-    }
-
-    private var gridCaptionsBinding: Binding<Bool> {
-        Binding(
-            get: { settingsQuery.first?.gridShowCaptions ?? true },
-            set: { settingsQuery.first?.gridShowCaptions = $0 }
-        )
-    }
-
-    private var animateGIFsBinding: Binding<Bool> {
-        Binding(
-            get: { settingsQuery.first?.animateGIFsInGrid ?? false },
-            set: { settingsQuery.first?.animateGIFsInGrid = $0 }
-        )
-    }
-
     private var navigationView: some View {
         NavigationSplitView {
             SidebarView(viewModel: sidebarViewModel)
         } detail: {
             detailContent
         }
+        .modifier(ToolbarBackgroundModifier())
         .animation(.easeInOut(duration: 0.25), value: previewItem != nil)
         .searchable(
             text: $gridViewModel.searchText,
@@ -141,10 +151,6 @@ struct ContentView: View {
         .inspector(isPresented: $showInspector) {
             inspectorContent
         }
-        // DEBUG: focusedSceneValue with SwiftData bindings causes infinite loop - need different approach
-        // .focusedSceneValue(\.gridShowFilenames, gridFilenamesBinding)
-        // .focusedSceneValue(\.gridShowCaptions, gridCaptionsBinding)
-        // .focusedSceneValue(\.animateGIFs, animateGIFsBinding)
         .dropZone(isTargeted: $isDropTargeted) { urls in
             handleDrop(urls: urls)
         }

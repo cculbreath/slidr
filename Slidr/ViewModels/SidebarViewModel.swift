@@ -77,8 +77,11 @@ final class SidebarViewModel {
 
     // MARK: - Delete
 
+    var playlistToDeleteName: String = ""
+
     func deletePlaylist(_ playlist: Playlist) {
         playlistToDelete = playlist
+        playlistToDeleteName = playlist.name
         showDeleteConfirmation = true
     }
 
@@ -93,11 +96,13 @@ final class SidebarViewModel {
 
         service.deletePlaylist(playlist)
         playlistToDelete = nil
+        playlistToDeleteName = ""
         showDeleteConfirmation = false
     }
 
     func cancelDelete() {
         playlistToDelete = nil
+        playlistToDeleteName = ""
         showDeleteConfirmation = false
     }
 }

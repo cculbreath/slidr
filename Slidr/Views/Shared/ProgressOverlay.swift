@@ -19,7 +19,7 @@ struct ProgressOverlay: View {
             } else {
                 ProgressView()
                     .progressViewStyle(.circular)
-                    .scaleEffect(1.5)
+                    .controlSize(.large)
             }
 
             Text(title)
@@ -63,6 +63,10 @@ struct ProgressOverlayModifier: ViewModifier {
             if isPresented {
                 Color.black.opacity(0.3)
                     .ignoresSafeArea()
+                    .onTapGesture {
+                        // Allow clicking outside to cancel too
+                        onCancel?()
+                    }
 
                 ProgressOverlay(
                     title: title,
@@ -74,6 +78,11 @@ struct ProgressOverlayModifier: ViewModifier {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: isPresented)
+        .onKeyPress(.escape) {
+            guard isPresented, let onCancel else { return .ignored }
+            onCancel()
+            return .handled
+        }
     }
 }
 

@@ -13,8 +13,8 @@ struct MediaInspectorView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                // Thumbnail preview
-                thumbnailSection
+                // Header with filename and type
+                headerSection
 
                 Divider()
 
@@ -46,18 +46,15 @@ struct MediaInspectorView: View {
         .frame(minWidth: 280, idealWidth: 300, maxWidth: 350)
     }
 
-    // MARK: - Thumbnail Section
+    // MARK: - Header Section
 
-    private var thumbnailSection: some View {
+    private var headerSection: some View {
         VStack(spacing: 8) {
-            AsyncThumbnailImage(item: item, size: .large)
-                .frame(height: 200)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-
             Text(item.originalFilename)
                 .font(.headline)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
 
             // Type badge
             HStack {
