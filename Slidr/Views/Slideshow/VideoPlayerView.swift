@@ -16,8 +16,7 @@ struct VideoPlayerView: View {
     var body: some View {
         GeometryReader { geometry in
             if let player = player {
-                VideoPlayer(player: player)
-                    .disabled(true) // We handle controls ourselves
+                NoControlsPlayerView(player: player)
                     .frame(width: geometry.size.width, height: geometry.size.height)
             } else {
                 ProgressView()
@@ -81,8 +80,38 @@ struct VideoPlayerView: View {
             playerObserver = nil
         }
 
-        scrubber.detach()
-        player?.pause()
+        if let player = player {
+            scrubber.detach(from: player)
+            player.pause()
+        }
         player = nil
+    }
+}
+
+// MARK: - AVPlayerView without native controls or key handling
+
+private class KeyPassthroughPlayerView: AVPlayerView {
+    override func keyDown(with event: NSEvent) {
+        nextResponder?.keyDown(with: event)
+    }
+
+    override func keyUp(with event: NSEvent) {
+        nextResponder?.keyUp(with: event)
+    }
+}
+
+private struct NoControlsPlayerView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> KeyPassthroughPlayerView {
+        let view = KeyPassthroughPlayerView()
+        view.player = player
+        view.controlsStyle = .none
+        view.showsFullScreenToggleButton = false
+        return view
+    }
+
+    func updateNSView(_ nsView: KeyPassthroughPlayerView, context: Context) {
+        nsView.player = player
     }
 }

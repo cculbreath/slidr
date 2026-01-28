@@ -258,7 +258,6 @@ struct PlaylistEditorView: View {
                     Text("Date Modified").tag(SortOrder.dateModified)
                     Text("Date Imported").tag(SortOrder.dateImported)
                     Text("File Size").tag(SortOrder.fileSize)
-                    Text("Random").tag(SortOrder.random)
                 }
                 .frame(width: 180)
 

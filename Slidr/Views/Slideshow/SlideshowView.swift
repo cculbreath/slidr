@@ -2,17 +2,22 @@ import SwiftUI
 import SwiftData
 
 struct SlideshowView: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(MediaLibrary.self) private var library
     @Bindable var viewModel: SlideshowViewModel
+    var onDismiss: () -> Void
     @Query private var settingsQuery: [AppSettings]
 
+    @FocusState private var isFocused: Bool
     @State private var showControls = false
     @State private var hideControlsTask: Task<Void, Never>?
     @State private var showCaptions: Bool = false
     @State private var showInfoOverlay: Bool = false
     @State private var ratingFeedback: Int? = nil
     @State private var navigationDirection: NavigationDirection = .forward
+    @State private var isFullscreen: Bool = false
+    @State private var showTimerPopover: Bool = false
+    @State private var showVideoPopover: Bool = false
+    @State private var isHoveringControls: Bool = false
 
     private var settings: AppSettings? { settingsQuery.first }
 
@@ -37,24 +42,76 @@ struct SlideshowView: View {
     var body: some View {
         slideshowContent
             .focusable()
-            .modifier(SlideshowKeyboardModifier(viewModel: viewModel, dismiss: dismiss))
+            .focused($isFocused)
+            .modifier(SlideshowKeyboardModifier(viewModel: viewModel, onDismiss: onDismiss, goNext: goNext, goPrevious: goPrevious))
             .modifier(CaptionKeys(showCaptions: $showCaptions))
             .modifier(RatingKeys(viewModel: viewModel, ratingFeedback: $ratingFeedback))
             .modifier(ExtraNavigationKeys(
                 viewModel: viewModel,
-                showInfoOverlay: $showInfoOverlay
+                showInfoOverlay: $showInfoOverlay,
+                showTimerBar: $viewModel.showTimerBar
             ))
+            .onAppear {
+                if let settings {
+                    viewModel.configure(settings: settings)
+                }
+                DispatchQueue.main.async {
+                    isFocused = true
+                }
+            }
+            .onChange(of: viewModel.slideDuration) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.videoPlayDuration) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.randomizeClipLocation) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.playFullGIF) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.loop) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.volume) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.isMuted) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.isRandomMode) { _, _ in viewModel.persistToSettings() }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
+                isFullscreen = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in
+                isFullscreen = false
+            }
     }
 
     @ViewBuilder
     private var slideshowContent: some View {
         ZStack {
-            // Background
+            // Background — tap here to show controls and reclaim focus
             Color.black
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    showControlsTemporarily()
+                    isFocused = true
+                }
 
-            // Current media
+            // Current media — tap here to show controls and reclaim focus
             mediaContent
+                .animation(.easeInOut(duration: transitionDuration), value: viewModel.currentIndex)
+                .onTapGesture {
+                    showControlsTemporarily()
+                    isFocused = true
+                }
+
+            // Timer progress bar
+            if viewModel.showTimerBar {
+                VStack {
+                    Spacer()
+                    TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+                        GeometryReader { geo in
+                            Rectangle()
+                                .fill(.white.opacity(0.3))
+                                .frame(width: geo.size.width * timerProgress(at: context.date), height: 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(height: 10)
+                    }
+                }
+                .allowsHitTesting(false)
+                .animation(nil, value: viewModel.currentIndex)
+            }
 
             // Controls overlay
             if showControls {
@@ -100,7 +157,6 @@ struct SlideshowView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showControls)
-        .animation(.easeInOut(duration: transitionDuration), value: viewModel.currentIndex)
         .animation(.easeInOut(duration: 0.2), value: showInfoOverlay)
         .animation(.easeInOut(duration: 0.15), value: ratingFeedback)
         .onAppear {
@@ -110,9 +166,6 @@ struct SlideshowView: View {
             if hovering {
                 showControlsTemporarily()
             }
-        }
-        .onTapGesture {
-            showControlsTemporarily()
         }
     }
 
@@ -132,10 +185,8 @@ struct SlideshowView: View {
                     )
                 } else if item.isAnimated {
                     AsyncAnimatedGIFView(item: item)
-                        .aspectRatio(contentMode: .fit)
                 } else {
-                    AsyncThumbnailImage(item: item, size: .extraLarge)
-                        .aspectRatio(contentMode: .fit)
+                    AsyncThumbnailImage(item: item, size: .extraLarge, contentMode: .fit)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -164,82 +215,60 @@ struct SlideshowView: View {
         }
         .foregroundStyle(.white)
         .transition(.opacity)
-    }
-
-    @ViewBuilder
-    private var topBar: some View {
-        HStack {
-            Text("\(viewModel.currentIndex + 1) / \(viewModel.activeItems.count)")
-                .font(.headline)
-
-            if let item = viewModel.currentItem, item.isRated {
-                Text(item.ratingStars)
-                    .font(.subheadline)
+        .animation(nil, value: viewModel.currentIndex)
+        .onHover { hovering in
+            isHoveringControls = hovering
+            if hovering {
+                hideControlsTask?.cancel()
+                showControls = true
+            } else {
+                showControlsTemporarily()
             }
-
-            Spacer()
-
-            Button {
-                showInfoOverlay.toggle()
-            } label: {
-                Image(systemName: "info.circle")
-                    .font(.title2)
-            }
-            .buttonStyle(.plain)
-            .help("Info (I)")
-
-            Button {
-                viewModel.toggleRandomMode()
-            } label: {
-                Image(systemName: viewModel.isRandomMode ? "shuffle.circle.fill" : "shuffle")
-                    .font(.title2)
-            }
-            .buttonStyle(.plain)
-            .help("Shuffle (R)")
-
-            Button {
-                toggleFullscreen()
-            } label: {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.title2)
-            }
-            .buttonStyle(.plain)
-            .help("Fullscreen (F)")
-
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title)
-            }
-            .buttonStyle(.plain)
         }
-        .padding()
-        .background(.ultraThinMaterial)
     }
 
     @ViewBuilder
     private var videoScrubber: some View {
         VStack(spacing: 4) {
             GeometryReader { geometry in
+                let width = geometry.size.width
                 ZStack(alignment: .leading) {
+                    // Full timeline background
                     Rectangle()
-                        .fill(.white.opacity(0.3))
+                        .fill(.white.opacity(0.15))
                         .frame(height: 4)
+
+                    // Clip region highlight (when duration is limited)
+                    if viewModel.scrubber.hasClipRegion {
+                        Rectangle()
+                            .fill(.white.opacity(0.35))
+                            .frame(
+                                width: width * viewModel.scrubber.clipLengthFraction,
+                                height: 4
+                            )
+                            .offset(x: width * viewModel.scrubber.clipStartFraction)
+                    }
+
+                    // Playback progress
                     Rectangle()
                         .fill(.white)
-                        .frame(width: geometry.size.width * viewModel.scrubber.progress, height: 4)
+                        .frame(
+                            width: width * viewModel.scrubber.progress,
+                            height: 4
+                        )
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 2))
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
-                            let percentage = value.location.x / geometry.size.width
+                            let percentage = value.location.x / width
                             viewModel.scrubber.seek(toPercentage: Double(percentage))
                         }
                 )
             }
-            .frame(height: 4)
+            .frame(height: 24)
 
             HStack {
                 Text(viewModel.scrubber.currentTimeFormatted)
@@ -256,34 +285,217 @@ struct SlideshowView: View {
     }
 
     @ViewBuilder
-    private var bottomControls: some View {
-        HStack(spacing: 24) {
-            Button {
-                goPrevious()
-            } label: {
-                Image(systemName: "backward.fill")
-                    .font(.title2)
+    private var topBar: some View {
+        HStack {
+            Text("\(viewModel.currentIndex + 1) / \(viewModel.activeItems.count)")
+                .font(.title3)
+
+            if let item = viewModel.currentItem, item.isRated {
+                Text(item.ratingStars)
+                    .font(.title3)
             }
-            .disabled(!viewModel.hasPrevious)
+
+            Spacer()
 
             Button {
-                viewModel.togglePlayback()
+                onDismiss()
             } label: {
-                Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                Image(systemName: "xmark.circle.fill")
                     .font(.title)
             }
+            .buttonStyle(.plain)
+            .help("Close (Esc)")
+        }
+        .opacity(0.7)
+        .padding()
+    }
 
-            Button {
-                goNext()
-            } label: {
-                Image(systemName: "forward.fill")
-                    .font(.title2)
+    @ViewBuilder
+    private var bottomControls: some View {
+        HStack(spacing: 20) {
+            // Group 1: Prev / Play-Pause / Next
+            HStack(spacing: 24) {
+                Button {
+                    goPrevious()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 28, weight: .medium))
+                }
+                .disabled(!viewModel.hasPrevious)
+
+                Button {
+                    viewModel.togglePlayback()
+                } label: {
+                    Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 28))
+                }
+
+                Button {
+                    goNext()
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 28, weight: .medium))
+                }
+                .disabled(!viewModel.hasNext)
             }
-            .disabled(!viewModel.hasNext)
 
+            Divider().frame(height: 28)
+
+            // Group 2: Shuffle & Repeat
+            HStack(spacing: 20) {
+                Button {
+                    viewModel.toggleRandomMode()
+                } label: {
+                    Image(systemName: "shuffle")
+                        .font(.title)
+                        .toggleGlow(viewModel.isRandomMode)
+                }
+                .help("Shuffle (R)")
+
+                Button {
+                    viewModel.loop.toggle()
+                } label: {
+                    Image(systemName: "repeat")
+                        .font(.title)
+                        .toggleGlow(viewModel.loop)
+                }
+                .help("Repeat")
+            }
+
+            Divider().frame(height: 28)
+
+            // Group 3: Timer Duration, Full GIF Toggle, Video Menu
+            HStack(spacing: 20) {
+                // Timer duration popover
+                Button {
+                    showTimerPopover.toggle()
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "timer")
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .font(.title)
+                }
+                .popover(isPresented: $showTimerPopover) {
+                    VStack(spacing: 12) {
+                        Text("Slide Duration")
+                            .font(.headline)
+                        HStack {
+                            Slider(value: $viewModel.slideDuration, in: 0...10, step: 0.5)
+                                .frame(width: 200)
+                            Text(String(format: "%.1fs", viewModel.slideDuration))
+                                .monospacedDigit()
+                                .frame(width: 44)
+                        }
+                    }
+                    .padding()
+                }
+                .help("Timer Duration")
+
+                // Play full GIF toggle
+                Button {
+                    viewModel.playFullGIF.toggle()
+                } label: {
+                    Image("custom.gifs.timer")
+                        .font(.title)
+                        .toggleGlow(viewModel.playFullGIF)
+                }
+                .help(viewModel.playFullGIF ? "Play Full GIF: On" : "Play Full GIF: Off")
+
+                // Video play duration popover
+                Button {
+                    showVideoPopover.toggle()
+                } label: {
+                    Image("custom.video.timer")
+                        .font(.title)
+                        .toggleGlow(!viewModel.videoPlayDuration.isFullVideo)
+                }
+                .popover(isPresented: $showVideoPopover) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Limit video duration to")
+                            .font(.headline)
+
+                        ForEach(VideoPlayDuration.presets.filter { !$0.isFullVideo }, id: \.self) { preset in
+                            Button {
+                                viewModel.videoPlayDuration = preset
+                            } label: {
+                                HStack {
+                                    Image(systemName: viewModel.videoPlayDuration == preset ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(viewModel.videoPlayDuration == preset ? .blue : .secondary)
+                                    Text(preset.label)
+                                    Spacer()
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.leading, 12)
+                        }
+
+                        Toggle("Randomize start location", isOn: $viewModel.randomizeClipLocation)
+                            .disabled(viewModel.videoPlayDuration.isFullVideo)
+                            .padding(.leading, 12)
+
+                        Divider()
+
+                        Button {
+                            viewModel.videoPlayDuration = .fullVideo
+                        } label: {
+                            HStack {
+                                Image(systemName: viewModel.videoPlayDuration.isFullVideo ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(viewModel.videoPlayDuration.isFullVideo ? .blue : .secondary)
+                                Text("Do not limit video duration")
+                                Spacer()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding()
+                    .frame(width: 280)
+                    .foregroundStyle(.primary)
+                }
+                .help("Video Playback Duration")
+            }
+
+            Divider().frame(height: 28)
+
+            // Group 4: Show Timer Bar, Show Info
+            HStack(spacing: 20) {
+                Button {
+                    viewModel.showTimerBar.toggle()
+                } label: {
+                    Image(systemName: "hourglass.badge.eye")
+                        .font(.title)
+                        .toggleGlow(viewModel.showTimerBar)
+                }
+                .help("Toggle Timer Bar (T)")
+
+                Button {
+                    showInfoOverlay.toggle()
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.title)
+                }
+                .help("Info (I)")
+            }
+
+            Divider().frame(height: 28)
+
+            // Group 5: Fullscreen
+            Button {
+                toggleFullscreen()
+            } label: {
+                Image(systemName: isFullscreen
+                    ? "arrow.down.right.and.arrow.up.left.rectangle"
+                    : "arrow.up.left.and.arrow.down.right.rectangle")
+                    .font(.title)
+            }
+            .help("Fullscreen (F)")
+
+            // Volume (only when current item has audio)
             if viewModel.currentItemHasAudio {
-                Divider()
-                    .frame(height: 24)
+                Divider().frame(height: 28)
                 VolumeSlider(
                     volume: $viewModel.volume,
                     isMuted: $viewModel.isMuted
@@ -291,8 +503,9 @@ struct SlideshowView: View {
             }
         }
         .buttonStyle(.plain)
-        .padding()
-        .background(.ultraThinMaterial)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(.black.opacity(0.7))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding()
     }
@@ -300,9 +513,10 @@ struct SlideshowView: View {
     private func showControlsTemporarily() {
         hideControlsTask?.cancel()
         showControls = true
+        guard !isHoveringControls else { return }
         hideControlsTask = Task {
             try? await Task.sleep(for: .seconds(3))
-            if !Task.isCancelled {
+            if !Task.isCancelled && !isHoveringControls {
                 showControls = false
             }
         }
@@ -316,6 +530,18 @@ struct SlideshowView: View {
     private func goPrevious() {
         navigationDirection = .backward
         viewModel.previous()
+    }
+
+    private func timerProgress(at date: Date) -> Double {
+        // If paused, show frozen progress
+        if !viewModel.isPlaying {
+            return viewModel.pausedTimerProgress
+        }
+        guard let start = viewModel.timerStartDate, viewModel.currentSlideDuration > 0 else {
+            return 0
+        }
+        let elapsed = date.timeIntervalSince(start)
+        return max(0, min(1.0, elapsed / viewModel.currentSlideDuration))
     }
 
     private func toggleFullscreen() {
@@ -346,40 +572,59 @@ struct SlideshowView: View {
     }
 }
 
+// MARK: - Toggle Glow
+
+private let glowColor = Color.cyan
+
+private extension View {
+    func toggleGlow(_ isOn: Bool) -> some View {
+        self
+            .foregroundStyle(isOn ? glowColor : .white.opacity(0.4))
+            .shadow(color: isOn ? glowColor.opacity(0.7) : .clear, radius: 6)
+            .shadow(color: isOn ? glowColor.opacity(0.4) : .clear, radius: 12)
+            .animation(.easeInOut(duration: 0.2), value: isOn)
+    }
+}
+
 // MARK: - Keyboard Modifiers
 
 /// Composed keyboard modifier to keep body expression manageable
 private struct SlideshowKeyboardModifier: ViewModifier {
     let viewModel: SlideshowViewModel
-    let dismiss: DismissAction
+    let onDismiss: () -> Void
+    let goNext: () -> Void
+    let goPrevious: () -> Void
 
     func body(content: Content) -> some View {
         content
-            .modifier(BasicNavigationKeys(viewModel: viewModel, dismiss: dismiss))
+            .modifier(BasicNavigationKeys(onDismiss: onDismiss, goNext: goNext, goPrevious: goPrevious, togglePlayback: { viewModel.togglePlayback() }))
             .modifier(VideoSeekKeys(viewModel: viewModel))
             .modifier(VolumeKeys(viewModel: viewModel))
     }
 }
 
 private struct BasicNavigationKeys: ViewModifier {
-    let viewModel: SlideshowViewModel
-    let dismiss: DismissAction
+    let onDismiss: () -> Void
+    let goNext: () -> Void
+    let goPrevious: () -> Void
+    let togglePlayback: () -> Void
 
     func body(content: Content) -> some View {
         content
             .onKeyPress(.space) {
-                viewModel.togglePlayback()
+                togglePlayback()
                 return .handled
             }
             .onKeyPress(.escape) {
-                dismiss()
+                onDismiss()
                 return .handled
             }
             .onKeyPress(keys: [.rightArrow, .leftArrow]) { press in
+                guard press.modifiers.subtracting(.numericPad).isEmpty else { return .ignored }
                 if press.key == .rightArrow {
-                    viewModel.next()
+                    goNext()
                 } else {
-                    viewModel.previous()
+                    goPrevious()
                 }
                 return .handled
             }
@@ -509,6 +754,7 @@ private struct RatingKeys: ViewModifier {
 private struct ExtraNavigationKeys: ViewModifier {
     let viewModel: SlideshowViewModel
     @Binding var showInfoOverlay: Bool
+    @Binding var showTimerBar: Bool
 
     func body(content: Content) -> some View {
         content.onKeyPress(phases: .down) { press in
@@ -528,6 +774,9 @@ private struct ExtraNavigationKeys: ViewModifier {
             if let window = NSApplication.shared.keyWindow {
                 window.toggleFullScreen(nil)
             }
+            return .handled
+        case KeyEquivalent("t"):
+            showTimerBar.toggle()
             return .handled
         case KeyEquivalent("l"):
             viewModel.next()

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct InfoOverlayView: View {
-    let item: MediaItem
+    @Bindable var item: MediaItem
     let index: Int
     let totalCount: Int
 
@@ -38,14 +38,15 @@ struct InfoOverlayView: View {
                 SlideshowInfoRow(label: "Tags", value: item.tags.joined(separator: ", "))
             }
 
-            if let caption = item.caption, !caption.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Caption")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(caption)
-                        .font(.body)
-                }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Caption")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("Add caption...", text: Binding(
+                    get: { item.caption ?? "" },
+                    set: { item.caption = $0.isEmpty ? nil : $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
             }
 
             Divider()

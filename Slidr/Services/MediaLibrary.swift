@@ -60,10 +60,6 @@ final class MediaLibrary {
             descriptor.sortBy = [SortDescriptor(\.fileSize, order: ascending ? .forward : .reverse)]
         case .duration:
             descriptor.sortBy = [SortDescriptor(\.duration, order: ascending ? .forward : .reverse)]
-        case .random:
-            // Fetch all, then shuffle
-            let items = (try? modelContainer.mainContext.fetch(descriptor)) ?? []
-            return items.shuffled()
         }
 
         return (try? modelContainer.mainContext.fetch(descriptor)) ?? []
@@ -119,9 +115,9 @@ final class MediaLibrary {
     // MARK: - Delete
 
     func delete(_ item: MediaItem) {
-        // Delete file
-        let fileURL = libraryRoot.appendingPathComponent(item.relativePath)
-        try? fileManager.removeItem(at: fileURL)
+        // Move file to Trash
+        let fileURL = absoluteURL(for: item)
+        try? fileManager.trashItem(at: fileURL, resultingItemURL: nil)
 
         // Delete thumbnails
         Task {
@@ -133,15 +129,15 @@ final class MediaLibrary {
         try? modelContainer.mainContext.save()
 
         updateItemCount()
-        Logger.library.info("Deleted: \(item.originalFilename)")
+        Logger.library.info("Trashed: \(item.originalFilename)")
         NotificationCenter.default.post(name: .mediaItemsDeleted, object: nil)
     }
 
     func delete(_ items: [MediaItem]) {
         for item in items {
-            // Delete file
-            let fileURL = libraryRoot.appendingPathComponent(item.relativePath)
-            try? fileManager.removeItem(at: fileURL)
+            // Move file to Trash
+            let fileURL = absoluteURL(for: item)
+            try? fileManager.trashItem(at: fileURL, resultingItemURL: nil)
 
             // Delete thumbnails
             Task {
@@ -153,7 +149,7 @@ final class MediaLibrary {
         }
         try? modelContainer.mainContext.save()
         updateItemCount()
-        Logger.library.info("Deleted \(items.count) items")
+        Logger.library.info("Trashed \(items.count) items")
         NotificationCenter.default.post(name: .mediaItemsDeleted, object: nil)
     }
 

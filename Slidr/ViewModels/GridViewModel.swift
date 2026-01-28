@@ -10,6 +10,9 @@ final class GridViewModel {
     var sortOrder: SortOrder = .dateImported
     var sortAscending: Bool = false
 
+    // MARK: - Filter
+    var mediaTypeFilter: Set<MediaType> = []
+
     // MARK: - Search
     var searchText: String = ""
     var isSearchFocused: Bool = false
@@ -64,9 +67,15 @@ final class GridViewModel {
     // MARK: - Search
 
     func filteredItems(_ items: [MediaItem]) -> [MediaItem] {
-        guard !searchText.isEmpty else { return items }
+        var result = items
+
+        if !mediaTypeFilter.isEmpty {
+            result = result.filter { mediaTypeFilter.contains($0.mediaType) }
+        }
+
+        guard !searchText.isEmpty else { return result }
         let query = searchText.lowercased()
-        return items.filter { item in
+        return result.filter { item in
             if item.originalFilename.lowercased().contains(query) { return true }
             if item.tags.contains(where: { $0.lowercased().contains(query) }) { return true }
             if let caption = item.caption?.lowercased(), caption.contains(query) { return true }

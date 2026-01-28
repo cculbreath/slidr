@@ -11,6 +11,7 @@ struct MediaPreviewView: View {
     @State private var isPlaying = true
     @State private var volume: Float = 1.0
     @State private var isMuted = false
+    @FocusState private var isFocused: Bool
 
     init(item: MediaItem, items: [MediaItem], library: MediaLibrary, onDismiss: @escaping () -> Void) {
         self.item = item
@@ -48,6 +49,8 @@ struct MediaPreviewView: View {
             }
         }
         .focusable()
+        .focused($isFocused)
+        .onAppear { isFocused = true }
         .onKeyPress(.space) {
             onDismiss()
             return .handled
@@ -80,10 +83,8 @@ struct MediaPreviewView: View {
             )
         } else if currentItem.isAnimated {
             AsyncAnimatedGIFView(item: currentItem)
-                .aspectRatio(contentMode: .fit)
         } else {
-            AsyncThumbnailImage(item: currentItem, size: .extraLarge)
-                .aspectRatio(contentMode: .fit)
+            AsyncThumbnailImage(item: currentItem, size: .extraLarge, contentMode: .fit)
         }
     }
 

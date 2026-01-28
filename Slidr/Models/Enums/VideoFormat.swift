@@ -4,35 +4,35 @@ enum VideoFormat: String, Codable, CaseIterable {
     case h264MP4
     case hevcMOV
 
-    var displayName: String {
+    nonisolated var displayName: String {
         switch self {
         case .h264MP4: return "H.264 (MP4)"
         case .hevcMOV: return "HEVC (MOV)"
         }
     }
 
-    var fileExtension: String {
+    nonisolated var fileExtension: String {
         switch self {
         case .h264MP4: return "mp4"
         case .hevcMOV: return "mov"
         }
     }
 
-    var fileType: AVFileType {
+    nonisolated var fileType: AVFileType {
         switch self {
         case .h264MP4: return .mp4
         case .hevcMOV: return .mov
         }
     }
 
-    var exportPreset: String {
+    nonisolated var exportPreset: String {
         switch self {
         case .h264MP4: return AVAssetExportPresetHighestQuality
         case .hevcMOV: return AVAssetExportPresetHEVCHighestQuality
         }
     }
 
-    var formatDescription: String {
+    nonisolated var formatDescription: String {
         switch self {
         case .h264MP4:
             return "Most compatible format, works everywhere"

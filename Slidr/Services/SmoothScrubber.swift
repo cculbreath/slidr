@@ -10,16 +10,34 @@ final class SmoothScrubber {
     private(set) var currentTime: CMTime = .zero
     private(set) var duration: CMTime = .zero
 
+    // MARK: - Clip Region
+    private(set) var clipStartSeconds: Double = 0
+    private(set) var clipDurationSeconds: Double? = nil
+
+    var hasClipRegion: Bool { clipDurationSeconds != nil }
+
+    var clipStartFraction: Double {
+        guard duration.seconds > 0 else { return 0 }
+        return max(0, min(1.0, clipStartSeconds / duration.seconds))
+    }
+
+    var clipLengthFraction: Double {
+        guard let clipDur = clipDurationSeconds, duration.seconds > 0 else { return 1 }
+        return max(0, min(clipDur / duration.seconds, 1.0 - clipStartFraction))
+    }
+
     // MARK: - Private State
     private weak var player: AVPlayer?
     private var timeObserver: Any?
+    private var statusObservation: NSKeyValueObservation?
     private var pendingSeekTime: CMTime?
+    private var initialSeekTime: CMTime?
     private var isSeekInProgress = false
 
     // MARK: - Computed Properties
     var progress: Double {
         guard duration.seconds > 0 else { return 0 }
-        return currentTime.seconds / duration.seconds
+        return max(0, min(1.0, currentTime.seconds / duration.seconds))
     }
 
     var currentTimeFormatted: String {
@@ -44,16 +62,40 @@ final class SmoothScrubber {
             }
         }
 
-        // Get duration when available
-        Task {
-            if let item = player.currentItem {
-                let dur = try? await item.asset.load(.duration)
-                self.duration = dur ?? .zero
+        // Observe player item status — load duration once readyToPlay
+        statusObservation = player.currentItem?.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+            guard item.status == .readyToPlay else { return }
+            Task { @MainActor in
+                // Try synchronous duration first
+                let dur = item.duration
+                if dur.isValid && !dur.isIndefinite && dur.seconds > 0 {
+                    self?.duration = dur
+                } else {
+                    // Fallback: async load from the asset
+                    if let loaded = try? await item.asset.load(.duration) {
+                        self?.duration = loaded
+                    }
+                }
+
+                // Execute any queued initial seek (e.g. randomized clip start)
+                if let seekTime = self?.initialSeekTime {
+                    self?.initialSeekTime = nil
+                    self?.seek(to: seekTime)
+                }
             }
         }
     }
 
+    /// Only detach if still attached to the given player.
+    /// Prevents a disappearing view from detaching a newly attached player.
+    func detach(from player: AVPlayer) {
+        guard self.player === player else { return }
+        detach()
+    }
+
     func detach() {
+        statusObservation?.invalidate()
+        statusObservation = nil
         if let observer = timeObserver, let player = player {
             player.removeTimeObserver(observer)
         }
@@ -64,6 +106,21 @@ final class SmoothScrubber {
         isSeeking = false
         isSeekInProgress = false
         pendingSeekTime = nil
+        initialSeekTime = nil
+        clipStartSeconds = 0
+        clipDurationSeconds = nil
+    }
+
+    // MARK: - Clip Region
+
+    func setClipRegion(start: Double, duration: Double) {
+        clipStartSeconds = start
+        clipDurationSeconds = duration
+    }
+
+    func clearClipRegion() {
+        clipStartSeconds = 0
+        clipDurationSeconds = nil
     }
 
     // MARK: - Seeking (Chase Pattern)
@@ -71,7 +128,11 @@ final class SmoothScrubber {
     /// Seek to absolute time using chase pattern
     /// Never cancels in-progress seeks; queues them instead
     func seek(to time: CMTime) {
-        guard let player = player else { return }
+        guard let player = player else {
+            // Player not attached yet — queue for execution after attach + readyToPlay
+            initialSeekTime = time
+            return
+        }
 
         let clampedTime = clamp(time: time)
 
@@ -87,7 +148,7 @@ final class SmoothScrubber {
     /// Seek to percentage (0.0 - 1.0)
     func seek(toPercentage percentage: Double) {
         let clampedPercentage = max(0, min(1, percentage))
-        let targetTime = CMTime(seconds: duration.seconds * clampedPercentage, preferredTimescale: duration.timescale)
+        let targetTime = CMTime(seconds: duration.seconds * clampedPercentage, preferredTimescale: 600)
         seek(to: targetTime)
     }
 
@@ -124,9 +185,8 @@ final class SmoothScrubber {
         Logger.scrubber.debug("Seeking to \(time.seconds)")
 
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+            guard let self else { return }
             Task { @MainActor in
-                guard let self = self else { return }
-
                 self.isSeekInProgress = false
 
                 if let pending = self.pendingSeekTime {

@@ -39,16 +39,16 @@ struct MultiSelectInspectorView: View {
         }
         .frame(minWidth: 280, idealWidth: 300, maxWidth: 350)
         .confirmationDialog(
-            "Delete \(items.count) items?",
+            "Move \(items.count) items to Trash?",
             isPresented: $showDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete \(items.count) Items", role: .destructive) {
+            Button("Move \(items.count) Items to Trash", role: .destructive) {
                 library.delete(items)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will permanently delete \(items.count) items from the library.")
+            Text("\(items.count) items will be moved to the Trash.")
         }
     }
 
@@ -213,7 +213,7 @@ struct MultiSelectInspectorView: View {
         Button(role: .destructive) {
             showDeleteConfirmation = true
         } label: {
-            Label("Delete \(items.count) Items", systemImage: "trash")
+            Label("Move \(items.count) Items to Trash", systemImage: "trash")
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)

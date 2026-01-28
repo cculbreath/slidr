@@ -11,42 +11,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         closeAllSlideshowWindows()
     }
 
-    func openSlideshowOnAllMonitors<Content: View>(
-        content: @escaping (NSScreen) -> Content,
-        controlContent: (() -> AnyView)? = nil,
-        controlOnSeparateMonitor: Bool = false
+    func openExternalSlideshow<Content: View>(
+        on screen: NSScreen,
+        content: Content,
+        controlContent: AnyView? = nil,
+        controlScreen: NSScreen? = nil
     ) {
         closeAllSlideshowWindows()
-        let screens = NSScreen.screens
-        guard !screens.isEmpty else { return }
-
-        let controlScreenIndex: Int?
-        if controlOnSeparateMonitor && screens.count > 1 {
-            controlScreenIndex = 1
-        } else {
-            controlScreenIndex = 0
-        }
-
-        for (index, screen) in screens.enumerated() {
-            let isControlScreen = index == controlScreenIndex
-            let window = createSlideshowWindow(
-                for: screen,
-                content: content(screen),
-                showControls: isControlScreen || !controlOnSeparateMonitor
-            )
-            slideshowWindows.append(window)
-        }
-
-        if controlOnSeparateMonitor, let controlContent = controlContent, screens.count > 1 {
-            let controlScreen = screens[controlScreenIndex ?? 0]
-            controlWindow = createControlWindow(on: controlScreen, content: controlContent())
-        }
-    }
-
-    func openSlideshowOnScreen<Content: View>(_ screen: NSScreen, content: Content) {
-        closeAllSlideshowWindows()
-        let window = createSlideshowWindow(for: screen, content: content, showControls: true)
+        let window = createSlideshowWindow(for: screen, content: content)
         slideshowWindows.append(window)
+
+        if let controlContent, let controlScreen {
+            controlWindow = createControlWindow(on: controlScreen, content: controlContent)
+        }
     }
 
     func closeAllSlideshowWindows() {
@@ -56,7 +33,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         controlWindow = nil
     }
 
-    private func createSlideshowWindow<Content: View>(for screen: NSScreen, content: Content, showControls: Bool) -> NSWindow {
+    private func createSlideshowWindow<Content: View>(for screen: NSScreen, content: Content) -> NSWindow {
         let window = NSWindow(
             contentRect: screen.frame,
             styleMask: [.borderless, .fullSizeContentView],
@@ -64,7 +41,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             defer: false,
             screen: screen
         )
-        window.contentView = NSHostingView(rootView: content)
+        let hostingView = NSHostingView(rootView: content)
+        window.contentView = hostingView
         window.level = .screenSaver
         window.collectionBehavior = [.fullScreenPrimary, .canJoinAllSpaces]
         window.backgroundColor = .black
@@ -72,6 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.hasShadow = false
         window.setFrame(screen.frame, display: true)
         window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(hostingView)
         if !window.styleMask.contains(.fullScreen) {
             window.toggleFullScreen(nil)
         }

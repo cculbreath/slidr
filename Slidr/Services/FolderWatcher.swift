@@ -126,7 +126,7 @@ actor FolderWatcher {
 private final class HandlerBox: @unchecked Sendable {
     let handler: FolderWatcher.EventHandler
 
-    init(handler: @escaping FolderWatcher.EventHandler) {
+    nonisolated init(handler: @escaping FolderWatcher.EventHandler) {
         self.handler = handler
     }
 }

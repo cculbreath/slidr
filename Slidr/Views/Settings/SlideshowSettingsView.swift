@@ -7,18 +7,9 @@ struct SlideshowSettingsView: View {
         Form {
             Section("Timing") {
                 HStack {
-                    Text("Image duration")
+                    Text("Slide duration")
                     Spacer()
                     TextField("", value: $settings.defaultImageDuration, format: .number)
-                        .frame(width: 60)
-                        .textFieldStyle(.roundedBorder)
-                    Text("seconds")
-                }
-
-                HStack {
-                    Text("GIF duration")
-                    Spacer()
-                    TextField("", value: $settings.defaultGIFDuration, format: .number)
                         .frame(width: 60)
                         .textFieldStyle(.roundedBorder)
                     Text("seconds")
@@ -47,14 +38,13 @@ struct SlideshowSettingsView: View {
                 Toggle("Shuffle order", isOn: $settings.shuffleSlideshow)
             }
 
-            Section("Video Playback") {
-                Picker("Video mode", selection: $settings.slideshowVideoMode) {
-                    ForEach(VideoPlaybackMode.allCases, id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
+            Section("Video & GIF Playback") {
+                Toggle("Limit video playback duration", isOn: Binding(
+                    get: { !settings.videoPlayDuration.isFullVideo },
+                    set: { settings.videoPlayDuration = $0 ? .fixed(30) : .fullVideo }
+                ))
 
-                Text(settings.slideshowVideoMode.description)
+                Text("When on, videos advance after a set duration instead of playing to the end")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -106,11 +96,11 @@ struct SlideshowSettingsView: View {
                 }
             }
 
-            Section("Multi-Monitor") {
-                Toggle("Use all monitors for slideshow", isOn: $settings.useAllMonitors)
+            Section("External Display") {
+                Toggle("Show slideshow on external display", isOn: $settings.useAllMonitors)
 
                 if settings.useAllMonitors {
-                    Toggle("Show controls on separate monitor", isOn: $settings.controlPanelOnSeparateMonitor)
+                    Toggle("Show control panel", isOn: $settings.controlPanelOnSeparateMonitor)
                 }
             }
         }

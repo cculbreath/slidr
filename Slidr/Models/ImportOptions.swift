@@ -7,5 +7,5 @@ struct ImportOptions: Sendable {
     var targetFormat: VideoFormat = .h264MP4
     var organizeByDate: Bool = false
 
-    static let `default` = ImportOptions()
+    nonisolated(unsafe) static let `default` = ImportOptions()
 }

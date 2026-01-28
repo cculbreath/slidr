@@ -2,20 +2,53 @@ import SwiftUI
 import Combine
 import AVFoundation
 
+// MARK: - Video Play Duration
+
+enum VideoPlayDuration: Hashable {
+    case slideshowTimer
+    case fullVideo
+    case fixed(TimeInterval)
+
+    var isFullVideo: Bool {
+        if case .fullVideo = self { return true }
+        return false
+    }
+
+    var label: String {
+        switch self {
+        case .slideshowTimer: return "Slideshow Timer Duration"
+        case .fullVideo: return "Full Video Duration"
+        case .fixed(let seconds):
+            if seconds < 60 {
+                return "\(Int(seconds)) sec"
+            } else {
+                return "\(Int(seconds / 60)) min"
+            }
+        }
+    }
+
+    static let presets: [VideoPlayDuration] = [
+        .slideshowTimer, .fullVideo,
+        .fixed(5), .fixed(15), .fixed(30),
+        .fixed(60), .fixed(300), .fixed(600)
+    ]
+}
+
 @MainActor
 @Observable
 final class SlideshowViewModel {
     // MARK: - Configuration
-    var imageDuration: TimeInterval = 5.0
-    var gifDuration: TimeInterval = 10.0
+    var slideDuration: TimeInterval = 5.0
     var isPlaying: Bool = true
     var loop: Bool = true
+    var videoPlayDuration: VideoPlayDuration = .fixed(30)
+    var randomizeClipLocation: Bool = false
+    var playFullGIF: Bool = false
 
     // MARK: - Video Configuration
     var volume: Float = 1.0
     var isMuted: Bool = false
     let scrubber = SmoothScrubber()
-    var videoPlaybackMode: VideoPlaybackMode = .playFull
 
     // MARK: - Playback Mode
     var isRandomMode: Bool = false
@@ -29,6 +62,12 @@ final class SlideshowViewModel {
     }
 
     private var preloadedItems: [UUID: PreloadedMedia] = [:]
+
+    // MARK: - Timer Progress
+    var showTimerBar: Bool = false
+    private(set) var timerStartDate: Date?
+    private(set) var currentSlideDuration: TimeInterval = 0
+    private(set) var pausedTimerProgress: Double = 0
 
     // MARK: - State
     private(set) var items: [MediaItem] = []
@@ -74,9 +113,7 @@ final class SlideshowViewModel {
         self.currentIndex = max(0, min(index, items.count - 1))
 
         if isPlaying {
-            if !currentItemIsVideo || videoPlaybackMode == .limitDuration {
-                scheduleNextAdvance()
-            }
+            scheduleNextAdvance()
         }
 
         Task { await preloadAdjacentItems() }
@@ -88,12 +125,20 @@ final class SlideshowViewModel {
         scrubber.detach()
         items = []
         currentIndex = 0
+        resetTimerProgress()
+    }
+
+    private func resetTimerProgress() {
+        timerStartDate = nil
+        currentSlideDuration = 0
+        pausedTimerProgress = 0
     }
 
     // MARK: - Navigation
 
     func next() {
         timerCancellable?.cancel()
+        resetTimerProgress()
 
         let count = activeItems.count
         if currentIndex < count - 1 {
@@ -102,7 +147,7 @@ final class SlideshowViewModel {
             currentIndex = 0
         }
 
-        if isPlaying && !currentItemIsVideo {
+        if isPlaying {
             scheduleNextAdvance()
         }
 
@@ -111,6 +156,7 @@ final class SlideshowViewModel {
 
     func previous() {
         timerCancellable?.cancel()
+        resetTimerProgress()
 
         let count = activeItems.count
         if currentIndex > 0 {
@@ -119,7 +165,7 @@ final class SlideshowViewModel {
             currentIndex = count - 1
         }
 
-        if isPlaying && !currentItemIsVideo {
+        if isPlaying {
             scheduleNextAdvance()
         }
 
@@ -130,7 +176,7 @@ final class SlideshowViewModel {
         timerCancellable?.cancel()
         currentIndex = max(0, min(index, activeItems.count - 1))
 
-        if isPlaying && !currentItemIsVideo {
+        if isPlaying {
             scheduleNextAdvance()
         }
     }
@@ -140,10 +186,30 @@ final class SlideshowViewModel {
     func togglePlayback() {
         isPlaying.toggle()
 
-        if isPlaying && !currentItemIsVideo {
-            scheduleNextAdvance()
-        } else if !isPlaying {
+        if isPlaying {
+            // Resume: adjust timerStartDate to account for already-elapsed progress
+            if pausedTimerProgress > 0, currentSlideDuration > 0 {
+                let remaining = currentSlideDuration * (1.0 - pausedTimerProgress)
+                timerStartDate = Date()
+                currentSlideDuration = remaining
+                pausedTimerProgress = 0
+                timerCancellable = Timer.publish(every: remaining, on: .main, in: .common)
+                    .autoconnect()
+                    .first()
+                    .sink { [weak self] _ in
+                        self?.next()
+                    }
+            } else {
+                scheduleNextAdvance()
+            }
+        } else {
+            // Pause: capture current progress
+            if let start = timerStartDate, currentSlideDuration > 0 {
+                let elapsed = Date().timeIntervalSince(start)
+                pausedTimerProgress = min(1.0, elapsed / currentSlideDuration)
+            }
             timerCancellable?.cancel()
+            timerStartDate = nil
         }
     }
 
@@ -165,35 +231,37 @@ final class SlideshowViewModel {
 
     // Called by VideoPlayerView when video ends
     func onVideoEnded() {
-        switch videoPlaybackMode {
-        case .playFull, .playOnce:
-            if isPlaying {
-                next()
-            }
-        case .limitDuration:
-            // Timer handles advancement; video ended early so just stop
-            break
+        if videoPlayDuration.isFullVideo && isPlaying {
+            next()
         }
+        // For non-fullVideo modes, the slide timer handles advancement
     }
 
     private func scheduleNextAdvance() {
         guard let item = currentItem else { return }
 
         let duration: TimeInterval
+
         switch item.mediaType {
         case .image:
-            duration = imageDuration
+            duration = slideDuration
         case .gif:
-            duration = gifDuration
-        case .video:
-            if videoPlaybackMode == .limitDuration {
-                duration = imageDuration  // Use image duration as limit for videos
+            if playFullGIF, let gifLoopDuration = item.duration, gifLoopDuration > 0 {
+                duration = max(gifLoopDuration, slideDuration)
             } else {
-                return  // Videos handle their own advancement
+                duration = slideDuration
             }
+        case .video:
+            configureClipRegion(for: item)
+            if videoPlayDuration.isFullVideo { return } // Video end triggers advance
+            duration = effectiveVideoDuration()
         }
 
         guard duration > 0 else { return }
+
+        currentSlideDuration = duration
+        timerStartDate = Date()
+        pausedTimerProgress = 0
 
         timerCancellable = Timer.publish(every: duration, on: .main, in: .common)
             .autoconnect()
@@ -203,7 +271,61 @@ final class SlideshowViewModel {
             }
     }
 
-    // MARK: - Library Reference
+    private func effectiveVideoDuration() -> TimeInterval {
+        switch videoPlayDuration {
+        case .slideshowTimer: return slideDuration
+        case .fullVideo: return 0
+        case .fixed(let seconds): return seconds
+        }
+    }
+
+    private func configureClipRegion(for item: MediaItem) {
+        guard !videoPlayDuration.isFullVideo else {
+            scrubber.clearClipRegion()
+            return
+        }
+
+        let playDuration = effectiveVideoDuration()
+
+        if randomizeClipLocation,
+           let videoDuration = item.duration,
+           videoDuration > playDuration {
+            let maxOffset = videoDuration - playDuration
+            let randomOffset = Double.random(in: 0...maxOffset)
+            scrubber.setClipRegion(start: randomOffset, duration: playDuration)
+            scrubber.seek(to: CMTime(seconds: randomOffset, preferredTimescale: 600))
+        } else {
+            scrubber.setClipRegion(start: 0, duration: playDuration)
+        }
+    }
+
+    // MARK: - Settings & Library
+
+    private(set) var settings: AppSettings?
+
+    func configure(settings: AppSettings) {
+        self.settings = settings
+        slideDuration = settings.defaultImageDuration
+        loop = settings.loopSlideshow
+        isRandomMode = settings.shuffleSlideshow
+        videoPlayDuration = settings.videoPlayDuration
+        randomizeClipLocation = settings.randomizeClipLocation
+        playFullGIF = settings.playFullGIF
+        volume = settings.defaultVolume
+        isMuted = settings.muteByDefault
+    }
+
+    func persistToSettings() {
+        guard let settings else { return }
+        settings.defaultImageDuration = slideDuration
+        settings.loopSlideshow = loop
+        settings.shuffleSlideshow = isRandomMode
+        settings.videoPlayDuration = videoPlayDuration
+        settings.randomizeClipLocation = randomizeClipLocation
+        settings.playFullGIF = playFullGIF
+        settings.defaultVolume = volume
+        settings.muteByDefault = isMuted
+    }
 
     func configure(library: MediaLibrary) {
         self.library = library
@@ -264,10 +386,7 @@ final class SlideshowViewModel {
         if isRandomMode {
             originalOrder = items
             shuffledOrder = items.shuffled()
-            if let current = currentItem,
-               let newIndex = shuffledOrder.firstIndex(where: { $0.id == current.id }) {
-                currentIndex = newIndex
-            }
+            currentIndex = 0
         } else {
             if let current = currentItem,
                let newIndex = originalOrder.firstIndex(where: { $0.id == current.id }) {

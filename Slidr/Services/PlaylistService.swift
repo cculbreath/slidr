@@ -260,8 +260,6 @@ final class PlaylistService {
                 let d1 = $1.duration ?? 0
                 return ascending ? d0 < d1 : d0 > d1
             }
-        case .random:
-            return items.shuffled()
         }
     }
 

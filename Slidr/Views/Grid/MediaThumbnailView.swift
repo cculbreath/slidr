@@ -117,7 +117,7 @@ struct MediaThumbnailView: View {
             }
         }
         .shadow(color: .black.opacity(isSelected ? 0.3 : 0.1), radius: isSelected ? 8 : 4)
-        .scaleEffect(hoverState.isActive ? 1.02 : 1.0)
+        .scaleEffect(hoverState.isActive ? 1.15 : 1.0)
         .animation(.easeInOut(duration: 0.15), value: hoverState.isActive)
         .anchorPreference(key: HoverCellAnchorKey.self, value: .bounds) { anchor in
             isImageHovering ? anchor : nil

@@ -43,6 +43,10 @@ final class AppSettings {
     var slideshowTransition: TransitionType
     var slideshowTransitionDuration: TimeInterval
     var slideshowVideoMode: VideoPlaybackMode
+    var videoPlayDurationTag: String
+    var videoPlayDurationSeconds: Double
+    var randomizeClipLocation: Bool
+    var playFullGIF: Bool
 
     // MARK: - Multi-Monitor
     var useAllMonitors: Bool
@@ -109,6 +113,10 @@ final class AppSettings {
         self.slideshowTransition = .crossfade
         self.slideshowTransitionDuration = 0.5
         self.slideshowVideoMode = .playFull
+        self.videoPlayDurationTag = "fixed"
+        self.videoPlayDurationSeconds = 30
+        self.randomizeClipLocation = false
+        self.playFullGIF = false
 
         // Multi-monitor defaults
         self.useAllMonitors = false
@@ -131,6 +139,28 @@ final class AppSettings {
     }
 
     // MARK: - Computed Properties
+
+    var videoPlayDuration: VideoPlayDuration {
+        get {
+            switch videoPlayDurationTag {
+            case "slideshowTimer": return .slideshowTimer
+            case "fullVideo": return .fullVideo
+            case "fixed": return .fixed(videoPlayDurationSeconds)
+            default: return .fixed(30)
+            }
+        }
+        set {
+            switch newValue {
+            case .slideshowTimer:
+                videoPlayDurationTag = "slideshowTimer"
+            case .fullVideo:
+                videoPlayDurationTag = "fullVideo"
+            case .fixed(let seconds):
+                videoPlayDurationTag = "fixed"
+                videoPlayDurationSeconds = seconds
+            }
+        }
+    }
 
     var resolvedLibraryPath: URL {
         if let custom = customLibraryPath {

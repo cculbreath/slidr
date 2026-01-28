@@ -3,6 +3,7 @@ import SwiftUI
 struct AsyncThumbnailImage: View {
     let item: MediaItem
     let size: ThumbnailSize
+    var contentMode: ContentMode = .fill
 
     @Environment(MediaLibrary.self) private var library
     @State private var image: NSImage?
@@ -14,7 +15,7 @@ struct AsyncThumbnailImage: View {
             if let image {
                 Image(nsImage: image)
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
+                    .aspectRatio(contentMode: contentMode)
             } else if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

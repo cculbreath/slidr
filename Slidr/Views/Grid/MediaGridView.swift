@@ -17,6 +17,7 @@ struct MediaGridView: View {
     @State private var itemsToDelete: [MediaItem] = []
     @State private var containerWidth: CGFloat = 0
     @State private var hoveredItemID: UUID?
+    @FocusState private var isFocused: Bool
 
     private var settings: AppSettings? {
         settingsQuery.first
@@ -37,62 +38,74 @@ struct MediaGridView: View {
                     actionLabel: "Import Files"
                 )
             } else {
-                ScrollView {
-                    LazyVGrid(columns: viewModel.gridColumns, spacing: 8) {
-                        ForEach(displayedItems) { item in
-                            MediaThumbnailView(
-                                item: item,
-                                size: viewModel.thumbnailSize,
-                                isSelected: viewModel.isSelected(item),
-                                selectedItemIDs: viewModel.selectedItems,
-                                hoveredItemID: $hoveredItemID,
-                                onTap: { handleTap(item) },
-                                onDoubleTap: { handleDoubleTap(item) }
-                            )
-                            .contextMenu {
-                                Button("Show in Finder") {
-                                    showInFinder(item)
-                                }
+                ScrollViewReader { scrollProxy in
+                    ScrollView {
+                        LazyVGrid(columns: viewModel.gridColumns, spacing: 8) {
+                            ForEach(displayedItems) { item in
+                                MediaThumbnailView(
+                                    item: item,
+                                    size: viewModel.thumbnailSize,
+                                    isSelected: viewModel.isSelected(item),
+                                    selectedItemIDs: viewModel.selectedItems,
+                                    hoveredItemID: $hoveredItemID,
+                                    onTap: { handleTap(item) },
+                                    onDoubleTap: { handleDoubleTap(item) }
+                                )
+                                .id(item.id)
+                                .contextMenu {
+                                    Button("Show in Finder") {
+                                        showInFinder(item)
+                                    }
 
-                                if item.storageLocation == .referenced {
-                                    Button("Copy to Library") {
-                                        copyToLibrary(item)
+                                    if item.storageLocation == .referenced {
+                                        Button("Copy to Library") {
+                                            copyToLibrary(item)
+                                        }
+                                    }
+
+                                    Divider()
+
+                                    Button("Move to Trash", role: .destructive) {
+                                        itemsToDelete = [item]
+                                        showDeleteConfirmation = true
                                     }
                                 }
-
-                                Divider()
-
-                                Button("Delete", role: .destructive) {
-                                    itemsToDelete = [item]
-                                    showDeleteConfirmation = true
+                            }
+                        }
+                        .overlayPreferenceValue(HoverCellAnchorKey.self) { anchor in
+                            GeometryReader { proxy in
+                                if let anchor,
+                                   let id = hoveredItemID,
+                                   let item = displayedItems.first(where: { $0.id == id }),
+                                   !item.isVideo {
+                                    let frame = proxy[anchor]
+                                    hoverRevealContent(for: item)
+                                        .id(id)
+                                        .position(x: frame.midX, y: frame.midY)
                                 }
                             }
+                            .allowsHitTesting(false)
+                            .animation(.easeInOut(duration: 0.15), value: hoveredItemID)
+                        }
+                        .padding()
+                    }
+                    .animation(.easeInOut(duration: 0.25), value: viewModel.thumbnailSize)
+                    .focusable()
+                    .focused($isFocused)
+                    .onAppear {
+                        isFocused = true
+                        if let selectedID = viewModel.selectedItems.first {
+                            scrollProxy.scrollTo(selectedID, anchor: .center)
                         }
                     }
-                    .overlayPreferenceValue(HoverCellAnchorKey.self) { anchor in
-                        GeometryReader { proxy in
-                            if let anchor,
-                               let id = hoveredItemID,
-                               let item = displayedItems.first(where: { $0.id == id }),
-                               !item.isVideo {
-                                let frame = proxy[anchor]
-                                hoverRevealContent(for: item)
-                                    .id(id)
-                                    .position(x: frame.midX, y: frame.midY)
-                            }
+                    .background {
+                        GeometryReader { geometry in
+                            Color.clear
+                                .onAppear { containerWidth = geometry.size.width }
+                                .onChange(of: geometry.size.width) { _, newWidth in
+                                    containerWidth = newWidth
+                                }
                         }
-                        .allowsHitTesting(false)
-                        .animation(.easeInOut(duration: 0.15), value: hoveredItemID)
-                    }
-                    .padding()
-                }
-                .background {
-                    GeometryReader { geometry in
-                        Color.clear
-                            .onAppear { containerWidth = geometry.size.width }
-                            .onChange(of: geometry.size.width) { _, newWidth in
-                                containerWidth = newWidth
-                            }
                     }
                 }
             }
@@ -119,6 +132,42 @@ struct MediaGridView: View {
 
             ToolbarItem(placement: .automatic) {
                 Menu {
+                    Button {
+                        viewModel.mediaTypeFilter = []
+                    } label: {
+                        HStack {
+                            Text("All")
+                            if viewModel.mediaTypeFilter.isEmpty {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    ForEach(MediaType.allCases, id: \.self) { type in
+                        Button {
+                            if viewModel.mediaTypeFilter.contains(type) {
+                                viewModel.mediaTypeFilter.remove(type)
+                            } else {
+                                viewModel.mediaTypeFilter.insert(type)
+                            }
+                        } label: {
+                            HStack {
+                                Text(type.rawValue.capitalized)
+                                if viewModel.mediaTypeFilter.contains(type) {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Label("Filter", systemImage: viewModel.mediaTypeFilter.isEmpty ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                }
+            }
+
+            ToolbarItem(placement: .automatic) {
+                Menu {
                     ForEach(SortOrder.allCases, id: \.self) { order in
                         Button {
                             viewModel.sortOrder = order
@@ -136,7 +185,7 @@ struct MediaGridView: View {
 
                     Toggle("Ascending", isOn: $viewModel.sortAscending)
                 } label: {
-                    Label("Sort", systemImage: "line.3.horizontal.decrease")
+                    Label("Sort", systemImage: "text.line.first.and.arrowtriangle.forward")
                 }
             }
 
@@ -156,7 +205,7 @@ struct MediaGridView: View {
                 Button {
                     startSlideshow()
                 } label: {
-                    Label("Slideshow", systemImage: "play.fill")
+                    Label("Slideshow", systemImage: "play.rectangle.on.rectangle")
                 }
                 .disabled(items.isEmpty)
             }
@@ -226,11 +275,11 @@ struct MediaGridView: View {
             revealSelectedInFinder()
         }
         .confirmationDialog(
-            "Delete \(itemsToDelete.count) item\(itemsToDelete.count == 1 ? "" : "s")?",
+            "Move \(itemsToDelete.count) item\(itemsToDelete.count == 1 ? "" : "s") to Trash?",
             isPresented: $showDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete", role: .destructive) {
+            Button("Move to Trash", role: .destructive) {
                 performDelete(itemsToDelete)
                 itemsToDelete = []
             }
@@ -239,9 +288,9 @@ struct MediaGridView: View {
             }
         } message: {
             if itemsToDelete.count == 1 {
-                Text("This will permanently delete \"\(itemsToDelete.first?.originalFilename ?? "")\" from the library.")
+                Text("\"\(itemsToDelete.first?.originalFilename ?? "")\" will be moved to the Trash.")
             } else {
-                Text("This will permanently delete \(itemsToDelete.count) items from the library.")
+                Text("\(itemsToDelete.count) items will be moved to the Trash.")
             }
         }
     }
@@ -264,18 +313,14 @@ struct MediaGridView: View {
     }
 
     private func startSlideshow() {
-        let selectedItems: [MediaItem]
         let startIndex: Int
-
-        if viewModel.selectedItems.isEmpty {
-            selectedItems = displayedItems
-            startIndex = 0
+        if let selectedID = viewModel.selectedItems.first,
+           let idx = displayedItems.firstIndex(where: { $0.id == selectedID }) {
+            startIndex = idx
         } else {
-            selectedItems = displayedItems.filter { viewModel.selectedItems.contains($0.id) }
             startIndex = 0
         }
-
-        onStartSlideshow(selectedItems, startIndex)
+        onStartSlideshow(displayedItems, startIndex)
     }
 
     // MARK: - Delete
@@ -341,7 +386,12 @@ struct MediaGridView: View {
         }
         .frame(width: revealedWidth, height: revealedHeight)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(viewModel.isSelected(item) ? Color.accentColor : Color.clear, lineWidth: 3)
+        )
         .shadow(color: .black.opacity(0.3), radius: 8)
+        .scaleEffect(1.15)
     }
 
     // MARK: - GIF Animation

@@ -5,86 +5,118 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Environment(MediaLibrary.self) private var library
     @Environment(PlaylistService.self) private var playlistService
+    @Environment(\.modelContext) private var modelContext
     @Query private var settingsQuery: [AppSettings]
 
     @State private var sidebarViewModel = SidebarViewModel()
     @State private var gridViewModel = GridViewModel()
     @State private var slideshowViewModel = SlideshowViewModel()
     @State private var showSlideshow = false
+    @State private var externalSlideshowActive = false
     @State private var showInspector = false
     @State private var isDropTargeted = false
     @State private var previewItem: MediaItem?
+    @State private var cachedItems: [MediaItem] = []
 
     var body: some View {
-        NavigationSplitView {
-            SidebarView(viewModel: sidebarViewModel)
-        } detail: {
-            if let previewItem {
-                MediaPreviewView(item: previewItem, items: currentItems, library: library) {
-                    self.previewItem = nil
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
-            } else {
-                MediaGridView(
-                    viewModel: gridViewModel,
-                    items: currentItems,
-                    onStartSlideshow: startSlideshow,
-                    onQuickLook: { item in
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            previewItem = item
-                        }
+        ZStack {
+            NavigationSplitView {
+                SidebarView(viewModel: sidebarViewModel)
+            } detail: {
+                if let previewItem {
+                    MediaPreviewView(item: previewItem, items: cachedItems, library: library) {
+                        self.previewItem = nil
                     }
-                )
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                } else {
+                    MediaGridView(
+                        viewModel: gridViewModel,
+                        items: cachedItems,
+                        onStartSlideshow: startSlideshow,
+                        onQuickLook: { item in
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                previewItem = item
+                            }
+                        }
+                    )
+                }
             }
-        }
-        .animation(.easeInOut(duration: 0.25), value: previewItem != nil)
-        .searchable(text: $gridViewModel.searchText, prompt: "Search media")
-        .inspector(isPresented: $showInspector) {
-            inspectorContent
-        }
-        .dropZone(isTargeted: $isDropTargeted) { urls in
-            Task {
-                _ = try? await library.importFiles(urls: urls)
+            .animation(.easeInOut(duration: 0.25), value: previewItem != nil)
+            .searchable(text: $gridViewModel.searchText, prompt: "Search media")
+            .inspector(isPresented: $showInspector) {
+                inspectorContent
             }
-        }
-        .overlay {
-            if isDropTargeted {
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Color.accentColor, lineWidth: 3)
+            .dropZone(isTargeted: $isDropTargeted) { urls in
+                Task {
+                    _ = try? await library.importFiles(urls: urls)
+                }
+            }
+            .overlay {
+                if isDropTargeted {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.accentColor, lineWidth: 3)
+                        .ignoresSafeArea()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleInspector)) { _ in
+                showInspector.toggle()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .importFiles)) { _ in
+                importFiles()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .quickLook)) { _ in
+                togglePreview()
+            }
+            .onChange(of: sidebarViewModel.selectedItem) {
+                gridViewModel.clearSelection()
+                refreshItems()
+            }
+            .onChange(of: gridViewModel.sortOrder) { _, newOrder in
+                refreshItems()
+                settingsQuery.first?.defaultSortOrder = newOrder
+            }
+            .onChange(of: gridViewModel.sortAscending) { _, newValue in
+                refreshItems()
+                settingsQuery.first?.defaultSortAscending = newValue
+            }
+            .onChange(of: library.libraryVersion) { refreshItems() }
+            .allowsHitTesting(!showSlideshow)
+            .toolbar(showSlideshow ? .hidden : .automatic, for: .windowToolbar)
+            .onAppear {
+                sidebarViewModel.configure(with: playlistService)
+                if sidebarViewModel.selectedItem == nil {
+                    sidebarViewModel.selectedItem = .allMedia
+                }
+                if let settings = settingsQuery.first {
+                    gridViewModel.sortOrder = settings.defaultSortOrder
+                    gridViewModel.sortAscending = settings.defaultSortAscending
+                }
+                refreshItems()
+                // Background-generate missing scrub thumbnails for videos
+                let count = settingsQuery.first?.scrubThumbnailCount ?? 100
+                library.backgroundGenerateMissingScrubThumbnails(count: count)
+            }
+
+            if showSlideshow {
+                SlideshowView(viewModel: slideshowViewModel, onDismiss: dismissSlideshow)
                     .ignoresSafeArea()
+                    .transition(.opacity)
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .toggleInspector)) { _ in
-            showInspector.toggle()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .importFiles)) { _ in
-            importFiles()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .quickLook)) { _ in
-            togglePreview()
-        }
-        .sheet(isPresented: $showSlideshow) {
-            slideshowViewModel.stop()
-        } content: {
-            SlideshowView(viewModel: slideshowViewModel)
-                .frame(minWidth: 800, minHeight: 600)
-        }
-        .onChange(of: sidebarViewModel.selectedItem) {
-            gridViewModel.clearSelection()
-        }
-        .onAppear {
-            sidebarViewModel.configure(with: playlistService)
-            if sidebarViewModel.selectedItem == nil {
-                sidebarViewModel.selectedItem = .allMedia
-            }
-            // Background-generate missing scrub thumbnails for videos
-            let count = settingsQuery.first?.scrubThumbnailCount ?? 100
-            library.backgroundGenerateMissingScrubThumbnails(count: count)
+        .animation(.easeInOut(duration: 0.3), value: showSlideshow)
+        .onChange(of: slideshowViewModel.currentIndex) { _, newIndex in
+            guard showSlideshow || externalSlideshowActive else { return }
+            let active = slideshowViewModel.activeItems
+            guard newIndex >= 0, newIndex < active.count else { return }
+            gridViewModel.selectedItems = [active[newIndex].id]
         }
     }
 
-    private var currentItems: [MediaItem] {
-        _ = library.libraryVersion
+    private func refreshItems() {
+        cachedItems = fetchItems()
+    }
+
+    private func fetchItems() -> [MediaItem] {
         switch sidebarViewModel.selectedItem {
         case .allMedia, .none:
             return library.items(sortedBy: gridViewModel.sortOrder, ascending: gridViewModel.sortAscending)
@@ -105,7 +137,50 @@ struct ContentView: View {
 
     private func startSlideshow(items: [MediaItem], startIndex: Int) {
         slideshowViewModel.start(with: items, startingAt: startIndex)
-        showSlideshow = true
+
+        let settings = settingsQuery.first
+        let screens = NSScreen.screens
+        let mainScreen = NSScreen.main ?? screens.first
+
+        if settings?.useAllMonitors == true,
+           screens.count > 1,
+           let externalScreen = screens.first(where: { $0 != mainScreen }) {
+            // External display mode: slideshow on external, browser stays interactive
+            externalSlideshowActive = true
+            let appDelegate = NSApplication.shared.delegate as? AppDelegate
+
+            let slideshowContent = SlideshowView(
+                viewModel: slideshowViewModel,
+                onDismiss: dismissSlideshow
+            )
+            .environment(library)
+            .modelContainer(modelContext.container)
+
+            let showControlPanel = settings?.controlPanelOnSeparateMonitor == true
+            appDelegate?.openExternalSlideshow(
+                on: externalScreen,
+                content: slideshowContent,
+                controlContent: showControlPanel ? AnyView(
+                    SlideshowControlPanel(viewModel: slideshowViewModel, onClose: dismissSlideshow)
+                ) : nil,
+                controlScreen: showControlPanel ? mainScreen : nil
+            )
+        } else {
+            // Single monitor: inline slideshow
+            showSlideshow = true
+        }
+    }
+
+    private func dismissSlideshow() {
+        slideshowViewModel.stop()
+
+        if externalSlideshowActive {
+            externalSlideshowActive = false
+            let appDelegate = NSApplication.shared.delegate as? AppDelegate
+            appDelegate?.closeAllSlideshowWindows()
+        } else {
+            showSlideshow = false
+        }
     }
 
     private func importFiles() {
@@ -129,7 +204,7 @@ struct ContentView: View {
                 previewItem = nil
             }
         } else if let selectedID = gridViewModel.selectedItems.first,
-                  let item = currentItems.first(where: { $0.id == selectedID }) {
+                  let item = cachedItems.first(where: { $0.id == selectedID }) {
             withAnimation(.easeInOut(duration: 0.25)) {
                 previewItem = item
             }
@@ -141,10 +216,10 @@ struct ContentView: View {
     @ViewBuilder
     private var inspectorContent: some View {
         if gridViewModel.selectedItems.count > 1 {
-            let selectedMediaItems = currentItems.filter { gridViewModel.selectedItems.contains($0.id) }
+            let selectedMediaItems = cachedItems.filter { gridViewModel.selectedItems.contains($0.id) }
             MultiSelectInspectorView(items: selectedMediaItems, library: library, playlistService: playlistService)
         } else if let selectedID = gridViewModel.selectedItems.first,
-                  let item = currentItems.first(where: { $0.id == selectedID }) {
+                  let item = cachedItems.first(where: { $0.id == selectedID }) {
             MediaInspectorView(item: item)
         } else {
             VStack {
