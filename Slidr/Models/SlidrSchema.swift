@@ -1,3 +1,41 @@
+/// # SlidrSchema — SwiftData Schema Versions
+///
+/// This file contains all schema versions for SwiftData migrations.
+///
+/// ## Why is this file so large?
+///
+/// SwiftData requires complete model definitions for each schema version to support
+/// migrations. Each version contains full copies of all model classes as they existed
+/// at that version. This is a framework requirement, not a code smell.
+///
+/// ## Version History
+///
+/// | Version | Changes |
+/// |---------|---------|
+/// | V1 | Initial schema (pre-UI overhaul) |
+/// | V2 | Added frameCount, importMode, scrubThumbnailCount |
+/// | V3 | Added hasThumbnailError, captionDisplayMode, videoCaptionDuration |
+/// | V4 | Added source field to MediaItem |
+/// | V5 | Added gridMediaTypeFilterRaw to AppSettings |
+/// | V6 | Added showTimerBarRaw to AppSettings |
+/// | V7 | Added production field to MediaItem |
+/// | V8 | Added transcriptText, transcriptRelativePath to MediaItem |
+///
+/// ## Adding a New Version
+///
+/// 1. Copy the most recent schema version enum (or use live models for V(N+1))
+/// 2. Make changes to the model definitions in the live `@Model` classes
+/// 3. Add a migration stage to `SlidrMigrationPlan`
+/// 4. Update the `schemas` and `stages` arrays
+/// 5. Update this documentation table
+///
+/// ## Rules
+///
+/// - NEVER delete old schema versions (breaks migrations from older databases)
+/// - NEVER modify old schema versions (breaks existing migration chains)
+/// - ALWAYS add new optional properties with nil defaults (lightweight migration)
+/// - Use custom migration stages only when data transformation is needed
+
 import SwiftData
 import SwiftUI
 import Foundation

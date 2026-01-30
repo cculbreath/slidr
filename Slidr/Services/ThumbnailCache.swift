@@ -43,7 +43,6 @@ actor ThumbnailCache {
         // 4. Generate thumbnail
         // Capture values to avoid crossing isolation boundaries
         let pixelSize = size.pixelSize
-        let quality = jpegQuality
         let relativePath = item.relativePath
         let filename = item.originalFilename
         let mediaType = item.mediaType
@@ -65,11 +64,7 @@ actor ThumbnailCache {
             }
 
             // Cache to disk
-            if let tiffData = image.tiffRepresentation,
-               let bitmapRep = NSBitmapImageRep(data: tiffData),
-               let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: quality]) {
-                try? jpegData.write(to: diskPath)
-            }
+            saveThumbnailToDisk(image, to: diskPath)
 
             // Cache to memory
             memoryCache.setObject(image, forKey: cacheKey as NSString)
@@ -173,12 +168,8 @@ actor ThumbnailCache {
                 thumbnails.append(image)
 
                 // Write to disk cache
-                if let tiffData = image.tiffRepresentation,
-                   let bitmapRep = NSBitmapImageRep(data: tiffData),
-                   let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: jpegQuality]) {
-                    let diskPath = cacheDirectory.appendingPathComponent("\(hash)-scrub-\(i - 1).jpg")
-                    try? jpegData.write(to: diskPath)
-                }
+                let diskPath = cacheDirectory.appendingPathComponent("\(hash)-scrub-\(i - 1).jpg")
+                saveThumbnailToDisk(image, to: diskPath)
             } catch {
                 Self.logger.warning("Failed to generate scrub thumbnail at \(time.seconds)s: \(error.localizedDescription)")
             }
@@ -221,12 +212,8 @@ actor ThumbnailCache {
                     let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
                     let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
 
-                    if let tiffData = image.tiffRepresentation,
-                       let bitmapRep = NSBitmapImageRep(data: tiffData),
-                       let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: jpegQuality]) {
-                        let diskPath = cacheDirectory.appendingPathComponent("\(item.contentHash)-scrub-\(i - 1).jpg")
-                        try? jpegData.write(to: diskPath)
-                    }
+                    let diskPath = cacheDirectory.appendingPathComponent("\(item.contentHash)-scrub-\(i - 1).jpg")
+                    saveThumbnailToDisk(image, to: diskPath)
                 }
                 generated += 1
                 Self.logger.debug("Pre-generated scrub thumbnails for \(item.filename)")
@@ -379,6 +366,15 @@ actor ThumbnailCache {
     }
 
     // MARK: - Private Helpers
+
+    private func saveThumbnailToDisk(_ image: NSImage, to path: URL) {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmapRep = NSBitmapImageRep(data: tiffData),
+              let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: jpegQuality]) else {
+            return
+        }
+        try? jpegData.write(to: path)
+    }
 
     private func extractHash(from cacheKey: String) -> String {
         // Handle scrub thumbnail pattern: {hash}-scrub-{index}
