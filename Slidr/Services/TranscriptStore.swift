@@ -73,9 +73,18 @@ private struct TranscriptStoreKey: EnvironmentKey {
     static let defaultValue: TranscriptStore? = nil
 }
 
+private struct TranscriptSeekActionKey: EnvironmentKey {
+    static let defaultValue: ((TimeInterval) -> Void)? = nil
+}
+
 extension EnvironmentValues {
     var transcriptStore: TranscriptStore? {
         get { self[TranscriptStoreKey.self] }
         set { self[TranscriptStoreKey.self] = newValue }
+    }
+
+    var transcriptSeekAction: ((TimeInterval) -> Void)? {
+        get { self[TranscriptSeekActionKey.self] }
+        set { self[TranscriptSeekActionKey.self] = newValue }
     }
 }

@@ -6,10 +6,13 @@ import OSLog
 struct TranscriptSection: View {
     @Bindable var item: MediaItem
     @Environment(\.transcriptStore) private var transcriptStore
+    @Environment(\.transcriptSeekAction) private var seekAction
     @Environment(\.modelContext) private var modelContext
 
     @State private var isImporting = false
     @State private var importError: String?
+    @State private var transcriptCues: [TranscriptCue] = []
+    @State private var isExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -30,6 +33,8 @@ struct TranscriptSection: View {
                     .foregroundStyle(.red)
             }
         }
+        .onAppear { loadCues() }
+        .onChange(of: item.id) { loadCues() }
     }
 
     private var transcriptInfo: some View {
@@ -50,14 +55,26 @@ struct TranscriptSection: View {
                 }
             }
 
-            // Preview text
-            if let text = item.transcriptText {
-                let preview = String(text.prefix(100))
-                Text(preview + (text.count > 100 ? "..." : ""))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
+            // Expandable transcript cues
+            DisclosureGroup("Transcript", isExpanded: $isExpanded) {
+                if transcriptCues.isEmpty {
+                    Text("No cues loaded")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 4)
+                } else {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 4) {
+                            ForEach(transcriptCues, id: \.index) { cue in
+                                cueRow(cue)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .frame(maxHeight: 300)
+                }
             }
+            .font(.caption)
 
             // Remove button
             Button(role: .destructive) {
@@ -68,6 +85,53 @@ struct TranscriptSection: View {
             }
             .buttonStyle(.bordered)
         }
+    }
+
+    @ViewBuilder
+    private func cueRow(_ cue: TranscriptCue) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            if let seekAction {
+                Button {
+                    seekAction(cue.startTime)
+                } label: {
+                    Text("[\(formatTimestamp(cue.startTime))]")
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.blue)
+                }
+                .buttonStyle(.plain)
+                .onHover { hovering in
+                    if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                }
+            } else {
+                Text("[\(formatTimestamp(cue.startTime))]")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(stripHTMLTags(cue.text))
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func formatTimestamp(_ time: TimeInterval) -> String {
+        let totalSeconds = Int(time)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            return String(format: "%d:%02d", minutes, seconds)
+        }
+    }
+
+    private func stripHTMLTags(_ text: String) -> String {
+        text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
     }
 
     private var importButton: some View {
@@ -84,6 +148,26 @@ struct TranscriptSection: View {
         }
         .buttonStyle(.bordered)
         .disabled(isImporting)
+    }
+
+    private func loadCues() {
+        transcriptCues = []
+        guard let transcriptStore,
+              item.hasTranscript,
+              let relativePath = item.transcriptRelativePath else { return }
+
+        let contentHash = item.contentHash
+        Task {
+            do {
+                let cues = try await transcriptStore.cues(
+                    forContentHash: contentHash,
+                    relativePath: relativePath
+                )
+                transcriptCues = cues
+            } catch {
+                Logger.transcripts.error("Failed to load transcript cues: \(error.localizedDescription)")
+            }
+        }
     }
 
     private func importTranscript() {
@@ -116,6 +200,7 @@ struct TranscriptSection: View {
                 item.transcriptText = result.plainText
                 item.transcriptRelativePath = result.relativePath
                 try? modelContext.save()
+                loadCues()
                 Logger.transcripts.info("Transcript imported for \(item.originalFilename)")
             } catch {
                 importError = error.localizedDescription
@@ -139,6 +224,8 @@ struct TranscriptSection: View {
 
         item.transcriptText = nil
         item.transcriptRelativePath = nil
+        transcriptCues = []
+        isExpanded = false
         try? modelContext.save()
     }
 }

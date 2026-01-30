@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var previewItem: MediaItem?
     @State private var cachedItems: [MediaItem] = []
     @State private var subtitleImportAlert: String?
+    @State private var transcriptSeekAction: ((TimeInterval) -> Void)?
 
     // Local state for menu bindings (avoids SwiftData infinite loop)
     @State private var importDestination: StorageLocation = .local
@@ -175,6 +176,7 @@ struct ContentView: View {
         }
         .modifier(ToolbarBackgroundModifier())
         .animation(.easeInOut(duration: 0.25), value: previewItem != nil)
+        .environment(\.transcriptSeekAction, transcriptSeekAction)
         .searchable(
             text: $gridViewModel.searchText,
             placement: .sidebar,
@@ -198,7 +200,7 @@ struct ContentView: View {
     @ViewBuilder
     private var detailContent: some View {
         if let previewItem {
-            MediaPreviewView(item: previewItem, items: cachedItems, library: library) {
+            MediaPreviewView(item: previewItem, items: cachedItems, library: library, onSeekAction: $transcriptSeekAction) {
                 self.previewItem = nil
             }
             .transition(.opacity.combined(with: .scale(scale: 0.95)))

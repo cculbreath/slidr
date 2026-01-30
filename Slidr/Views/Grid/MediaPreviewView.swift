@@ -1,11 +1,13 @@
 import SwiftUI
 import SwiftData
+import CoreMedia
 
 struct MediaPreviewView: View {
     let item: MediaItem
     let items: [MediaItem]
     let library: MediaLibrary
     let onDismiss: () -> Void
+    @Binding var onSeekAction: ((TimeInterval) -> Void)?
 
     @Environment(\.transcriptStore) private var transcriptStore
     @Query private var settingsQuery: [AppSettings]
@@ -19,10 +21,11 @@ struct MediaPreviewView: View {
     @State private var showSubtitles = true
     @FocusState private var isFocused: Bool
 
-    init(item: MediaItem, items: [MediaItem], library: MediaLibrary, onDismiss: @escaping () -> Void) {
+    init(item: MediaItem, items: [MediaItem], library: MediaLibrary, onSeekAction: Binding<((TimeInterval) -> Void)?>, onDismiss: @escaping () -> Void) {
         self.item = item
         self.items = items
         self.library = library
+        self._onSeekAction = onSeekAction
         self.onDismiss = onDismiss
         self._currentItem = State(initialValue: item)
     }
@@ -70,6 +73,12 @@ struct MediaPreviewView: View {
         .onAppear {
             isFocused = true
             loadTranscriptCues()
+            onSeekAction = { [scrubber] time in
+                scrubber.seek(to: CMTime(seconds: time, preferredTimescale: 600))
+            }
+        }
+        .onDisappear {
+            onSeekAction = nil
         }
         .onChange(of: currentItem.id) {
             loadTranscriptCues()
