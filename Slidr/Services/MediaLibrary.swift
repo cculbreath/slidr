@@ -3,6 +3,8 @@ import SwiftData
 import AppKit
 import OSLog
 
+/// Main entry point for media library operations.
+/// Acts as a facade delegating to specialized services.
 @MainActor
 @Observable
 final class MediaLibrary {
@@ -25,11 +27,17 @@ final class MediaLibrary {
     let transcriptStore: TranscriptStore
     private let fileManager = FileManager.default
 
+    // MARK: - Sub-Services
+    private let queryService: MediaQueryService
+    private let importCoordinator: MediaImportCoordinator
+    private let integrityService: LibraryIntegrityService
+
     // MARK: - Paths
     private(set) var libraryRoot: URL
     var externalLibraryRoot: URL?
 
     // MARK: - Initialization
+
     init(modelContainer: ModelContainer, thumbnailCache: ThumbnailCache, transcriptStore: TranscriptStore) {
         self.modelContainer = modelContainer
         self.thumbnailCache = thumbnailCache
@@ -39,54 +47,66 @@ final class MediaLibrary {
             fatalError("Application Support directory not available — this should never happen on macOS")
         }
         let slidrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
-        self.libraryRoot = slidrDir.appendingPathComponent("Library", isDirectory: true)
+        let libraryRoot = slidrDir.appendingPathComponent("Library", isDirectory: true)
+        self.libraryRoot = libraryRoot
 
         // Ensure directories exist
         try? fileManager.createDirectory(at: libraryRoot.appendingPathComponent("Local"), withIntermediateDirectories: true)
+
+        // Initialize sub-services
+        let queryService = MediaQueryService(modelContainer: modelContainer)
+        self.queryService = queryService
+        self.importCoordinator = MediaImportCoordinator(
+            modelContainer: modelContainer,
+            transcriptStore: transcriptStore,
+            libraryRoot: libraryRoot
+        )
+        self.integrityService = LibraryIntegrityService(
+            modelContainer: modelContainer,
+            thumbnailCache: thumbnailCache,
+            queryService: queryService
+        )
 
         updateItemCount()
     }
 
     // MARK: - Queries
 
-    var allItems: [MediaItem] {
-        let descriptor = FetchDescriptor<MediaItem>(
-            sortBy: [SortDescriptor(\.importDate, order: .reverse)]
-        )
-        return (try? modelContainer.mainContext.fetch(descriptor)) ?? []
-    }
-
-    /// All unique tags used across the library, sorted alphabetically
-    var allTags: [String] {
-        let tagSets = allItems.map { Set($0.tags) }
-        let allTags = tagSets.reduce(into: Set<String>()) { $0.formUnion($1) }
-        return allTags.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-    }
-
-    /// All unique sources used across the library, sorted alphabetically
-    var allSources: [String] {
-        let sources = allItems.compactMap { $0.source }
-            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        return Array(Set(sources)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-    }
+    var allItems: [MediaItem] { queryService.allItems }
+    var allTags: [String] { queryService.allTags }
+    var allSources: [String] { queryService.allSources }
 
     func items(matching predicate: Predicate<MediaItem>? = nil, sortedBy sortOrder: SortOrder = .dateImported, ascending: Bool = false) -> [MediaItem] {
-        var descriptor = FetchDescriptor<MediaItem>(predicate: predicate)
+        queryService.items(matching: predicate, sortedBy: sortOrder, ascending: ascending)
+    }
 
-        switch sortOrder {
-        case .name:
-            descriptor.sortBy = [SortDescriptor(\.originalFilename, order: ascending ? .forward : .reverse)]
-        case .dateModified:
-            descriptor.sortBy = [SortDescriptor(\.fileModifiedDate, order: ascending ? .forward : .reverse)]
-        case .dateImported:
-            descriptor.sortBy = [SortDescriptor(\.importDate, order: ascending ? .forward : .reverse)]
-        case .fileSize:
-            descriptor.sortBy = [SortDescriptor(\.fileSize, order: ascending ? .forward : .reverse)]
-        case .duration:
-            descriptor.sortBy = [SortDescriptor(\.duration, order: ascending ? .forward : .reverse)]
-        }
+    func items(inFolder folder: String, includeSubfolders: Bool) -> [MediaItem] {
+        queryService.items(inFolder: folder, includeSubfolders: includeSubfolders)
+    }
 
-        return (try? modelContainer.mainContext.fetch(descriptor)) ?? []
+    func item(withHash hash: String) -> MediaItem? {
+        queryService.item(withHash: hash)
+    }
+
+    func items(in location: StorageLocation) -> [MediaItem] {
+        queryService.items(in: location)
+    }
+
+    // MARK: - Smart Albums
+
+    func lastImportItems(sortedBy sortOrder: SortOrder, ascending: Bool) -> [MediaItem] {
+        guard let importDate = lastImportDate else { return [] }
+        return queryService.lastImportItems(since: importDate, sortedBy: sortOrder, ascending: ascending)
+    }
+
+    func importedTodayItems(sortedBy sortOrder: SortOrder, ascending: Bool) -> [MediaItem] {
+        queryService.importedTodayItems(sortedBy: sortOrder, ascending: ascending)
+    }
+
+    var unplayableVideoCount: Int { queryService.unplayableVideoCount }
+
+    func unplayableVideos(sortedBy sortOrder: SortOrder, ascending: Bool) -> [MediaItem] {
+        queryService.unplayableVideos(sortedBy: sortOrder, ascending: ascending)
     }
 
     // MARK: - Item Management
@@ -95,17 +115,6 @@ final class MediaLibrary {
         modelContainer.mainContext.insert(item)
         try? modelContainer.mainContext.save()
         updateItemCount()
-    }
-
-    func items(inFolder folder: String, includeSubfolders: Bool) -> [MediaItem] {
-        allItems.filter { item in
-            if includeSubfolders {
-                return item.relativePath.hasPrefix(folder)
-            } else {
-                let itemFolder = (item.relativePath as NSString).deletingLastPathComponent
-                return itemFolder == folder
-            }
-        }
     }
 
     // MARK: - Import
@@ -128,31 +137,17 @@ final class MediaLibrary {
             updateExternalItemCount()
         }
 
-        let importer = MediaImporter(libraryRoot: libraryRoot, externalLibraryRoot: externalLibraryRoot, modelContext: modelContainer.mainContext, options: options)
-        let result = try await importer.importFiles(urls: urls) { [weak self] progress in
+        let result = try await importCoordinator.importFiles(urls: urls, options: options) { [weak self] progress in
             Task { @MainActor in
                 guard self?.isLoading == true else { return }
                 self?.importProgress = progress
             }
         }
 
-        if !result.imported.isEmpty {
-            lastImportDate = Date()
-
-            // Generate scrub thumbnails for imported videos in the background
-            let videoItems = result.imported.filter { $0.isVideo }
-            if !videoItems.isEmpty {
-                let descriptor = FetchDescriptor<AppSettings>()
-                let count = (try? modelContainer.mainContext.fetch(descriptor).first?.scrubThumbnailCount) ?? 100
-                generateScrubThumbnailsForVideos(videoItems, count: count)
-            }
-        }
-
+        handlePostImport(result: result)
         Logger.library.info("Import complete: \(result.summary)")
         return result
     }
-
-    // MARK: - Folder Import
 
     func importFolders(urls: [URL], options: ImportOptions = .default) async throws -> (result: ImportResult, folderGroups: [(name: String, items: [MediaItem])]) {
         isLoading = true
@@ -164,134 +159,51 @@ final class MediaLibrary {
             updateExternalItemCount()
         }
 
-        // First pass: collect all files to get total count
-        var allFolderFiles: [(name: String, fileURLs: [URL])] = []
-        var looseFiles: [URL] = []
-        var totalFileCount = 0
-
-        for url in urls {
-            var isDir: ObjCBool = false
-            if fileManager.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
-                let mediaByFolder = collectMediaByFolder(in: url)
-                for (folderName, fileURLs) in mediaByFolder {
-                    allFolderFiles.append((name: folderName, fileURLs: fileURLs))
-                    totalFileCount += fileURLs.count
-                }
-            } else {
-                looseFiles.append(url)
-            }
-        }
-        totalFileCount += looseFiles.count
-
-        importProgress = ImportProgress(currentItem: 0, totalItems: totalFileCount, currentFilename: "", phase: .importing)
-
-        var combinedResult = ImportResult()
-        var folderGroups: [(name: String, items: [MediaItem])] = []
-        var processedCount = 0
-
-        // Import folder files
-        for (folderName, fileURLs) in allFolderFiles {
-            let importer = MediaImporter(libraryRoot: libraryRoot, externalLibraryRoot: externalLibraryRoot, modelContext: modelContainer.mainContext, options: options)
-            let baseCount = processedCount
-            let folderResult = try await importer.importFiles(urls: fileURLs) { [weak self] progress in
-                Task { @MainActor in
-                    guard self?.isLoading == true else { return }
-                    self?.importProgress = ImportProgress(
-                        currentItem: baseCount + progress.currentItem,
-                        totalItems: totalFileCount,
-                        currentFilename: progress.currentFilename,
-                        phase: progress.phase
-                    )
-                }
-            }
-            combinedResult.merge(folderResult)
-            processedCount += fileURLs.count
-            if !folderResult.imported.isEmpty {
-                folderGroups.append((name: folderName, items: folderResult.imported))
+        let (result, folderGroups) = try await importCoordinator.importFolders(urls: urls, options: options) { [weak self] progress in
+            Task { @MainActor in
+                guard self?.isLoading == true else { return }
+                self?.importProgress = progress
             }
         }
 
-        // Import loose files
-        if !looseFiles.isEmpty {
-            let importer = MediaImporter(libraryRoot: libraryRoot, externalLibraryRoot: externalLibraryRoot, modelContext: modelContainer.mainContext, options: options)
-            let baseCount = processedCount
-            let looseResult = try await importer.importFiles(urls: looseFiles) { [weak self] progress in
-                Task { @MainActor in
-                    guard self?.isLoading == true else { return }
-                    self?.importProgress = ImportProgress(
-                        currentItem: baseCount + progress.currentItem,
-                        totalItems: totalFileCount,
-                        currentFilename: progress.currentFilename,
-                        phase: progress.phase
-                    )
-                }
-            }
-            combinedResult.merge(looseResult)
-        }
-
-        if !combinedResult.imported.isEmpty {
-            lastImportDate = Date()
-
-            let videoItems = combinedResult.imported.filter { $0.isVideo }
-            if !videoItems.isEmpty {
-                let descriptor = FetchDescriptor<AppSettings>()
-                let count = (try? modelContainer.mainContext.fetch(descriptor).first?.scrubThumbnailCount) ?? 100
-                generateScrubThumbnailsForVideos(videoItems, count: count)
-            }
-        }
-
-        Logger.library.info("Folder import complete: \(combinedResult.summary)")
-        return (result: combinedResult, folderGroups: folderGroups)
+        handlePostImport(result: result)
+        Logger.library.info("Folder import complete: \(result.summary)")
+        return (result: result, folderGroups: folderGroups)
     }
 
-    private func collectMediaByFolder(in url: URL) -> [(name: String, fileURLs: [URL])] {
-        var folderMap: [String: [URL]] = [:]
+    func importSubtitles(urls: [URL]) async -> SubtitleImportResult {
+        let videoItems = allItems.filter { $0.isVideo }
+        return await importCoordinator.importSubtitles(urls: urls, videoItems: videoItems)
+    }
 
-        guard let enumerator = fileManager.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return []
+    func copyToLibrary(_ item: MediaItem) async throws {
+        try await importCoordinator.copyToLibrary(item)
+    }
+
+    private func handlePostImport(result: ImportResult) {
+        guard !result.imported.isEmpty else { return }
+        lastImportDate = Date()
+
+        let videoItems = result.imported.filter { $0.isVideo }
+        if !videoItems.isEmpty {
+            let descriptor = FetchDescriptor<AppSettings>()
+            let count = (try? modelContainer.mainContext.fetch(descriptor).first?.scrubThumbnailCount) ?? 100
+            generateScrubThumbnailsForVideos(videoItems, count: count)
         }
-
-        while let fileURL = enumerator.nextObject() as? URL {
-            guard let resourceValues = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]),
-                  resourceValues.isRegularFile == true else {
-                continue
-            }
-
-            guard FileTypeDetector.isSupported(fileURL) else { continue }
-
-            let parentDir = fileURL.deletingLastPathComponent()
-            folderMap[parentDir.path, default: []].append(fileURL)
-        }
-
-        // Sort by folder path for consistent ordering, use folder name as the group name
-        return folderMap.sorted { $0.key < $1.key }
-            .map { (name: URL(fileURLWithPath: $0.key).lastPathComponent, fileURLs: $0.value) }
     }
 
     // MARK: - Delete
 
     func delete(_ item: MediaItem) {
-        // Move file to Trash
         let fileURL = absoluteURL(for: item)
         try? fileManager.trashItem(at: fileURL, resultingItemURL: nil)
 
-        // Delete thumbnails
-        Task {
-            await thumbnailCache.removeThumbnails(forHash: item.contentHash)
-        }
+        Task { await thumbnailCache.removeThumbnails(forHash: item.contentHash) }
 
-        // Delete transcript
         if let relativePath = item.transcriptRelativePath {
-            Task {
-                await transcriptStore.removeTranscript(forContentHash: item.contentHash, relativePath: relativePath)
-            }
+            Task { await transcriptStore.removeTranscript(forContentHash: item.contentHash, relativePath: relativePath) }
         }
 
-        // Delete from database
         modelContainer.mainContext.delete(item)
         try? modelContainer.mainContext.save()
 
@@ -301,23 +213,15 @@ final class MediaLibrary {
 
     func delete(_ items: [MediaItem]) {
         for item in items {
-            // Move file to Trash
             let fileURL = absoluteURL(for: item)
             try? fileManager.trashItem(at: fileURL, resultingItemURL: nil)
 
-            // Delete thumbnails
-            Task {
-                await thumbnailCache.removeThumbnails(forHash: item.contentHash)
-            }
+            Task { await thumbnailCache.removeThumbnails(forHash: item.contentHash) }
 
-            // Delete transcript
             if let relativePath = item.transcriptRelativePath {
-                Task {
-                    await transcriptStore.removeTranscript(forContentHash: item.contentHash, relativePath: relativePath)
-                }
+                Task { await transcriptStore.removeTranscript(forContentHash: item.contentHash, relativePath: relativePath) }
             }
 
-            // Delete from database
             modelContainer.mainContext.delete(item)
         }
         try? modelContainer.mainContext.save()
@@ -341,7 +245,6 @@ final class MediaLibrary {
 
     func generateScrubThumbnailsForVideos(_ items: [MediaItem], count: Int) {
         let cache = thumbnailCache
-
         let videoItems = items.filter { $0.isVideo }
             .map { PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename) }
 
@@ -354,7 +257,6 @@ final class MediaLibrary {
 
     func backgroundGenerateMissingScrubThumbnails(count: Int) {
         let cache = thumbnailCache
-
         let videoItems = allItems.filter { $0.isVideo }
             .map { PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename) }
 
@@ -367,34 +269,24 @@ final class MediaLibrary {
 
     func invalidateScrubThumbnails(newCount: Int) {
         let cache = thumbnailCache
-
         Task.detached(priority: .utility) {
             await cache.clearScrubThumbnails()
         }
-
-        // Re-generate with the new count
         backgroundGenerateMissingScrubThumbnails(count: newCount)
     }
 
-    /// Regenerates scrub thumbnails with progress tracking.
-    /// Returns the total number of videos to process.
     func regenerateScrubThumbnailsWithProgress(
         count: Int,
         progress: @escaping @MainActor (Int, Int) -> Void
     ) async -> Int {
         let cache = thumbnailCache
-
-        // Clear existing scrub thumbnails first
         await cache.clearScrubThumbnails()
 
         let videoItems = allItems.filter { $0.isVideo }
             .map { PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename) }
 
         let totalCount = videoItems.count
-
-        guard totalCount > 0 else {
-            return 0
-        }
+        guard totalCount > 0 else { return 0 }
 
         await cache.preGenerateScrubThumbnails(
             for: videoItems,
@@ -409,7 +301,6 @@ final class MediaLibrary {
     // MARK: - Library Path Management
 
     func setLibraryRoot(_ url: URL) throws {
-        let fileManager = FileManager.default
         if !fileManager.fileExists(atPath: url.path) {
             try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
         }
@@ -418,20 +309,16 @@ final class MediaLibrary {
         try fileManager.createDirectory(at: localDir, withIntermediateDirectories: true)
 
         libraryRoot = url
+        importCoordinator.libraryRoot = url
         Logger.library.info("Library root changed to: \(url.path)")
     }
 
     func migrateLibrary(to newPath: URL, progress: ((Double) -> Void)? = nil) async throws {
-        let fileManager = FileManager.default
         let oldPath = libraryRoot
-
         guard oldPath != newPath else { return }
 
         let oldLocalDir = oldPath.appendingPathComponent("Local")
-        guard let files = try? fileManager.contentsOfDirectory(
-            at: oldLocalDir,
-            includingPropertiesForKeys: nil
-        ) else { return }
+        guard let files = try? fileManager.contentsOfDirectory(at: oldLocalDir, includingPropertiesForKeys: nil) else { return }
 
         let totalFiles = files.count
         var processed = 0
@@ -447,54 +334,8 @@ final class MediaLibrary {
         }
 
         libraryRoot = newPath
+        importCoordinator.libraryRoot = newPath
         Logger.library.info("Library migrated from \(oldPath.path) to \(newPath.path)")
-    }
-
-    // MARK: - Smart Albums
-
-    func lastImportItems(sortedBy sortOrder: SortOrder, ascending: Bool) -> [MediaItem] {
-        guard let importDate = lastImportDate else { return [] }
-        let threshold = importDate.addingTimeInterval(-2)
-        return items(sortedBy: sortOrder, ascending: ascending)
-            .filter { $0.importDate >= threshold }
-    }
-
-    func importedTodayItems(sortedBy sortOrder: SortOrder, ascending: Bool) -> [MediaItem] {
-        let startOfDay = Calendar.current.startOfDay(for: Date())
-        return items(sortedBy: sortOrder, ascending: ascending)
-            .filter { $0.importDate >= startOfDay }
-    }
-
-    var unplayableVideoCount: Int {
-        allItems.filter { $0.isVideo && $0.hasThumbnailError }.count
-    }
-
-    func unplayableVideos(sortedBy sortOrder: SortOrder, ascending: Bool) -> [MediaItem] {
-        items(sortedBy: sortOrder, ascending: ascending)
-            .filter { $0.isVideo && $0.hasThumbnailError }
-    }
-
-    // MARK: - Helpers
-
-    private func updateItemCount() {
-        let descriptor = FetchDescriptor<MediaItem>()
-        itemCount = (try? modelContainer.mainContext.fetchCount(descriptor)) ?? 0
-        libraryVersion += 1
-    }
-
-    func absoluteURL(for item: MediaItem) -> URL {
-        switch item.storageLocation {
-        case .referenced:
-            return URL(fileURLWithPath: item.relativePath)
-        case .external:
-            if let extRoot = externalLibraryRoot {
-                return extRoot.appendingPathComponent(item.relativePath)
-            }
-            // Fallback path that won't exist - caller should check accessibility
-            return libraryRoot.appendingPathComponent("External/\(item.relativePath)")
-        case .local:
-            return libraryRoot.appendingPathComponent(item.relativePath)
-        }
     }
 
     // MARK: - External Drive Support
@@ -503,9 +344,11 @@ final class MediaLibrary {
         if let path, !path.isEmpty {
             let url = URL(fileURLWithPath: path)
             externalLibraryRoot = url
+            importCoordinator.externalLibraryRoot = url
             isExternalDriveConnected = fileManager.fileExists(atPath: url.path)
         } else {
             externalLibraryRoot = nil
+            importCoordinator.externalLibraryRoot = nil
             isExternalDriveConnected = false
         }
         updateExternalItemCount()
@@ -519,10 +362,6 @@ final class MediaLibrary {
             isExternalDriveConnected = false
         }
         updateExternalItemCount()
-    }
-
-    private func updateExternalItemCount() {
-        externalItemCount = items(in: .external).count
     }
 
     func locateExternalLibrary() {
@@ -556,197 +395,46 @@ final class MediaLibrary {
         allItems.filter { !isAccessible($0) }
     }
 
-    func items(in location: StorageLocation) -> [MediaItem] {
-        allItems.filter { $0.storageLocation == location }
-    }
-
     // MARK: - Verification
 
     func verifyLibraryIntegrity() async -> VerificationResult {
-        let startTime = Date()
-        let items = allItems
-        let totalItems = items.count
-        var verifiedCount = 0
-        var missingCount = 0
-
-        for item in items {
-            let url = absoluteURL(for: item)
-            if fileManager.fileExists(atPath: url.path) {
-                if item.status == .missing {
-                    item.status = .available
-                }
-                item.lastVerifiedDate = Date()
-                verifiedCount += 1
-            } else if item.storageLocation == .external && !isExternalDriveConnected {
-                item.status = .externalNotMounted
-                item.lastVerifiedDate = Date()
-            } else {
-                item.status = .missing
-                item.lastVerifiedDate = Date()
-                missingCount += 1
-            }
-        }
-
-        try? modelContainer.mainContext.save()
-
-        let orphanedCount = await countOrphanedThumbnails()
-
-        let duration = Date().timeIntervalSince(startTime)
-        Logger.library.info("Library verification complete: \(verifiedCount)/\(totalItems) verified, \(missingCount) missing, \(orphanedCount) orphaned thumbnails")
-
-        return VerificationResult(
-            totalItems: totalItems,
-            verifiedItems: verifiedCount,
-            missingItems: missingCount,
-            orphanedThumbnails: orphanedCount,
-            duration: duration
+        await integrityService.verifyIntegrity(
+            urlResolver: { [self] item in absoluteURL(for: item) },
+            isExternalDriveConnected: isExternalDriveConnected
         )
-    }
-
-    func item(withHash hash: String) -> MediaItem? {
-        let descriptor = FetchDescriptor<MediaItem>(
-            predicate: #Predicate { $0.contentHash == hash }
-        )
-        return try? modelContainer.mainContext.fetch(descriptor).first
     }
 
     func cleanOrphanedThumbnails() async {
-        let existingHashes = Set(allItems.map(\.contentHash))
-        await thumbnailCache.pruneOrphanedThumbnails(existingHashes: existingHashes)
-        Logger.library.info("Orphaned thumbnail cleanup complete")
+        await integrityService.cleanOrphanedThumbnails()
     }
 
     func removeOrphanedItems() {
-        let orphaned = allItems.filter { $0.status == .missing }
-        guard !orphaned.isEmpty else { return }
-
-        for item in orphaned {
-            Task {
-                await thumbnailCache.removeThumbnails(forHash: item.contentHash)
-            }
-            modelContainer.mainContext.delete(item)
-        }
-
-        try? modelContainer.mainContext.save()
+        integrityService.removeOrphanedItems()
         updateItemCount()
-        Logger.library.info("Removed \(orphaned.count) orphaned items with .missing status")
     }
 
-    // MARK: - Private Verification Helpers
+    // MARK: - Helpers
 
-    private func countOrphanedThumbnails() async -> Int {
-        let existingHashes = Set(allItems.map(\.contentHash))
-        let diskCount = await thumbnailCache.diskCacheCount()
-        // Each item can have up to ThumbnailSize.allCases.count cached thumbnails
-        // An orphaned thumbnail is one whose hash doesn't match any existing item
-        // We approximate by checking the disk cache - exact count comes from pruning
-        let expectedMaxThumbnails = existingHashes.count * ThumbnailSize.allCases.count
-        return max(0, diskCount - expectedMaxThumbnails)
-    }
-
-    // MARK: - Copy to Library
-
-    func copyToLibrary(_ item: MediaItem) async throws {
-        guard item.storageLocation == .referenced else { return }
-
-        let sourceURL = URL(fileURLWithPath: item.relativePath)
-        guard fileManager.fileExists(atPath: sourceURL.path) else {
-            throw LibraryError.sourceFileNotFound
-        }
-
-        let year = Calendar.current.component(.year, from: Date())
-        let yearDir = libraryRoot.appendingPathComponent("Local/\(year)", isDirectory: true)
-        try fileManager.createDirectory(at: yearDir, withIntermediateDirectories: true)
-
-        let destinationFilename = "\(UUID().uuidString).\(sourceURL.pathExtension)"
-        let destinationURL = yearDir.appendingPathComponent(destinationFilename)
-
-        try fileManager.copyItem(at: sourceURL, to: destinationURL)
-
-        // Update the item to point to the new location
-        item.relativePath = "Local/\(year)/\(destinationFilename)"
-        item.storageLocation = .local
-        try? modelContainer.mainContext.save()
-
-        Logger.library.info("Copied to library: \(item.originalFilename)")
-    }
-
-    // MARK: - Batch Subtitle Import
-
-    struct SubtitleImportResult {
-        var matched: [(item: MediaItem, file: URL)] = []
-        var unmatched: [URL] = []
-
-        var summary: String {
-            if unmatched.isEmpty {
-                return "Imported \(matched.count) subtitle(s)"
+    func absoluteURL(for item: MediaItem) -> URL {
+        switch item.storageLocation {
+        case .referenced:
+            return URL(fileURLWithPath: item.relativePath)
+        case .external:
+            if let extRoot = externalLibraryRoot {
+                return extRoot.appendingPathComponent(item.relativePath)
             }
-            return "Imported \(matched.count), \(unmatched.count) unmatched"
+            return libraryRoot.appendingPathComponent("External/\(item.relativePath)")
+        case .local:
+            return libraryRoot.appendingPathComponent(item.relativePath)
         }
     }
 
-    /// Matches subtitle files to video items by filename or MediaItem UUID, then imports them.
-    ///
-    /// Matching strategy (first match wins):
-    /// 1. Subtitle stem matches a MediaItem UUID (e.g. `A1B2C3D4-...srt`)
-    /// 2. Subtitle stem matches a video's original filename without extension (e.g. `My Video.srt` → `My Video.mp4`)
-    func importSubtitles(urls: [URL]) async -> SubtitleImportResult {
-        let subtitleExtensions: Set<String> = ["srt", "vtt"]
-        let subtitleFiles = urls.filter { subtitleExtensions.contains($0.pathExtension.lowercased()) }
+    private func updateItemCount() {
+        itemCount = queryService.fetchCount()
+        libraryVersion += 1
+    }
 
-        guard !subtitleFiles.isEmpty else { return SubtitleImportResult() }
-
-        // Build lookup tables
-        let videos = allItems.filter { $0.isVideo }
-        let byUUID: [String: MediaItem] = Dictionary(
-            uniqueKeysWithValues: videos.map { ($0.id.uuidString.lowercased(), $0) }
-        )
-        let byFilename: [String: MediaItem] = {
-            var map: [String: MediaItem] = [:]
-            for video in videos {
-                let stem = (video.originalFilename as NSString).deletingPathExtension.lowercased()
-                // First video wins if duplicates exist
-                if map[stem] == nil {
-                    map[stem] = video
-                }
-            }
-            return map
-        }()
-
-        var result = SubtitleImportResult()
-
-        for file in subtitleFiles {
-            let stem = file.deletingPathExtension().lastPathComponent.lowercased()
-
-            // Try UUID match first, then filename match
-            let matchedItem = byUUID[stem] ?? byFilename[stem]
-
-            guard let item = matchedItem else {
-                result.unmatched.append(file)
-                Logger.transcripts.info("No match for subtitle: \(file.lastPathComponent)")
-                continue
-            }
-
-            do {
-                let importResult = try await transcriptStore.importTranscript(
-                    from: file,
-                    forContentHash: item.contentHash
-                )
-                item.transcriptText = importResult.plainText
-                item.transcriptRelativePath = importResult.relativePath
-                result.matched.append((item: item, file: file))
-            } catch {
-                result.unmatched.append(file)
-                Logger.transcripts.error("Failed to import subtitle \(file.lastPathComponent): \(error.localizedDescription)")
-            }
-        }
-
-        if !result.matched.isEmpty {
-            try? modelContainer.mainContext.save()
-        }
-
-        Logger.transcripts.info("Batch subtitle import: \(result.summary)")
-        return result
+    private func updateExternalItemCount() {
+        externalItemCount = queryService.items(in: .external).count
     }
 }
-
