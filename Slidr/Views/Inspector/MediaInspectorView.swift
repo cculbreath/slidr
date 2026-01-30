@@ -28,6 +28,11 @@ struct MediaInspectorView: View {
 
                 Divider()
 
+                // Production type
+                productionSection
+
+                Divider()
+
                 // Tags
                 tagsSection
 
@@ -139,6 +144,30 @@ struct MediaInspectorView: View {
                 set: { item.source = $0.isEmpty ? nil : $0 }
             ))
             .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    // MARK: - Production Section
+
+    private var productionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Production")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            Picker("", selection: Binding(
+                get: { item.production },
+                set: { item.production = $0 }
+            )) {
+                Text("Not Set").tag(ProductionType?.none)
+                ForEach(ProductionType.allCases, id: \.self) { type in
+                    Label(type.displayName, systemImage: type.iconName)
+                        .tag(ProductionType?.some(type))
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
         }
     }
 

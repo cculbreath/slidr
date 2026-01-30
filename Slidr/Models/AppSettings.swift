@@ -50,7 +50,7 @@ final class AppSettings {
     var videoPlayDurationSeconds: Double
     var randomizeClipLocation: Bool
     var playFullGIF: Bool
-    var showTimerBar: Bool
+    var showTimerBarRaw: Bool?
 
     // MARK: - Multi-Monitor
     var useAllMonitors: Bool
@@ -91,6 +91,11 @@ final class AppSettings {
     var videoCaptionDuration: Double {
         get { videoCaptionDurationRaw ?? 5.0 }
         set { videoCaptionDurationRaw = newValue }
+    }
+
+    var showTimerBar: Bool {
+        get { showTimerBarRaw ?? false }
+        set { showTimerBarRaw = newValue }
     }
 
     // MARK: - Verification
@@ -150,7 +155,7 @@ final class AppSettings {
         self.videoPlayDurationSeconds = 30
         self.randomizeClipLocation = false
         self.playFullGIF = false
-        self.showTimerBar = false
+        self.showTimerBarRaw = false
 
         // Multi-monitor defaults
         self.useAllMonitors = false

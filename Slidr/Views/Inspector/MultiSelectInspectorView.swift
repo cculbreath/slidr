@@ -33,6 +33,11 @@ struct MultiSelectInspectorView: View {
 
                 Divider()
 
+                // Production section
+                productionSection
+
+                Divider()
+
                 // Playlist section
 //                playlistSection
 
@@ -209,6 +214,39 @@ struct MultiSelectInspectorView: View {
         guard !source.isEmpty else { return }
         items.forEach { $0.source = source }
         sourceText = ""
+    }
+
+    // MARK: - Production Section
+
+    private var productionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Set Production")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                ForEach(ProductionType.allCases, id: \.self) { type in
+                    Button {
+                        items.forEach { $0.production = type }
+                    } label: {
+                        Label(type.displayName, systemImage: type.iconName)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+
+            Button {
+                items.forEach { $0.production = nil }
+            } label: {
+                Text("Clear Production")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
     }
 
     // MARK: - Playlist Section

@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import OSLog
 
 struct VideoPlayerView: View {
     let item: MediaItem
@@ -12,10 +13,27 @@ struct VideoPlayerView: View {
 
     @State private var player: AVPlayer?
     @State private var playerObserver: Any?
+    @State private var errorObserver: Any?
+    @State private var statusObserver: NSKeyValueObservation?
+    @State private var hasError = false
+
+    private static let logger = Logger(subsystem: "com.physicscloud.slidr", category: "VideoPlayer")
 
     var body: some View {
         GeometryReader { geometry in
-            if let player = player {
+            if hasError {
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.yellow)
+                    Text("Unable to play video")
+                        .font(.headline)
+                    Text("This video format may not be supported")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let player = player {
                 NoControlsPlayerView(player: player)
                     .frame(width: geometry.size.width, height: geometry.size.height)
             } else {
@@ -30,6 +48,7 @@ struct VideoPlayerView: View {
             teardownPlayer()
         }
         .onChange(of: item.id) {
+            hasError = false
             teardownPlayer()
             setupPlayer()
         }
@@ -53,6 +72,7 @@ struct VideoPlayerView: View {
         let newPlayer = AVPlayer(playerItem: playerItem)
 
         newPlayer.volume = isMuted ? 0 : volume
+        newPlayer.automaticallyWaitsToMinimizeStalling = false
 
         // Observe when video ends
         playerObserver = NotificationCenter.default.addObserver(
@@ -61,6 +81,42 @@ struct VideoPlayerView: View {
             queue: .main
         ) { _ in
             onVideoEnded()
+        }
+
+        // Observe playback errors
+        errorObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: playerItem,
+            queue: .main
+        ) { notification in
+            if let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error {
+                Self.logger.error("Video playback failed: \(error.localizedDescription)")
+            }
+            hasError = true
+            // Auto-advance after showing error briefly
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                if hasError {
+                    onVideoEnded()
+                }
+            }
+        }
+
+        // Observe player item status for load errors
+        statusObserver = playerItem.observe(\.status, options: [.new]) { item, _ in
+            Task { @MainActor in
+                if item.status == .failed {
+                    if let error = item.error {
+                        Self.logger.error("Video failed to load: \(error.localizedDescription)")
+                    }
+                    hasError = true
+                    // Auto-advance after showing error briefly
+                    try? await Task.sleep(for: .seconds(2))
+                    if hasError {
+                        onVideoEnded()
+                    }
+                }
+            }
         }
 
         // Attach scrubber
@@ -78,6 +134,14 @@ struct VideoPlayerView: View {
             NotificationCenter.default.removeObserver(observer)
             playerObserver = nil
         }
+
+        if let observer = errorObserver {
+            NotificationCenter.default.removeObserver(observer)
+            errorObserver = nil
+        }
+
+        statusObserver?.invalidate()
+        statusObserver = nil
 
         if let player = player {
             scrubber.detach(from: player)

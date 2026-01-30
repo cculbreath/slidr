@@ -35,6 +35,7 @@ final class MediaItem {
     var rating: Int?
     var tags: [String]
     var source: String?
+    var production: ProductionType?
 
     // MARK: - Status
     var status: MediaStatus
@@ -68,6 +69,7 @@ final class MediaItem {
         self.rating = nil
         self.tags = []
         self.source = nil
+        self.production = nil
         self.lastVerifiedDate = nil
         self.playlists = []
     }
@@ -81,6 +83,24 @@ final class MediaItem {
     var isVideo: Bool { mediaType == .video }
     var isAnimated: Bool { mediaType == .gif }
 
+    /// Returns the filename stripped of leading numbers and file extension
+    /// e.g., "54526658 Girlfriend.gif" → "Girlfriend"
+    var displayName: String {
+        var name = originalFilename
+
+        // Strip file extension
+        if let dotIndex = name.lastIndex(of: ".") {
+            name = String(name[..<dotIndex])
+        }
+
+        // Strip leading numbers and whitespace (e.g., "54526658 ")
+        if let match = name.firstMatch(of: /^\d+\s+/) {
+            name = String(name[match.range.upperBound...])
+        }
+
+        return name.isEmpty ? originalFilename : name
+    }
+
     var hasThumbnailError: Bool {
         get { hasThumbnailErrorRaw ?? false }
         set { hasThumbnailErrorRaw = newValue }
@@ -91,12 +111,12 @@ final class MediaItem {
         return !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Returns caption if set, otherwise returns filename
+    /// Returns caption if set, otherwise returns display name (filename without leading number and extension)
     var displayCaption: String {
         if let caption = caption, !caption.isEmpty {
             return caption
         }
-        return originalFilename
+        return displayName
     }
 
     var formattedDuration: String? {

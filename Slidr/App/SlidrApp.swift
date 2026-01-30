@@ -15,7 +15,7 @@ struct SlidrApp: App {
 
     init() {
         // Initialize SwiftData container with versioned schema and migration plan
-        let schema = Schema(versionedSchema: SlidrSchemaV5.self)
+        let schema = Schema(versionedSchema: SlidrSchemaV7.self)
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let slidrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
 
@@ -102,6 +102,7 @@ struct SlidrApp: App {
                 .environment(mediaLibrary)
                 .environment(playlistService)
                 .environment(hoverVideoPlayer)
+                .preferredColorScheme(.dark)
         }
         .modelContainer(modelContainer)
         .windowStyle(.hiddenTitleBar)

@@ -8,6 +8,10 @@ struct CacheSettingsView: View {
     @State private var cacheSize: String = "Calculating..."
     @State private var isClearing = false
     @State private var isRegenerating = false
+    @State private var regenProgress: Double = 0
+    @State private var regenTotal: Int = 0
+    @State private var regenCurrent: Int = 0
+    @State private var clearSuccess = false
 
     var body: some View {
         Form {
@@ -44,6 +48,10 @@ struct CacheSettingsView: View {
 
                 HStack {
                     Spacer()
+                    if clearSuccess {
+                        Label("Cleared", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    }
                     Button("Clear Cache") {
                         clearCache()
                     }
@@ -64,12 +72,20 @@ struct CacheSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                HStack {
-                    Spacer()
-                    Button("Regenerate Scrub Thumbnails") {
-                        regenerateScrubThumbnails()
+                if isRegenerating {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ProgressView(value: regenProgress)
+                        Text("Processing \(regenCurrent) of \(regenTotal) videos...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    .disabled(isRegenerating)
+                } else {
+                    HStack {
+                        Spacer()
+                        Button("Regenerate Scrub Thumbnails") {
+                            regenerateScrubThumbnails()
+                        }
+                    }
                 }
             }
         }
@@ -90,19 +106,38 @@ struct CacheSettingsView: View {
 
     private func clearCache() {
         isClearing = true
+        clearSuccess = false
         Task {
             await thumbnailCache.clearCache()
             calculateCacheSize()
             isClearing = false
+            clearSuccess = true
+            // Hide success indicator after a delay
+            try? await Task.sleep(for: .seconds(2))
+            clearSuccess = false
         }
     }
 
     private func regenerateScrubThumbnails() {
         isRegenerating = true
-        library.invalidateScrubThumbnails(newCount: settings.scrubThumbnailCount)
-        // Reset after a brief delay since the work is background
+        regenProgress = 0
+        regenCurrent = 0
+        regenTotal = 0
+
         Task {
-            try? await Task.sleep(for: .seconds(1))
+            let total = await library.regenerateScrubThumbnailsWithProgress(
+                count: settings.scrubThumbnailCount
+            ) { current, total in
+                regenCurrent = current
+                regenTotal = total
+                regenProgress = total > 0 ? Double(current) / Double(total) : 0
+            }
+
+            if total == 0 {
+                // No videos to process
+                regenTotal = 0
+            }
+
             isRegenerating = false
             calculateCacheSize()
         }

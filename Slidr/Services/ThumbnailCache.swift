@@ -187,20 +187,28 @@ actor ThumbnailCache {
         return thumbnails
     }
 
-    func preGenerateScrubThumbnails(for items: [PreGenerateItem], count: Int, libraryRoot: URL) async {
+    func preGenerateScrubThumbnails(
+        for items: [PreGenerateItem],
+        count: Int,
+        progress: (@MainActor (Int, Int) -> Void)? = nil
+    ) async {
         let pixelSize = ThumbnailSize.medium.pixelSize
         var generated = 0
+        let total = items.count
 
-        for item in items {
+        for (index, item) in items.enumerated() {
             if hasScrubThumbnails(forHash: item.contentHash, count: count) {
+                await progress?(index + 1, total)
                 continue
             }
 
-            let fileURL = libraryRoot.appendingPathComponent(item.relativePath)
-            guard FileManager.default.fileExists(atPath: fileURL.path) else { continue }
+            guard FileManager.default.fileExists(atPath: item.fileURL.path) else {
+                await progress?(index + 1, total)
+                continue
+            }
 
             do {
-                let asset = AVURLAsset(url: fileURL)
+                let asset = AVURLAsset(url: item.fileURL)
                 let generator = AVAssetImageGenerator(asset: asset)
                 generator.appliesPreferredTrackTransform = true
                 generator.maximumSize = CGSize(width: pixelSize, height: pixelSize)
@@ -225,6 +233,8 @@ actor ThumbnailCache {
             } catch {
                 Self.logger.warning("Failed to pre-generate scrub thumbnails for \(item.filename): \(error.localizedDescription)")
             }
+
+            await progress?(index + 1, total)
         }
 
         if generated > 0 {
@@ -390,7 +400,7 @@ actor ThumbnailCache {
 /// Sendable value type for passing media item data across isolation boundaries
 struct PreGenerateItem: Sendable {
     let contentHash: String
-    let relativePath: String
+    let fileURL: URL
     let filename: String
 }
 

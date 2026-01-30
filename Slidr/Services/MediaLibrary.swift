@@ -325,49 +325,27 @@ final class MediaLibrary {
 
     func generateScrubThumbnailsForVideos(_ items: [MediaItem], count: Int) {
         let cache = thumbnailCache
-        let localRoot = libraryRoot
-        let extRoot = externalLibraryRoot
 
-        let localItems = items.filter { $0.isVideo && $0.storageLocation != .external }
-            .map { PreGenerateItem(contentHash: $0.contentHash, relativePath: $0.relativePath, filename: $0.originalFilename) }
+        let videoItems = items.filter { $0.isVideo }
+            .map { PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename) }
 
-        let externalItems = items.filter { $0.isVideo && $0.storageLocation == .external }
-            .map { PreGenerateItem(contentHash: $0.contentHash, relativePath: $0.relativePath, filename: $0.originalFilename) }
+        guard !videoItems.isEmpty else { return }
 
-        if !localItems.isEmpty {
-            Task.detached(priority: .utility) {
-                await cache.preGenerateScrubThumbnails(for: localItems, count: count, libraryRoot: localRoot)
-            }
-        }
-
-        if !externalItems.isEmpty, let extRoot {
-            Task.detached(priority: .utility) {
-                await cache.preGenerateScrubThumbnails(for: externalItems, count: count, libraryRoot: extRoot)
-            }
+        Task.detached(priority: .utility) {
+            await cache.preGenerateScrubThumbnails(for: videoItems, count: count)
         }
     }
 
     func backgroundGenerateMissingScrubThumbnails(count: Int) {
         let cache = thumbnailCache
-        let localRoot = libraryRoot
-        let extRoot = externalLibraryRoot
 
-        let localItems = allItems.filter { $0.isVideo && $0.storageLocation != .external }
-            .map { PreGenerateItem(contentHash: $0.contentHash, relativePath: $0.relativePath, filename: $0.originalFilename) }
+        let videoItems = allItems.filter { $0.isVideo }
+            .map { PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename) }
 
-        let externalItems = allItems.filter { $0.isVideo && $0.storageLocation == .external }
-            .map { PreGenerateItem(contentHash: $0.contentHash, relativePath: $0.relativePath, filename: $0.originalFilename) }
+        guard !videoItems.isEmpty else { return }
 
-        if !localItems.isEmpty {
-            Task.detached(priority: .background) {
-                await cache.preGenerateScrubThumbnails(for: localItems, count: count, libraryRoot: localRoot)
-            }
-        }
-
-        if !externalItems.isEmpty, let extRoot {
-            Task.detached(priority: .background) {
-                await cache.preGenerateScrubThumbnails(for: externalItems, count: count, libraryRoot: extRoot)
-            }
+        Task.detached(priority: .background) {
+            await cache.preGenerateScrubThumbnails(for: videoItems, count: count)
         }
     }
 
@@ -380,6 +358,36 @@ final class MediaLibrary {
 
         // Re-generate with the new count
         backgroundGenerateMissingScrubThumbnails(count: newCount)
+    }
+
+    /// Regenerates scrub thumbnails with progress tracking.
+    /// Returns the total number of videos to process.
+    func regenerateScrubThumbnailsWithProgress(
+        count: Int,
+        progress: @escaping @MainActor (Int, Int) -> Void
+    ) async -> Int {
+        let cache = thumbnailCache
+
+        // Clear existing scrub thumbnails first
+        await cache.clearScrubThumbnails()
+
+        let videoItems = allItems.filter { $0.isVideo }
+            .map { PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename) }
+
+        let totalCount = videoItems.count
+
+        guard totalCount > 0 else {
+            return 0
+        }
+
+        await cache.preGenerateScrubThumbnails(
+            for: videoItems,
+            count: count
+        ) { current, total in
+            progress(current, total)
+        }
+
+        return totalCount
     }
 
     // MARK: - Library Path Management

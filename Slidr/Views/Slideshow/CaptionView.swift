@@ -33,11 +33,7 @@ struct CaptionView: View {
     }
 
     private var filenameWithoutExtension: String {
-        let filename = item.originalFilename
-        if let dotIndex = filename.lastIndex(of: ".") {
-            return String(filename[..<dotIndex])
-        }
-        return filename
+        item.displayName
     }
 
     private var formattedDate: String {

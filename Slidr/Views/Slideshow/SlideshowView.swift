@@ -23,6 +23,13 @@ struct SlideshowView: View {
     @State private var controlsDragOffset: CGSize = .zero
     @State private var isDraggingControls: Bool = false
 
+    // Scrub mode state (Option-key scrubbing)
+    @State private var isScrubModeActive: Bool = false
+    @State private var scrubThumbnails: [NSImage] = []
+    @State private var scrubPosition: CGFloat = 0
+    @State private var wasPlayingBeforeScrub: Bool = false
+    @State private var optionKeyMonitor: Any?
+
     private var settings: AppSettings? { settingsQuery.first }
 
     private enum NavigationDirection {
@@ -186,12 +193,22 @@ struct SlideshowView: View {
                     Spacer()
                 }
             }
+
+            // Scrub mode overlay (Option-key scrubbing)
+            if isScrubModeActive, viewModel.currentItemIsVideo, !scrubThumbnails.isEmpty {
+                scrubModeOverlay
+            }
         }
         .animation(.easeInOut(duration: 0.2), value: showControls)
         .animation(.easeInOut(duration: 0.2), value: showInfoOverlay)
         .animation(.easeInOut(duration: 0.15), value: ratingFeedback)
+        .animation(.easeInOut(duration: 0.15), value: isScrubModeActive)
         .onAppear {
             showControlsTemporarily()
+            setupOptionKeyMonitor()
+        }
+        .onDisappear {
+            removeOptionKeyMonitor()
         }
         .onContinuousHover { phase in
             switch phase {
@@ -450,7 +467,7 @@ struct SlideshowView: View {
                     }
                     .padding()
                     .foregroundStyle(.primary)
-                    .preferredColorScheme(.light)
+                    .preferredColorScheme(.dark)
                 }
                 .help("Timer Duration")
 
@@ -515,7 +532,7 @@ struct SlideshowView: View {
                     .padding()
                     .frame(width: 280)
                     .foregroundStyle(.primary)
-                    .preferredColorScheme(.light)
+                    .preferredColorScheme(.dark)
                 }
                 .help("Video Playback Duration")
             }
@@ -672,6 +689,154 @@ struct SlideshowView: View {
         }
         .allowsHitTesting(false)
         .transition(.opacity)
+    }
+
+    // MARK: - Scrub Mode (Option-key scrubbing)
+
+    @ViewBuilder
+    private var scrubModeOverlay: some View {
+        GeometryReader { geo in
+            ZStack {
+                // Show scrub thumbnail
+                let index = scrubIndex(for: scrubPosition)
+                Image(nsImage: scrubThumbnails[index])
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // Scrub position indicator
+                VStack {
+                    Spacer()
+                    ZStack(alignment: .leading) {
+                        // Background bar
+                        Rectangle()
+                            .fill(.white.opacity(0.3))
+                            .frame(height: 6)
+
+                        // Progress
+                        Rectangle()
+                            .fill(.white)
+                            .frame(width: geo.size.width * scrubPosition, height: 6)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                    .padding(.horizontal, 40)
+                    .padding(.bottom, 60)
+                }
+
+                // Time indicator
+                VStack {
+                    Spacer()
+                    if let duration = viewModel.currentItem?.duration {
+                        Text(formatTime(scrubPosition * duration))
+                            .font(.title2)
+                            .fontWeight(.medium)
+                            .monospacedDigit()
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.8), radius: 2)
+                            .padding(.bottom, 80)
+                    }
+                }
+
+                // "Scrubbing" label
+                VStack {
+                    HStack {
+                        Label("Scrubbing (⌥)", systemImage: "slider.horizontal.below.rectangle")
+                            .font(.caption)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        Spacer()
+                    }
+                    .padding(.leading, 16)
+                    .padding(.top, 16)
+                    Spacer()
+                }
+            }
+            .background(Color.black)
+            .onContinuousHover { phase in
+                if case .active(let location) = phase {
+                    scrubPosition = max(0, min(1, location.x / geo.size.width))
+                }
+            }
+        }
+        .transition(.opacity)
+    }
+
+    private func scrubIndex(for position: CGFloat) -> Int {
+        guard !scrubThumbnails.isEmpty else { return 0 }
+        let index = Int(position * CGFloat(scrubThumbnails.count))
+        return max(0, min(index, scrubThumbnails.count - 1))
+    }
+
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%d:%02d", mins, secs)
+    }
+
+    private func setupOptionKeyMonitor() {
+        // Monitor for flags changed events (modifier keys)
+        optionKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
+            let optionPressed = event.modifierFlags.contains(.option)
+
+            if optionPressed && !isScrubModeActive && viewModel.currentItemIsVideo {
+                enterScrubMode()
+            } else if !optionPressed && isScrubModeActive {
+                exitScrubMode()
+            }
+
+            return event
+        }
+    }
+
+    private func removeOptionKeyMonitor() {
+        if let monitor = optionKeyMonitor {
+            NSEvent.removeMonitor(monitor)
+            optionKeyMonitor = nil
+        }
+    }
+
+    private func enterScrubMode() {
+        guard let item = viewModel.currentItem, item.isVideo else { return }
+
+        wasPlayingBeforeScrub = viewModel.isPlaying
+        if viewModel.isPlaying {
+            viewModel.togglePlayback()
+        }
+
+        // Set initial scrub position from current video position
+        scrubPosition = viewModel.scrubber.progress
+
+        isScrubModeActive = true
+
+        // Load scrub thumbnails
+        Task {
+            let count = settings?.scrubThumbnailCount ?? 100
+            do {
+                scrubThumbnails = try await library.videoScrubThumbnails(
+                    for: item,
+                    count: count,
+                    size: .large
+                )
+            } catch {
+                scrubThumbnails = []
+            }
+        }
+    }
+
+    private func exitScrubMode() {
+        guard isScrubModeActive else { return }
+
+        // Seek to scrubbed position
+        viewModel.scrubber.seek(toPercentage: Double(scrubPosition))
+
+        isScrubModeActive = false
+
+        // Resume playback if it was playing before
+        if wasPlayingBeforeScrub && !viewModel.isPlaying {
+            viewModel.togglePlayback()
+        }
     }
 }
 

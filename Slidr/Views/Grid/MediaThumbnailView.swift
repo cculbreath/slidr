@@ -59,7 +59,7 @@ struct MediaThumbnailView: View {
                 .frame(width: size.pixelSize, height: size.pixelSize)
 
             if showFilenames {
-                Text(item.originalFilename)
+                Text(item.displayName)
                     .font(.caption2)
                     .lineLimit(1)
                     .truncationMode(.middle)
