@@ -191,9 +191,9 @@ struct MediaInspectorView: View {
             if !item.tags.isEmpty {
                 FlowLayout(spacing: 4) {
                     ForEach(item.tags, id: \.self) { tag in
-                        TagChip(tag: tag) {
+                        TagChipView(tag: tag, onRemove: {
                             item.removeTag(tag)
-                        }
+                        })
                     }
                 }
             }

@@ -41,23 +41,10 @@ struct SourceEditorView: View {
 
             // Autocomplete suggestions
             if showSuggestions && isInputFocused {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(filteredSuggestions.prefix(5), id: \.self) { suggestion in
-                        Button {
-                            source = suggestion
-                            showSuggestions = false
-                        } label: {
-                            Text(suggestion)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 4)
-                                .padding(.horizontal, 8)
-                        }
-                        .buttonStyle(.plain)
-                        .background(Color(nsColor: .controlBackgroundColor))
-                    }
+                AutocompleteSuggestionList(suggestions: filteredSuggestions) { suggestion in
+                    source = suggestion
+                    showSuggestions = false
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .shadow(color: .black.opacity(0.1), radius: 4)
             }
         }
     }
@@ -134,23 +121,10 @@ struct MultiSelectSourceEditorView: View {
 
                 // Autocomplete suggestions
                 if showSuggestions && isInputFocused {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(filteredSuggestions.prefix(5), id: \.self) { suggestion in
-                            Button {
-                                sourceText = suggestion
-                                applySourceToAll()
-                            } label: {
-                                Text(suggestion)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.vertical, 4)
-                                    .padding(.horizontal, 8)
-                            }
-                            .buttonStyle(.plain)
-                            .background(Color(nsColor: .controlBackgroundColor))
-                        }
+                    AutocompleteSuggestionList(suggestions: filteredSuggestions) { suggestion in
+                        sourceText = suggestion
+                        applySourceToAll()
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .shadow(color: .black.opacity(0.1), radius: 4)
                 }
             }
         }
