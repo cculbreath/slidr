@@ -129,7 +129,17 @@ final class MediaImportCoordinator {
         let byUUID: [String: MediaItem] = Dictionary(
             uniqueKeysWithValues: videoItems.map { ($0.id.uuidString.lowercased(), $0) }
         )
-        let byFilename: [String: MediaItem] = {
+        let byLibraryFilename: [String: MediaItem] = {
+            var map: [String: MediaItem] = [:]
+            for video in videoItems {
+                let libFile = ((video.relativePath as NSString).lastPathComponent as NSString).deletingPathExtension.lowercased()
+                if map[libFile] == nil {
+                    map[libFile] = video
+                }
+            }
+            return map
+        }()
+        let byOriginalFilename: [String: MediaItem] = {
             var map: [String: MediaItem] = [:]
             for video in videoItems {
                 let stem = (video.originalFilename as NSString).deletingPathExtension.lowercased()
@@ -144,7 +154,7 @@ final class MediaImportCoordinator {
 
         for file in subtitleFiles {
             let stem = file.deletingPathExtension().lastPathComponent.lowercased()
-            let matchedItem = byUUID[stem] ?? byFilename[stem]
+            let matchedItem = byUUID[stem] ?? byLibraryFilename[stem] ?? byOriginalFilename[stem]
 
             guard let item = matchedItem else {
                 result.unmatched.append(file)
