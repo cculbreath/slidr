@@ -22,6 +22,7 @@ final class MediaLibrary {
     // MARK: - Dependencies
     let modelContainer: ModelContainer
     let thumbnailCache: ThumbnailCache
+    let transcriptStore: TranscriptStore
     private let fileManager = FileManager.default
 
     // MARK: - Paths
@@ -29,11 +30,14 @@ final class MediaLibrary {
     var externalLibraryRoot: URL?
 
     // MARK: - Initialization
-    init(modelContainer: ModelContainer, thumbnailCache: ThumbnailCache) {
+    init(modelContainer: ModelContainer, thumbnailCache: ThumbnailCache, transcriptStore: TranscriptStore) {
         self.modelContainer = modelContainer
         self.thumbnailCache = thumbnailCache
+        self.transcriptStore = transcriptStore
 
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            fatalError("Application Support directory not available — this should never happen on macOS")
+        }
         let slidrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
         self.libraryRoot = slidrDir.appendingPathComponent("Library", isDirectory: true)
 
@@ -280,13 +284,19 @@ final class MediaLibrary {
             await thumbnailCache.removeThumbnails(forHash: item.contentHash)
         }
 
+        // Delete transcript
+        if let relativePath = item.transcriptRelativePath {
+            Task {
+                await transcriptStore.removeTranscript(forContentHash: item.contentHash, relativePath: relativePath)
+            }
+        }
+
         // Delete from database
         modelContainer.mainContext.delete(item)
         try? modelContainer.mainContext.save()
 
         updateItemCount()
         Logger.library.info("Trashed: \(item.originalFilename)")
-        NotificationCenter.default.post(name: .mediaItemsDeleted, object: nil)
     }
 
     func delete(_ items: [MediaItem]) {
@@ -300,24 +310,30 @@ final class MediaLibrary {
                 await thumbnailCache.removeThumbnails(forHash: item.contentHash)
             }
 
+            // Delete transcript
+            if let relativePath = item.transcriptRelativePath {
+                Task {
+                    await transcriptStore.removeTranscript(forContentHash: item.contentHash, relativePath: relativePath)
+                }
+            }
+
             // Delete from database
             modelContainer.mainContext.delete(item)
         }
         try? modelContainer.mainContext.save()
         updateItemCount()
         Logger.library.info("Trashed \(items.count) items")
-        NotificationCenter.default.post(name: .mediaItemsDeleted, object: nil)
     }
 
     // MARK: - Thumbnail Access
 
     func thumbnail(for item: MediaItem, size: ThumbnailSize) async throws -> NSImage {
-        let root = (item.storageLocation == .external && externalLibraryRoot != nil) ? externalLibraryRoot! : libraryRoot
+        let root = (item.storageLocation == .external) ? (externalLibraryRoot ?? libraryRoot) : libraryRoot
         return try await thumbnailCache.thumbnail(for: item, size: size, libraryRoot: root)
     }
 
     func videoScrubThumbnails(for item: MediaItem, count: Int, size: ThumbnailSize) async throws -> [NSImage] {
-        let root = (item.storageLocation == .external && externalLibraryRoot != nil) ? externalLibraryRoot! : libraryRoot
+        let root = (item.storageLocation == .external) ? (externalLibraryRoot ?? libraryRoot) : libraryRoot
         return try await thumbnailCache.videoScrubThumbnails(for: item, count: count, size: size, libraryRoot: root)
     }
 
@@ -614,10 +630,6 @@ final class MediaLibrary {
         try? modelContainer.mainContext.save()
         updateItemCount()
         Logger.library.info("Removed \(orphaned.count) orphaned items with .missing status")
-
-        if !orphaned.isEmpty {
-            NotificationCenter.default.post(name: .mediaItemsDeleted, object: nil)
-        }
     }
 
     // MARK: - Private Verification Helpers
@@ -658,10 +670,83 @@ final class MediaLibrary {
 
         Logger.library.info("Copied to library: \(item.originalFilename)")
     }
+
+    // MARK: - Batch Subtitle Import
+
+    struct SubtitleImportResult {
+        var matched: [(item: MediaItem, file: URL)] = []
+        var unmatched: [URL] = []
+
+        var summary: String {
+            if unmatched.isEmpty {
+                return "Imported \(matched.count) subtitle(s)"
+            }
+            return "Imported \(matched.count), \(unmatched.count) unmatched"
+        }
+    }
+
+    /// Matches subtitle files to video items by filename or MediaItem UUID, then imports them.
+    ///
+    /// Matching strategy (first match wins):
+    /// 1. Subtitle stem matches a MediaItem UUID (e.g. `A1B2C3D4-...srt`)
+    /// 2. Subtitle stem matches a video's original filename without extension (e.g. `My Video.srt` → `My Video.mp4`)
+    func importSubtitles(urls: [URL]) async -> SubtitleImportResult {
+        let subtitleExtensions: Set<String> = ["srt", "vtt"]
+        let subtitleFiles = urls.filter { subtitleExtensions.contains($0.pathExtension.lowercased()) }
+
+        guard !subtitleFiles.isEmpty else { return SubtitleImportResult() }
+
+        // Build lookup tables
+        let videos = allItems.filter { $0.isVideo }
+        let byUUID: [String: MediaItem] = Dictionary(
+            uniqueKeysWithValues: videos.map { ($0.id.uuidString.lowercased(), $0) }
+        )
+        let byFilename: [String: MediaItem] = {
+            var map: [String: MediaItem] = [:]
+            for video in videos {
+                let stem = (video.originalFilename as NSString).deletingPathExtension.lowercased()
+                // First video wins if duplicates exist
+                if map[stem] == nil {
+                    map[stem] = video
+                }
+            }
+            return map
+        }()
+
+        var result = SubtitleImportResult()
+
+        for file in subtitleFiles {
+            let stem = file.deletingPathExtension().lastPathComponent.lowercased()
+
+            // Try UUID match first, then filename match
+            let matchedItem = byUUID[stem] ?? byFilename[stem]
+
+            guard let item = matchedItem else {
+                result.unmatched.append(file)
+                Logger.transcripts.info("No match for subtitle: \(file.lastPathComponent)")
+                continue
+            }
+
+            do {
+                let importResult = try await transcriptStore.importTranscript(
+                    from: file,
+                    forContentHash: item.contentHash
+                )
+                item.transcriptText = importResult.plainText
+                item.transcriptRelativePath = importResult.relativePath
+                result.matched.append((item: item, file: file))
+            } catch {
+                result.unmatched.append(file)
+                Logger.transcripts.error("Failed to import subtitle \(file.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+
+        if !result.matched.isEmpty {
+            try? modelContainer.mainContext.save()
+        }
+
+        Logger.transcripts.info("Batch subtitle import: \(result.summary)")
+        return result
+    }
 }
 
-// MARK: - Notifications
-
-extension Notification.Name {
-    static let mediaItemsDeleted = Notification.Name("com.physicscloud.slidr.mediaItemsDeleted")
-}

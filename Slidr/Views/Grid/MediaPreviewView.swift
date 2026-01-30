@@ -6,11 +6,15 @@ struct MediaPreviewView: View {
     let library: MediaLibrary
     let onDismiss: () -> Void
 
+    @Environment(\.transcriptStore) private var transcriptStore
+
     @State private var currentItem: MediaItem
     @State private var scrubber = SmoothScrubber()
     @State private var isPlaying = true
     @State private var volume: Float = 1.0
     @State private var isMuted = false
+    @State private var transcriptCues: [TranscriptCue] = []
+    @State private var showSubtitles = true
     @FocusState private var isFocused: Bool
 
     init(item: MediaItem, items: [MediaItem], library: MediaLibrary, onDismiss: @escaping () -> Void) {
@@ -28,6 +32,11 @@ struct MediaPreviewView: View {
 
             mediaContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // Subtitle overlay
+            if showSubtitles && !transcriptCues.isEmpty && currentItem.isVideo {
+                SubtitleOverlayView(cues: transcriptCues, scrubber: scrubber)
+            }
 
             // Bottom metadata overlay
             VStack {
@@ -50,7 +59,13 @@ struct MediaPreviewView: View {
         }
         .focusable()
         .focused($isFocused)
-        .onAppear { isFocused = true }
+        .onAppear {
+            isFocused = true
+            loadTranscriptCues()
+        }
+        .onChange(of: currentItem.id) {
+            loadTranscriptCues()
+        }
         .onKeyPress(.space) {
             onDismiss()
             return .handled
@@ -65,6 +80,10 @@ struct MediaPreviewView: View {
         }
         .onKeyPress(.rightArrow) {
             navigateNext()
+            return .handled
+        }
+        .onKeyPress("s") {
+            showSubtitles.toggle()
             return .handled
         }
     }
@@ -98,5 +117,25 @@ struct MediaPreviewView: View {
         guard let currentIndex = items.firstIndex(where: { $0.id == currentItem.id }),
               currentIndex > 0 else { return }
         currentItem = items[currentIndex - 1]
+    }
+
+    private func loadTranscriptCues() {
+        transcriptCues = []
+        guard let transcriptStore,
+              currentItem.hasTranscript,
+              let relativePath = currentItem.transcriptRelativePath else { return }
+
+        let contentHash = currentItem.contentHash
+        Task {
+            do {
+                let cues = try await transcriptStore.cues(
+                    forContentHash: contentHash,
+                    relativePath: relativePath
+                )
+                transcriptCues = cues
+            } catch {
+                // Silently fail — subtitles just won't show
+            }
+        }
     }
 }

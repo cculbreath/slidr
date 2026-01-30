@@ -13,6 +13,8 @@ struct MediaGridView: View {
     let items: [MediaItem]
     let onStartSlideshow: ([MediaItem], Int) -> Void
     var onQuickLook: ((MediaItem) -> Void)?
+    var onImportFiles: (() -> Void)?
+    var onToggleInspector: (() -> Void)?
     var activePlaylist: Playlist?
 
     @State private var showDeleteConfirmation = false
@@ -38,30 +40,33 @@ struct MediaGridView: View {
                 settings: settings,
                 itemsEmpty: items.isEmpty,
                 allTags: allTags,
-                onImport: importFiles,
+                onImport: { onImportFiles?() },
                 onToggleGIFAnimation: toggleGIFAnimation,
                 onToggleHoverScrub: toggleHoverScrub,
                 onToggleCaptions: toggleGridCaptions,
                 onToggleFilenames: toggleGridFilenames,
-                onStartSlideshow: startSlideshow
+                onStartSlideshow: startSlideshow,
+                onToggleInspector: { onToggleInspector?() }
             )
         }
         .modifier(ToolbarBackgroundModifier())
         .gridKeyboardHandling(
-            viewModel: viewModel,
             onDelete: deleteSelectedItems,
             onQuickLook: quickLookSelected,
-            onStartSlideshow: startSlideshow,
-            onRevealInFinder: revealSelectedInFinder,
-            onToggleFilenames: toggleGridFilenames,
-            onToggleCaptions: toggleGridCaptions,
-            onSelectAll: { viewModel.selectAll(displayedItems) },
-            onDeselectAll: { viewModel.clearSelection() },
             onMoveSelection: { direction in
                 let columns = viewModel.columnCount(for: containerWidth)
                 viewModel.moveSelection(direction: direction, in: displayedItems, columns: columns)
             }
         )
+        // Expose focused values for menu commands
+        .focusedSceneValue(\.selectAll, { viewModel.selectAll(displayedItems) })
+        .focusedSceneValue(\.deselectAll, { viewModel.clearSelection() })
+        .focusedSceneValue(\.deleteSelected, { deleteSelectedItems() })
+        .focusedSceneValue(\.startSlideshow, { startSlideshow() })
+        .focusedSceneValue(\.revealInFinder, { revealSelectedInFinder() })
+        .focusedSceneValue(\.increaseThumbnailSize, { viewModel.increaseThumbnailSize() })
+        .focusedSceneValue(\.decreaseThumbnailSize, { viewModel.decreaseThumbnailSize() })
+        .focusedSceneValue(\.resetThumbnailSize, { viewModel.resetThumbnailSize() })
         .alert(
             "Move to Trash?",
             isPresented: $showDeleteConfirmation
@@ -113,7 +118,7 @@ struct MediaGridView: View {
                 title: "No Media",
                 subtitle: "Import images, GIFs, and videos to get started",
                 systemImage: "photo.on.rectangle.angled",
-                action: importFiles,
+                action: { onImportFiles?() },
                 actionLabel: "Import Files"
             )
         } else {
@@ -351,11 +356,6 @@ struct MediaGridView: View {
         action(settings)
     }
 
-    // MARK: - Import
-
-    private func importFiles() {
-        NotificationCenter.default.post(name: .importFiles, object: nil)
-    }
 }
 
 // MARK: - MediaItem Helpers

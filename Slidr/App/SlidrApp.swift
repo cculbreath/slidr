@@ -9,13 +9,14 @@ struct SlidrApp: App {
     let modelContainer: ModelContainer
     let mediaLibrary: MediaLibrary
     let thumbnailCache: ThumbnailCache
+    let transcriptStore: TranscriptStore
     let folderWatcher: FolderWatcher
     let playlistService: PlaylistService
     let hoverVideoPlayer: HoverVideoPlayer
 
     init() {
         // Initialize SwiftData container with versioned schema and migration plan
-        let schema = Schema(versionedSchema: SlidrSchemaV7.self)
+        let schema = Schema(versionedSchema: SlidrSchemaV8.self)
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let slidrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
 
@@ -79,7 +80,12 @@ struct SlidrApp: App {
         try? FileManager.default.createDirectory(at: thumbnailDir, withIntermediateDirectories: true)
 
         thumbnailCache = ThumbnailCache(cacheDirectory: thumbnailDir)
-        mediaLibrary = MediaLibrary(modelContainer: modelContainer, thumbnailCache: thumbnailCache)
+
+        let transcriptDir = slidrDir.appendingPathComponent("Transcripts", isDirectory: true)
+        try? FileManager.default.createDirectory(at: transcriptDir, withIntermediateDirectories: true)
+        transcriptStore = TranscriptStore(transcriptDirectory: transcriptDir)
+
+        mediaLibrary = MediaLibrary(modelContainer: modelContainer, thumbnailCache: thumbnailCache, transcriptStore: transcriptStore)
 
         // Configure external drive from settings
         if let settings = try? context.fetch(FetchDescriptor<AppSettings>()).first {
@@ -91,167 +97,20 @@ struct SlidrApp: App {
         hoverVideoPlayer = HoverVideoPlayer()
     }
 
-    @FocusedValue(\.importDestination) var importDestination
-    @FocusedValue(\.gridShowFilenames) var gridShowFilenames
-    @FocusedValue(\.gridShowCaptions) var gridShowCaptions
-    @FocusedValue(\.animateGIFs) var animateGIFs
-
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(mediaLibrary)
                 .environment(playlistService)
                 .environment(hoverVideoPlayer)
+                .environment(\.transcriptStore, transcriptStore)
                 .preferredColorScheme(.dark)
         }
         .modelContainer(modelContainer)
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified)
         .commands {
-            CommandGroup(replacing: .help) {
-                Button("Slidr Help") {
-                    NSApp.sendAction(#selector(NSApplication.showHelp(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("?", modifiers: .command)
-            }
-
-            // Replace pasteboard group to remove system Select All and add our own
-            CommandGroup(replacing: .pasteboard) {
-                Button("Cut") {
-                    NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("x", modifiers: .command)
-
-                Button("Copy") {
-                    NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("c", modifiers: .command)
-
-                Button("Paste") {
-                    NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("v", modifiers: .command)
-
-                Button("Delete") {
-                    NSApp.sendAction(#selector(NSText.delete(_:)), to: nil, from: nil)
-                }
-
-                Divider()
-
-                Button("Select All") {
-                    NotificationCenter.default.post(name: .selectAll, object: nil)
-                }
-                .keyboardShortcut("a", modifiers: .command)
-
-                Button("Deselect All") {
-                    NotificationCenter.default.post(name: .deselectAll, object: nil)
-                }
-                .keyboardShortcut("a", modifiers: [.command, .shift])
-            }
-
-            CommandGroup(after: .textEditing) {
-                Divider()
-
-                Button("Find...") {
-                    NotificationCenter.default.post(name: .focusSearch, object: nil)
-                }
-                .keyboardShortcut("f", modifiers: .command)
-            }
-
-            // File menu
-            CommandGroup(after: .newItem) {
-                Button("Import Files...") {
-                    NotificationCenter.default.post(name: .importFiles, object: nil)
-                }
-                .keyboardShortcut("i", modifiers: .command)
-
-                Menu("Import Destination") {
-                    if let importDestination {
-                        Picker(selection: importDestination) {
-                            Text("Local Library").tag(StorageLocation.local)
-                            Text("External Library").tag(StorageLocation.external)
-                            Text("Reference in Place").tag(StorageLocation.referenced)
-                        } label: {
-                            EmptyView()
-                        }
-                        .pickerStyle(.inline)
-                    }
-                }
-
-                Button("Locate External Library...") {
-                    NotificationCenter.default.post(name: .locateExternalLibrary, object: nil)
-                }
-
-                Divider()
-
-                Button("New Playlist") {
-                    NotificationCenter.default.post(name: .newPlaylist, object: nil)
-                }
-                .keyboardShortcut("n", modifiers: .command)
-
-                Button("New Smart Playlist") {
-                    NotificationCenter.default.post(name: .newSmartPlaylist, object: nil)
-                }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
-
-                Divider()
-
-                Button("Delete Selected") {
-                    NotificationCenter.default.post(name: .deleteSelected, object: nil)
-                }
-                .keyboardShortcut(.delete, modifiers: [])
-            }
-
-            // View menu
-            CommandGroup(after: .toolbar) {
-                Button("Larger Thumbnails") {
-                    NotificationCenter.default.post(name: .increaseThumbnailSize, object: nil)
-                }
-                .keyboardShortcut("+", modifiers: .command)
-
-                Button("Smaller Thumbnails") {
-                    NotificationCenter.default.post(name: .decreaseThumbnailSize, object: nil)
-                }
-                .keyboardShortcut("-", modifiers: .command)
-
-                Button("Reset Thumbnail Size") {
-                    NotificationCenter.default.post(name: .resetThumbnailSize, object: nil)
-                }
-                .keyboardShortcut("0", modifiers: .command)
-
-                Divider()
-
-                if let gridShowFilenames {
-                    Toggle("Show Grid Filenames", isOn: gridShowFilenames)
-                }
-
-                if let gridShowCaptions {
-                    Toggle("Show Grid Captions", isOn: gridShowCaptions)
-                }
-
-                if let animateGIFs {
-                    Toggle("Animate GIFs in Grid", isOn: animateGIFs)
-                }
-
-                Divider()
-
-                Button("Enter Fullscreen Slideshow") {
-                    NotificationCenter.default.post(name: .startSlideshow, object: nil)
-                }
-                .keyboardShortcut("f", modifiers: [.command, .shift])
-
-                Divider()
-
-                Button("Toggle Inspector") {
-                    NotificationCenter.default.post(name: .toggleInspector, object: nil)
-                }
-                .keyboardShortcut("i", modifiers: [.command, .shift])
-
-                Button("Reveal in Finder") {
-                    NotificationCenter.default.post(name: .revealInFinder, object: nil)
-                }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
-            }
+            SlidrCommands()
         }
 
         Settings {

@@ -3,23 +3,18 @@ import SwiftData
 import UniformTypeIdentifiers
 import OSLog
 
-extension Notification.Name {
-    static let playlistItemsChanged = Notification.Name("com.physicscloud.slidr.playlistItemsChanged")
-}
-
 @MainActor
 @Observable
 final class PlaylistService {
     // MARK: - Published State
     private(set) var playlists: [Playlist] = []
     private(set) var lastError: Error?
+    private(set) var playlistChangeGeneration: Int = 0
 
     // MARK: - Dependencies
     let modelContainer: ModelContainer
     let mediaLibrary: MediaLibrary
     let folderWatcher: FolderWatcher
-
-    private var deletionObserver: NSObjectProtocol?
 
     // MARK: - Initialization
 
@@ -30,9 +25,6 @@ final class PlaylistService {
 
         loadPlaylists()
         observeMediaDeletions()
-    }
-
-    nonisolated deinit {
     }
 
     // MARK: - CRUD
@@ -86,7 +78,7 @@ final class PlaylistService {
         playlist.addItem(item)
         save()
         loadPlaylists()
-        NotificationCenter.default.post(name: .playlistItemsChanged, object: playlist.id)
+        playlistChangeGeneration += 1
         Logger.playlists.info("Added \(item.originalFilename) to \(playlist.name)")
     }
 
@@ -97,7 +89,7 @@ final class PlaylistService {
         }
         save()
         loadPlaylists()
-        NotificationCenter.default.post(name: .playlistItemsChanged, object: playlist.id)
+        playlistChangeGeneration += 1
         Logger.playlists.info("Added \(items.count) items to \(playlist.name)")
     }
 
@@ -106,7 +98,7 @@ final class PlaylistService {
         playlist.removeItem(item)
         save()
         loadPlaylists()
-        NotificationCenter.default.post(name: .playlistItemsChanged, object: playlist.id)
+        playlistChangeGeneration += 1
         Logger.playlists.info("Removed \(item.originalFilename) from \(playlist.name)")
     }
 
@@ -114,7 +106,7 @@ final class PlaylistService {
         guard playlist.isManualPlaylist else { return }
         playlist.moveItem(from: source, to: destination)
         save()
-        NotificationCenter.default.post(name: .playlistItemsChanged, object: playlist.id)
+        playlistChangeGeneration += 1
     }
 
     // MARK: - Smart Playlist
@@ -310,14 +302,12 @@ final class PlaylistService {
     }
 
     private func observeMediaDeletions() {
-        deletionObserver = NotificationCenter.default.addObserver(
-            forName: .mediaItemsDeleted,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self else { return }
+        withObservationTracking {
+            _ = mediaLibrary.libraryVersion
+        } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 self?.cleanupOrphanedItems()
+                self?.observeMediaDeletions()
             }
         }
     }

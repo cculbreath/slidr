@@ -31,6 +31,13 @@ struct MediaInspectorView: View {
                 // Production type
                 productionSection
 
+                if item.isVideo {
+                    Divider()
+
+                    // Transcript
+                    TranscriptSection(item: item)
+                }
+
                 Divider()
 
                 // Tags

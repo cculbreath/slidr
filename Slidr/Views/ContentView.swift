@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var isDropTargeted = false
     @State private var previewItem: MediaItem?
     @State private var cachedItems: [MediaItem] = []
+    @State private var subtitleImportAlert: String?
 
     // Local state for menu bindings (avoids SwiftData infinite loop)
     @State private var importDestination: StorageLocation = .local
@@ -48,6 +49,14 @@ struct ContentView: View {
             progress: library.importProgress?.overallProgress,
             onCancel: { library.cancelImport() }
         )
+        .alert("Subtitle Import", isPresented: Binding(
+            get: { subtitleImportAlert != nil },
+            set: { if !$0 { subtitleImportAlert = nil } }
+        )) {
+            Button("OK") { subtitleImportAlert = nil }
+        } message: {
+            Text(subtitleImportAlert ?? "")
+        }
     }
 
     private var importProgressSubtitle: String? {
@@ -56,7 +65,7 @@ struct ContentView: View {
     }
 
     private var mainContent: some View {
-        navigationViewWithNotifications
+        navigationViewWithFocusedValues
             .onChange(of: sidebarViewModel.selectedItem) {
                 gridViewModel.clearSelection()
                 refreshItems()
@@ -73,6 +82,7 @@ struct ContentView: View {
                 library.configureExternalDrive(path: newPath)
             }
             .onChange(of: library.libraryVersion) { refreshItems() }
+            .onChange(of: playlistService.playlistChangeGeneration) { refreshItems() }
             .allowsHitTesting(!showSlideshow)
             .toolbar(showSlideshow ? .hidden : .automatic, for: .windowToolbar)
             .onAppear {
@@ -100,12 +110,21 @@ struct ContentView: View {
             }
     }
 
-    private var navigationViewWithNotifications: some View {
+    private var navigationViewWithFocusedValues: some View {
         navigationView
+            // Binding-based focused values for menu toggles/pickers
             .focusedSceneValue(\.importDestination, $importDestination)
             .focusedSceneValue(\.gridShowFilenames, $gridShowFilenames)
             .focusedSceneValue(\.gridShowCaptions, $gridShowCaptions)
             .focusedSceneValue(\.animateGIFs, $animateGIFs)
+            // Action-based focused values for menu commands
+            .focusedSceneValue(\.toggleInspector, { showInspector.toggle() })
+            .focusedSceneValue(\.importFilesAction, { importFiles() })
+            .focusedSceneValue(\.importSubtitlesAction, { importSubtitles() })
+            .focusedSceneValue(\.quickLook, { togglePreview() })
+            .focusedSceneValue(\.locateExternalLibrary, { library.locateExternalLibrary() })
+            .focusedSceneValue(\.newPlaylist, { sidebarViewModel.createPlaylist() })
+            .focusedSceneValue(\.newSmartPlaylist, { sidebarViewModel.createSmartPlaylist() })
             .onChange(of: importDestination) { _, newValue in
                 settingsQuery.first?.defaultImportLocation = newValue
             }
@@ -117,21 +136,6 @@ struct ContentView: View {
             }
             .onChange(of: animateGIFs) { _, newValue in
                 settingsQuery.first?.animateGIFsInGrid = newValue
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .toggleInspector)) { _ in
-                showInspector.toggle()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .importFiles)) { _ in
-                importFiles()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .quickLook)) { _ in
-                togglePreview()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .locateExternalLibrary)) { _ in
-                library.locateExternalLibrary()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .playlistItemsChanged)) { _ in
-                refreshItems()
             }
     }
 
@@ -180,6 +184,8 @@ struct ContentView: View {
                         previewItem = item
                     }
                 },
+                onImportFiles: { importFiles() },
+                onToggleInspector: { showInspector.toggle() },
                 activePlaylist: activePlaylist
             )
         }
@@ -282,6 +288,60 @@ struct ContentView: View {
             Task {
                 await performImport(urls: panel.urls)
             }
+        }
+    }
+
+    private func importSubtitles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "srt") ?? .plainText,
+            UTType(filenameExtension: "vtt") ?? .plainText
+        ]
+        panel.message = "Select subtitle files (SRT/VTT) to match with library videos"
+
+        guard panel.runModal() == .OK else { return }
+
+        var allFiles = [URL]()
+        let fm = FileManager.default
+        for url in panel.urls {
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+                if let enumerator = fm.enumerator(at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
+                    while let fileURL = enumerator.nextObject() as? URL {
+                        let ext = fileURL.pathExtension.lowercased()
+                        if ext == "srt" || ext == "vtt" {
+                            allFiles.append(fileURL)
+                        }
+                    }
+                }
+            } else {
+                allFiles.append(url)
+            }
+        }
+
+        guard !allFiles.isEmpty else {
+            subtitleImportAlert = "No SRT or VTT files found in the selection."
+            return
+        }
+
+        Task {
+            let result = await library.importSubtitles(urls: allFiles)
+
+            var message = "Matched \(result.matched.count) subtitle(s) to videos."
+            if !result.unmatched.isEmpty {
+                let names = result.unmatched.prefix(5).map(\.lastPathComponent).joined(separator: "\n")
+                message += "\n\n\(result.unmatched.count) file(s) had no matching video"
+                if result.unmatched.count <= 5 {
+                    message += ":\n\(names)"
+                } else {
+                    message += " (showing first 5):\n\(names)"
+                }
+            }
+
+            subtitleImportAlert = message
         }
     }
 

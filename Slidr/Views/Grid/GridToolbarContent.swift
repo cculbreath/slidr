@@ -12,6 +12,7 @@ struct GridToolbarContent: ToolbarContent {
     let onToggleCaptions: () -> Void
     let onToggleFilenames: () -> Void
     let onStartSlideshow: () -> Void
+    let onToggleInspector: () -> Void
 
     private var gifAnimationEnabled: Bool { settings?.animateGIFsInGrid ?? false }
     private var hoverScrubEnabled: Bool { settings?.gridVideoHoverScrub ?? false }
@@ -96,7 +97,7 @@ struct GridToolbarContent: ToolbarContent {
         // Group 5: Inspector
         ToolbarItem(placement: .primaryAction) {
             Button {
-                NotificationCenter.default.post(name: .toggleInspector, object: nil)
+                onToggleInspector()
             } label: {
                 Label("Inspector", systemImage: "sidebar.right")
             }

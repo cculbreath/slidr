@@ -102,6 +102,7 @@ final class GridViewModel {
             if item.originalFilename.lowercased().contains(query) { return true }
             if item.tags.contains(where: { $0.lowercased().contains(query) }) { return true }
             if let caption = item.caption?.lowercased(), caption.contains(query) { return true }
+            if let transcript = item.transcriptText?.lowercased(), transcript.contains(query) { return true }
             return false
         }
     }
