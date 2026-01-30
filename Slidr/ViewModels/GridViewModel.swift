@@ -17,6 +17,7 @@ final class GridViewModel {
     // Rating filter: nil means include all, empty set with enabled means show nothing
     var ratingFilterEnabled: Bool = false
     var ratingFilter: Set<Int> = [] // 0-5, where 0 means "no rating"
+    var subtitleFilter: Bool = false
 
     // MARK: - Search
     var searchText: String = ""
@@ -94,6 +95,10 @@ final class GridViewModel {
                 // 1-5 means that specific rating
                 return ratingFilter.contains(itemRating)
             }
+        }
+
+        if subtitleFilter {
+            result = result.filter { $0.hasTranscript }
         }
 
         guard !searchText.isEmpty else { return result }

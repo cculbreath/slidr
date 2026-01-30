@@ -8,6 +8,7 @@ xcuserdata/
 # Xcode build
 build/
 DerivedData/
+.buildStatus
 
 # Xcode workspaces (except shared schemes/settings)
 *.xcworkspace/xcuserdata/
@@ -24,3 +25,16 @@ Pods/
 *.gcda
 *.gcno
 *.gcov
+
+# LLM specs, reviews, and reports
+llm_specs/
+reviews/
+reports/
+code_review_*.md
+
+# Claude agent artifacts
+.claude/agents/
+
+# Misc
+telegram_media_items.json
+untitled *.sh

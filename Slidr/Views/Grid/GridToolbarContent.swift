@@ -20,6 +20,7 @@ struct GridToolbarContent: ToolbarContent {
     private var hasRatingFilter: Bool { viewModel.ratingFilterEnabled && !viewModel.ratingFilter.isEmpty }
     private var hasTagFilter: Bool { !viewModel.tagFilter.isEmpty }
     private var hasCaptionsEnabled: Bool { (settings?.gridShowCaptions ?? true) || (settings?.gridShowFilenames ?? false) }
+    private var hasSubtitleFilter: Bool { viewModel.subtitleFilter }
 
     var body: some ToolbarContent {
         // Layout: [sidebar, slideshow, import] [spacer] [size, captions] [spacer] [gifs, scrub] [spacer] [rating, tags, type, sort] [spacer] [inspector]
@@ -84,8 +85,17 @@ struct GridToolbarContent: ToolbarContent {
 
         ToolbarSpacer(.flexible)
 
-        // Group 4: Rating, Tags, Media Type, Sort
+        // Group 4: Subtitle, Rating, Tags, Media Type, Sort
         ToolbarItemGroup {
+            Button {
+                viewModel.subtitleFilter.toggle()
+            } label: {
+                Label("Has Subtitle", systemImage: "captions.bubble")
+                    .symbolVariant(hasSubtitleFilter ? .fill : .none)
+                    .foregroundStyle(hasSubtitleFilter ? Color.accentColor : .primary)
+            }
+            .help("Show only items with subtitles")
+
             ratingFilterMenu
             tagFilterMenu
             filterMenu
