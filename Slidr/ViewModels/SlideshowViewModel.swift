@@ -45,6 +45,7 @@ final class SlideshowViewModel {
     var randomizeClipLocation: Bool = false
     var playFullGIF: Bool = false
     var showCaptions: Bool = false
+    var showSubtitles: Bool = false
 
     // MARK: - Video Configuration
     var volume: Float = 1.0
@@ -315,6 +316,7 @@ final class SlideshowViewModel {
         volume = settings.defaultVolume
         isMuted = settings.muteByDefault
         showCaptions = settings.showCaptions
+        showSubtitles = settings.showSubtitles
         showTimerBar = settings.showTimerBar
     }
 
@@ -329,6 +331,7 @@ final class SlideshowViewModel {
         settings.defaultVolume = volume
         settings.muteByDefault = isMuted
         settings.showCaptions = showCaptions
+        settings.showSubtitles = showSubtitles
         settings.showTimerBar = showTimerBar
     }
 

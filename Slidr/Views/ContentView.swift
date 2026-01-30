@@ -24,6 +24,10 @@ struct ContentView: View {
     @State private var gridShowFilenames: Bool = false
     @State private var gridShowCaptions: Bool = true
     @State private var animateGIFs: Bool = false
+    @State private var showSubtitles: Bool = false
+    @State private var subtitlePosition: CaptionPosition = .bottom
+    @State private var subtitleFontSize: Double = 16.0
+    @State private var subtitleOpacity: Double = 0.7
 
     var body: some View {
         ZStack {
@@ -99,6 +103,10 @@ struct ContentView: View {
                     gridShowFilenames = settings.gridShowFilenames
                     gridShowCaptions = settings.gridShowCaptions
                     animateGIFs = settings.animateGIFsInGrid
+                    showSubtitles = settings.showSubtitles
+                    subtitlePosition = settings.subtitlePosition
+                    subtitleFontSize = settings.subtitleFontSize
+                    subtitleOpacity = settings.subtitleOpacity
                 }
                 refreshItems()
                 let count = settingsQuery.first?.scrubThumbnailCount ?? 100
@@ -111,12 +119,7 @@ struct ContentView: View {
     }
 
     private var navigationViewWithFocusedValues: some View {
-        navigationView
-            // Binding-based focused values for menu toggles/pickers
-            .focusedSceneValue(\.importDestination, $importDestination)
-            .focusedSceneValue(\.gridShowFilenames, $gridShowFilenames)
-            .focusedSceneValue(\.gridShowCaptions, $gridShowCaptions)
-            .focusedSceneValue(\.animateGIFs, $animateGIFs)
+        navigationViewWithSubtitleBindings
             // Action-based focused values for menu commands
             .focusedSceneValue(\.toggleInspector, { showInspector.toggle() })
             .focusedSceneValue(\.importFilesAction, { importFiles() })
@@ -136,6 +139,31 @@ struct ContentView: View {
             }
             .onChange(of: animateGIFs) { _, newValue in
                 settingsQuery.first?.animateGIFsInGrid = newValue
+            }
+    }
+
+    private var navigationViewWithSubtitleBindings: some View {
+        navigationView
+            // Binding-based focused values for menu toggles/pickers
+            .focusedSceneValue(\.importDestination, $importDestination)
+            .focusedSceneValue(\.gridShowFilenames, $gridShowFilenames)
+            .focusedSceneValue(\.gridShowCaptions, $gridShowCaptions)
+            .focusedSceneValue(\.animateGIFs, $animateGIFs)
+            .focusedSceneValue(\.subtitleShow, $showSubtitles)
+            .focusedSceneValue(\.subtitlePosition, $subtitlePosition)
+            .focusedSceneValue(\.subtitleFontSize, $subtitleFontSize)
+            .focusedSceneValue(\.subtitleOpacity, $subtitleOpacity)
+            .onChange(of: showSubtitles) { _, newValue in
+                settingsQuery.first?.showSubtitles = newValue
+            }
+            .onChange(of: subtitlePosition) { _, newValue in
+                settingsQuery.first?.subtitlePosition = newValue
+            }
+            .onChange(of: subtitleFontSize) { _, newValue in
+                settingsQuery.first?.subtitleFontSize = newValue
+            }
+            .onChange(of: subtitleOpacity) { _, newValue in
+                settingsQuery.first?.subtitleOpacity = newValue
             }
     }
 

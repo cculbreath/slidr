@@ -84,6 +84,22 @@ struct AnimateGIFsKey: FocusedValueKey {
     typealias Value = Binding<Bool>
 }
 
+struct SubtitleShowKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+struct SubtitlePositionKey: FocusedValueKey {
+    typealias Value = Binding<CaptionPosition>
+}
+
+struct SubtitleFontSizeKey: FocusedValueKey {
+    typealias Value = Binding<Double>
+}
+
+struct SubtitleOpacityKey: FocusedValueKey {
+    typealias Value = Binding<Double>
+}
+
 // MARK: - FocusedValues Extension
 
 extension FocusedValues {
@@ -187,5 +203,25 @@ extension FocusedValues {
     var animateGIFs: Binding<Bool>? {
         get { self[AnimateGIFsKey.self] }
         set { self[AnimateGIFsKey.self] = newValue }
+    }
+
+    var subtitleShow: Binding<Bool>? {
+        get { self[SubtitleShowKey.self] }
+        set { self[SubtitleShowKey.self] = newValue }
+    }
+
+    var subtitlePosition: Binding<CaptionPosition>? {
+        get { self[SubtitlePositionKey.self] }
+        set { self[SubtitlePositionKey.self] = newValue }
+    }
+
+    var subtitleFontSize: Binding<Double>? {
+        get { self[SubtitleFontSizeKey.self] }
+        set { self[SubtitleFontSizeKey.self] = newValue }
+    }
+
+    var subtitleOpacity: Binding<Double>? {
+        get { self[SubtitleOpacityKey.self] }
+        set { self[SubtitleOpacityKey.self] = newValue }
     }
 }

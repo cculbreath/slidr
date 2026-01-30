@@ -28,4 +28,15 @@ enum CaptionPosition: String, Codable, CaseIterable {
             return false
         }
     }
+
+    var menuLabel: String {
+        switch self {
+        case .topLeft: return "Top Left"
+        case .top: return "Top"
+        case .topRight: return "Top Right"
+        case .bottomLeft: return "Bottom Left"
+        case .bottom: return "Bottom"
+        case .bottomRight: return "Bottom Right"
+        }
+    }
 }

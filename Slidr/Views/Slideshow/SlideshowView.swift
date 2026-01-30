@@ -3,6 +3,7 @@ import SwiftData
 
 struct SlideshowView: View {
     @Environment(MediaLibrary.self) private var library
+    @Environment(\.transcriptStore) private var transcriptStore
     @Bindable var viewModel: SlideshowViewModel
     var onDismiss: () -> Void
     @Query private var settingsQuery: [AppSettings]
@@ -10,6 +11,7 @@ struct SlideshowView: View {
     @FocusState private var isFocused: Bool
     @State private var uiState = SlideshowUIState()
     @State private var navigationDirection: NavigationDirection = .forward
+    @State private var transcriptCues: [TranscriptCue] = []
 
     private var settings: AppSettings? { settingsQuery.first }
 
@@ -51,6 +53,7 @@ struct SlideshowView: View {
                 if let settings {
                     viewModel.configure(settings: settings)
                 }
+                loadTranscriptCues()
                 DispatchQueue.main.async {
                     isFocused = true
                 }
@@ -66,7 +69,9 @@ struct SlideshowView: View {
             .onChange(of: viewModel.showTimerBar) { _, _ in viewModel.persistToSettings() }
             .onChange(of: viewModel.currentIndex) { _, _ in
                 startVideoCaptionTimer()
+                loadTranscriptCues()
             }
+            .onChange(of: viewModel.showSubtitles) { _, _ in viewModel.persistToSettings() }
             .onChange(of: viewModel.showCaptions) { _, newValue in
                 viewModel.persistToSettings()
                 if newValue {
@@ -128,6 +133,18 @@ struct SlideshowView: View {
                 }
                 .allowsHitTesting(false)
                 .animation(nil, value: viewModel.currentIndex)
+            }
+
+            // Subtitle overlay
+            if viewModel.showSubtitles && !transcriptCues.isEmpty && viewModel.currentItemIsVideo {
+                SubtitleOverlayView(
+                    cues: transcriptCues,
+                    scrubber: viewModel.scrubber,
+                    position: settings?.subtitlePosition ?? .bottom,
+                    fontSize: settings?.subtitleFontSize ?? 16,
+                    backgroundOpacity: settings?.subtitleOpacity ?? 0.7
+                )
+                .allowsHitTesting(false)
             }
 
             // Controls overlay
@@ -284,6 +301,29 @@ struct SlideshowView: View {
     private func goPrevious() {
         navigationDirection = .backward
         viewModel.previous()
+    }
+
+    // MARK: - Transcript Cues
+
+    private func loadTranscriptCues() {
+        transcriptCues = []
+        guard let transcriptStore,
+              let item = viewModel.currentItem,
+              item.hasTranscript,
+              let relativePath = item.transcriptRelativePath else { return }
+
+        let contentHash = item.contentHash
+        Task {
+            do {
+                let cues = try await transcriptStore.cues(
+                    forContentHash: contentHash,
+                    relativePath: relativePath
+                )
+                transcriptCues = cues
+            } catch {
+                // Silently fail — subtitles just won't show
+            }
+        }
     }
 
     // MARK: - Video Captions

@@ -202,6 +202,9 @@ struct ExtraNavigationKeys: ViewModifier {
                 window.toggleFullScreen(nil)
             }
             return .handled
+        case KeyEquivalent("s"):
+            viewModel.showSubtitles.toggle()
+            return .handled
         case KeyEquivalent("t"):
             viewModel.showTimerBar.toggle()
             return .handled

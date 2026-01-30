@@ -1,6 +1,54 @@
 import SwiftUI
 import AppKit
 
+private enum SubtitleFontSizeOption: CaseIterable, Identifiable {
+    case small, medium, large, extraLarge
+
+    var id: Double { size }
+
+    var size: Double {
+        switch self {
+        case .small: return 12
+        case .medium: return 16
+        case .large: return 20
+        case .extraLarge: return 24
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .small: return "Small (12pt)"
+        case .medium: return "Medium (16pt)"
+        case .large: return "Large (20pt)"
+        case .extraLarge: return "Extra Large (24pt)"
+        }
+    }
+}
+
+private enum SubtitleOpacityOption: CaseIterable, Identifiable {
+    case quarter, half, threeQuarter, full
+
+    var id: Double { value }
+
+    var value: Double {
+        switch self {
+        case .quarter: return 0.25
+        case .half: return 0.5
+        case .threeQuarter: return 0.75
+        case .full: return 1.0
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .quarter: return "25%"
+        case .half: return "50%"
+        case .threeQuarter: return "75%"
+        case .full: return "100%"
+        }
+    }
+}
+
 struct SlidrCommands: Commands {
     // MARK: - Action FocusedValues
     @FocusedValue(\.startSlideshow) var startSlideshow
@@ -24,6 +72,10 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.gridShowFilenames) var gridShowFilenames
     @FocusedValue(\.gridShowCaptions) var gridShowCaptions
     @FocusedValue(\.animateGIFs) var animateGIFs
+    @FocusedValue(\.subtitleShow) var subtitleShow
+    @FocusedValue(\.subtitlePosition) var subtitlePosition
+    @FocusedValue(\.subtitleFontSize) var subtitleFontSize
+    @FocusedValue(\.subtitleOpacity) var subtitleOpacity
 
     var body: some Commands {
         helpCommands
@@ -31,6 +83,7 @@ struct SlidrCommands: Commands {
         searchCommands
         fileCommands
         viewCommands
+        subtitleCommands
     }
 
     // MARK: - Help Menu
@@ -142,6 +195,75 @@ struct SlidrCommands: Commands {
                 deleteSelected?()
             }
             .keyboardShortcut(.delete, modifiers: [])
+        }
+    }
+
+    // MARK: - Subtitles Menu
+
+    private var subtitleCommands: some Commands {
+        CommandMenu("Subtitles") {
+            if let subtitleShow {
+                Toggle("Show Subtitles", isOn: subtitleShow)
+            } else {
+                Toggle("Show Subtitles", isOn: .constant(false))
+                    .disabled(true)
+            }
+
+            Divider()
+
+            Menu("Position") {
+                if let subtitlePosition {
+                    ForEach(CaptionPosition.allCases, id: \.self) { pos in
+                        Button {
+                            subtitlePosition.wrappedValue = pos
+                        } label: {
+                            HStack {
+                                Text(pos.menuLabel)
+                                if subtitlePosition.wrappedValue == pos {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Menu("Font Size") {
+                if let subtitleFontSize {
+                    ForEach(SubtitleFontSizeOption.allCases) { option in
+                        Button {
+                            subtitleFontSize.wrappedValue = option.size
+                        } label: {
+                            HStack {
+                                Text(option.label)
+                                if subtitleFontSize.wrappedValue == option.size {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Menu("Opacity") {
+                if let subtitleOpacity {
+                    ForEach(SubtitleOpacityOption.allCases) { option in
+                        Button {
+                            subtitleOpacity.wrappedValue = option.value
+                        } label: {
+                            HStack {
+                                Text(option.label)
+                                if subtitleOpacity.wrappedValue == option.value {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

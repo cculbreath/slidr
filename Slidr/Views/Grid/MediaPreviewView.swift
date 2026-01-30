@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct MediaPreviewView: View {
     let item: MediaItem
@@ -7,6 +8,7 @@ struct MediaPreviewView: View {
     let onDismiss: () -> Void
 
     @Environment(\.transcriptStore) private var transcriptStore
+    @Query private var settingsQuery: [AppSettings]
 
     @State private var currentItem: MediaItem
     @State private var scrubber = SmoothScrubber()
@@ -35,7 +37,13 @@ struct MediaPreviewView: View {
 
             // Subtitle overlay
             if showSubtitles && !transcriptCues.isEmpty && currentItem.isVideo {
-                SubtitleOverlayView(cues: transcriptCues, scrubber: scrubber)
+                SubtitleOverlayView(
+                    cues: transcriptCues,
+                    scrubber: scrubber,
+                    position: settingsQuery.first?.subtitlePosition ?? .bottom,
+                    fontSize: settingsQuery.first?.subtitleFontSize ?? 16,
+                    backgroundOpacity: settingsQuery.first?.subtitleOpacity ?? 0.7
+                )
             }
 
             // Bottom metadata overlay

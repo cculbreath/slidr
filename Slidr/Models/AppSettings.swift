@@ -51,6 +51,10 @@ final class AppSettings {
     var randomizeClipLocation: Bool
     var playFullGIF: Bool
     var showTimerBarRaw: Bool?
+    var showSubtitlesRaw: Bool?
+    var subtitlePositionRaw: String?
+    var subtitleFontSizeRaw: Double?
+    var subtitleOpacityRaw: Double?
 
     // MARK: - Multi-Monitor
     var useAllMonitors: Bool
@@ -96,6 +100,26 @@ final class AppSettings {
     var showTimerBar: Bool {
         get { showTimerBarRaw ?? false }
         set { showTimerBarRaw = newValue }
+    }
+
+    var showSubtitles: Bool {
+        get { showSubtitlesRaw ?? false }
+        set { showSubtitlesRaw = newValue }
+    }
+
+    var subtitlePosition: CaptionPosition {
+        get { subtitlePositionRaw.flatMap { CaptionPosition(rawValue: $0) } ?? .bottom }
+        set { subtitlePositionRaw = newValue.rawValue }
+    }
+
+    var subtitleFontSize: Double {
+        get { subtitleFontSizeRaw ?? 16.0 }
+        set { subtitleFontSizeRaw = newValue }
+    }
+
+    var subtitleOpacity: Double {
+        get { subtitleOpacityRaw ?? 0.7 }
+        set { subtitleOpacityRaw = newValue }
     }
 
     // MARK: - Verification
@@ -156,6 +180,10 @@ final class AppSettings {
         self.randomizeClipLocation = false
         self.playFullGIF = false
         self.showTimerBarRaw = false
+        self.showSubtitlesRaw = false
+        self.subtitlePositionRaw = CaptionPosition.bottom.rawValue
+        self.subtitleFontSizeRaw = 16.0
+        self.subtitleOpacityRaw = 0.7
 
         // Multi-monitor defaults
         self.useAllMonitors = false

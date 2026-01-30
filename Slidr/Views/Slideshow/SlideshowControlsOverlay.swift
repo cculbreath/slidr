@@ -366,6 +366,15 @@ struct SlideshowControlsOverlay: View {
                     .toggleGlow(viewModel.showCaptions)
             }
             .help("Toggle Captions (C)")
+
+            Button {
+                viewModel.showSubtitles.toggle()
+            } label: {
+                Image(systemName: "character.textbox")
+                    .font(.title)
+                    .toggleGlow(viewModel.showSubtitles)
+            }
+            .help("Toggle Subtitles (S)")
         }
     }
 
