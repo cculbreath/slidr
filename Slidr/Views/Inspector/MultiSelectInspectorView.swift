@@ -39,7 +39,7 @@ struct MultiSelectInspectorView: View {
                 Divider()
 
                 // Playlist section
-//                playlistSection
+                playlistSection
 
                 Divider()
 
@@ -82,9 +82,7 @@ struct MultiSelectInspectorView: View {
 
     private var totalSizeFormatted: String {
         let total = items.reduce(Int64(0)) { $0 + $1.fileSize }
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return "Total: \(formatter.string(fromByteCount: total))"
+        return "Total: \(Formatters.formatFileSize(total))"
     }
 
     private var mediaBreakdown: String {

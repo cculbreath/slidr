@@ -220,7 +220,7 @@ struct SidebarView: View {
         let items = library.allItems.filter { itemIDs.contains($0.id) }
         guard !items.isEmpty else { return false }
 
-//        playlistService.addItems(items, to: playlist)
+        playlistService.addItems(items, to: playlist)
         return true
     }
 }

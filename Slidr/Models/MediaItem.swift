@@ -133,7 +133,8 @@ final class MediaItem {
     }
 
     var isRated: Bool {
-        rating != nil && rating! > 0
+        guard let rating else { return false }
+        return rating > 0
     }
 
     var ratingStars: String {

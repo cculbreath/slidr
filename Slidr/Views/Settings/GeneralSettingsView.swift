@@ -4,7 +4,6 @@ struct GeneralSettingsView: View {
     @Bindable var settings: AppSettings
     @State private var showLibraryLocationPicker = false
     @State private var showResetConfirmation = false
-    @State private var pendingNewPath: String?
 
     var body: some View {
         Form {

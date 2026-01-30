@@ -1,6 +1,6 @@
 import AVFoundation
 
-enum VideoFormat: String, Codable, CaseIterable {
+enum VideoFormat: String, Codable, CaseIterable, Sendable {
     case h264MP4
     case hevcMOV
 

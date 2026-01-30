@@ -49,8 +49,6 @@ struct MediaGridView: View {
         .modifier(ToolbarBackgroundModifier())
         .gridKeyboardHandling(
             viewModel: viewModel,
-            displayedItems: displayedItems,
-            containerWidth: containerWidth,
             onDelete: deleteSelectedItems,
             onQuickLook: quickLookSelected,
             onStartSlideshow: startSlideshow,

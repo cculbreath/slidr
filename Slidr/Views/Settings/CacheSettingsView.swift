@@ -98,9 +98,7 @@ struct CacheSettingsView: View {
     private func calculateCacheSize() {
         Task {
             let size = await thumbnailCache.diskCacheSize()
-            let formatter = ByteCountFormatter()
-            formatter.countStyle = .file
-            cacheSize = formatter.string(fromByteCount: Int64(size))
+            cacheSize = Formatters.formatFileSize(Int64(size))
         }
     }
 
@@ -108,9 +106,9 @@ struct CacheSettingsView: View {
         isClearing = true
         clearSuccess = false
         Task {
+            defer { isClearing = false }
             await thumbnailCache.clearCache()
             calculateCacheSize()
-            isClearing = false
             clearSuccess = true
             // Hide success indicator after a delay
             try? await Task.sleep(for: .seconds(2))
@@ -125,6 +123,7 @@ struct CacheSettingsView: View {
         regenTotal = 0
 
         Task {
+            defer { isRegenerating = false }
             let total = await library.regenerateScrubThumbnailsWithProgress(
                 count: settings.scrubThumbnailCount
             ) { current, total in
@@ -138,7 +137,6 @@ struct CacheSettingsView: View {
                 regenTotal = 0
             }
 
-            isRegenerating = false
             calculateCacheSize()
         }
     }

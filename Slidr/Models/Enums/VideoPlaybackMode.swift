@@ -1,6 +1,6 @@
 import Foundation
 
-enum VideoPlaybackMode: String, Codable, CaseIterable {
+enum VideoPlaybackMode: String, Codable, CaseIterable, Sendable {
     case playFull
     case playOnce
     case limitDuration

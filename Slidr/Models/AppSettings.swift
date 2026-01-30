@@ -206,7 +206,10 @@ final class AppSettings {
         if let custom = customLibraryPath {
             return URL(fileURLWithPath: custom)
         }
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return URL(fileURLWithPath: NSHomeDirectory())
+                .appendingPathComponent("Library/Application Support/Slidr/Library", isDirectory: true)
+        }
         return appSupport.appendingPathComponent("Slidr/Library", isDirectory: true)
     }
 }

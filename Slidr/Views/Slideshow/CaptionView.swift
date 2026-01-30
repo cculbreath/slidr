@@ -37,16 +37,11 @@ struct CaptionView: View {
     }
 
     private var formattedDate: String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: item.fileModifiedDate)
+        Formatters.formatDate(item.fileModifiedDate)
     }
 
     private var formattedSize: String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: item.fileSize)
+        Formatters.formatFileSize(item.fileSize)
     }
 
     private var formattedDimensions: String {

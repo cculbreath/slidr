@@ -7,6 +7,10 @@ import ImageIO
 struct AnimatedGIFView: NSViewRepresentable {
     let url: URL
 
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
     func makeNSView(context: Context) -> NSImageView {
         let imageView = NSImageView()
         imageView.imageScaling = .scaleProportionallyUpOrDown
@@ -16,10 +20,25 @@ struct AnimatedGIFView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSImageView, context: Context) {
-        if let data = try? Data(contentsOf: url),
-           let image = NSImage(data: data) {
+        context.coordinator.loadingTask?.cancel()
+
+        context.coordinator.loadingTask = Task { @MainActor in
+            let loadURL = url
+            let data = try? await Task.detached(priority: .userInitiated) {
+                try Data(contentsOf: loadURL)
+            }.value
+
+            guard !Task.isCancelled, let data, let image = NSImage(data: data) else { return }
             nsView.image = image
             nsView.animates = true
+        }
+    }
+
+    class Coordinator {
+        var loadingTask: Task<Void, Never>?
+
+        deinit {
+            loadingTask?.cancel()
         }
     }
 }
@@ -68,7 +87,7 @@ struct GIFFrameView: View {
             }
         }
         .task {
-            loadGIF()
+            await loadGIF()
         }
     }
 
@@ -87,30 +106,38 @@ struct GIFFrameView: View {
         return frames.last
     }
 
-    private func loadGIF() {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return }
-        let count = CGImageSourceGetCount(source)
-        var loadedFrames: [CGImage] = []
-        var delays: [TimeInterval] = []
-
-        for i in 0..<count {
-            guard let cgImage = CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
-            loadedFrames.append(cgImage)
-
-            let delay: TimeInterval
-            if let props = CGImageSourceCopyPropertiesAtIndex(source, i, nil) as? [String: Any],
-               let gifProps = props[kCGImagePropertyGIFDictionary as String] as? [String: Any] {
-                delay = gifProps[kCGImagePropertyGIFUnclampedDelayTime as String] as? TimeInterval
-                    ?? gifProps[kCGImagePropertyGIFDelayTime as String] as? TimeInterval
-                    ?? 0.1
-            } else {
-                delay = 0.1
+    private func loadGIF() async {
+        let gifURL = url
+        let result = await Task.detached(priority: .userInitiated) {
+            guard let source = CGImageSourceCreateWithURL(gifURL as CFURL, nil) else {
+                return (frames: [CGImage](), delays: [TimeInterval]())
             }
-            delays.append(max(delay, 0.02))
-        }
+            let count = CGImageSourceGetCount(source)
+            var loadedFrames: [CGImage] = []
+            var delays: [TimeInterval] = []
 
-        frames = loadedFrames
-        frameDelays = delays
-        totalDuration = delays.reduce(0, +)
+            for i in 0..<count {
+                guard let cgImage = CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
+                loadedFrames.append(cgImage)
+
+                let delay: TimeInterval
+                if let props = CGImageSourceCopyPropertiesAtIndex(source, i, nil) as? [String: Any],
+                   let gifProps = props[kCGImagePropertyGIFDictionary as String] as? [String: Any] {
+                    delay = gifProps[kCGImagePropertyGIFUnclampedDelayTime as String] as? TimeInterval
+                        ?? gifProps[kCGImagePropertyGIFDelayTime as String] as? TimeInterval
+                        ?? 0.1
+                } else {
+                    delay = 0.1
+                }
+                delays.append(max(delay, 0.02))
+            }
+
+            return (frames: loadedFrames, delays: delays)
+        }.value
+
+        guard !Task.isCancelled else { return }
+        frames = result.frames
+        frameDelays = result.delays
+        totalDuration = result.delays.reduce(0, +)
     }
 }

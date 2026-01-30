@@ -2,8 +2,6 @@ import SwiftUI
 
 struct GridKeyboardModifier: ViewModifier {
     let viewModel: GridViewModel
-    let displayedItems: [MediaItem]
-    let containerWidth: CGFloat
     let onDelete: () -> Void
     let onQuickLook: () -> Void
     let onStartSlideshow: () -> Void
@@ -76,8 +74,6 @@ struct GridKeyboardModifier: ViewModifier {
 extension View {
     func gridKeyboardHandling(
         viewModel: GridViewModel,
-        displayedItems: [MediaItem],
-        containerWidth: CGFloat,
         onDelete: @escaping () -> Void,
         onQuickLook: @escaping () -> Void,
         onStartSlideshow: @escaping () -> Void,
@@ -90,8 +86,6 @@ extension View {
     ) -> some View {
         modifier(GridKeyboardModifier(
             viewModel: viewModel,
-            displayedItems: displayedItems,
-            containerWidth: containerWidth,
             onDelete: onDelete,
             onQuickLook: onQuickLook,
             onStartSlideshow: onStartSlideshow,

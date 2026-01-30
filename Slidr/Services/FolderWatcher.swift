@@ -11,6 +11,7 @@ actor FolderWatcher {
     private struct WatchEntry {
         let streamRef: FSEventStreamRef
         let handler: EventHandler
+        let handlerBox: Unmanaged<HandlerBox>
     }
 
     private var watchers: [String: WatchEntry] = [:]
@@ -52,7 +53,9 @@ actor FolderWatcher {
         let callback: FSEventStreamCallback = { _, info, numEvents, eventPaths, eventFlags, _ in
             guard let info = info else { return }
             let box = Unmanaged<HandlerBox>.fromOpaque(info).takeUnretainedValue()
-            let paths = Unmanaged<CFArray>.fromOpaque(eventPaths).takeUnretainedValue() as! [String]
+            guard let paths = Unmanaged<CFArray>.fromOpaque(eventPaths).takeUnretainedValue() as? [String] else {
+                return
+            }
             let flagsBuf = UnsafeBufferPointer(start: eventFlags, count: numEvents)
 
             for i in 0..<numEvents {
@@ -81,7 +84,7 @@ actor FolderWatcher {
         FSEventStreamSetDispatchQueue(streamRef, eventQueue)
         FSEventStreamStart(streamRef)
 
-        watchers[path] = WatchEntry(streamRef: streamRef, handler: handler)
+        watchers[path] = WatchEntry(streamRef: streamRef, handler: handler, handlerBox: handlerBox)
         Self.logger.info("Started watching: \(path)")
     }
 
@@ -104,6 +107,7 @@ actor FolderWatcher {
         FSEventStreamStop(entry.streamRef)
         FSEventStreamInvalidate(entry.streamRef)
         FSEventStreamRelease(entry.streamRef)
+        entry.handlerBox.release()
         Self.logger.info("Stopped watching: \(path)")
     }
 
