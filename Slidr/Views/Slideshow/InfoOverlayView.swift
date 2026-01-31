@@ -35,7 +35,11 @@ struct InfoOverlayView: View {
             }
 
             if !item.tags.isEmpty {
-                SlideshowInfoRow(label: "Tags", value: item.tags.joined(separator: ", "))
+                SlideshowInfoRow(label: "Tags", value: item.tags.sorted().joined(separator: ", "))
+            }
+
+            if item.hasSummary {
+                SlideshowInfoRow(label: "Summary", value: item.displaySummary)
             }
 
             VStack(alignment: .leading, spacing: 4) {

@@ -100,6 +100,15 @@ final class MediaQueryService {
             .filter { $0.isVideo && $0.hasThumbnailError }
     }
 
+    var decodeErrorVideoCount: Int {
+        allItems.filter { $0.isVideo && $0.hasDecodeError }.count
+    }
+
+    func decodeErrorVideos(sortedBy sortOrder: SortOrder, ascending: Bool) -> [MediaItem] {
+        items(sortedBy: sortOrder, ascending: ascending)
+            .filter { $0.isVideo && $0.hasDecodeError }
+    }
+
     func items(in location: StorageLocation) -> [MediaItem] {
         allItems.filter { $0.storageLocation == location }
     }

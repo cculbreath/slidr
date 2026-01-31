@@ -178,13 +178,15 @@ actor ThumbnailCache {
         return thumbnails
     }
 
+    @discardableResult
     func preGenerateScrubThumbnails(
         for items: [PreGenerateItem],
         count: Int,
         progress: (@MainActor (Int, Int) -> Void)? = nil
-    ) async {
+    ) async -> Set<String> {
         let pixelSize = ThumbnailSize.medium.pixelSize
         var generated = 0
+        var failedHashes: Set<String> = []
         let total = items.count
 
         for (index, item) in items.enumerated() {
@@ -218,6 +220,7 @@ actor ThumbnailCache {
                 generated += 1
                 Self.logger.debug("Pre-generated scrub thumbnails for \(item.filename)")
             } catch {
+                failedHashes.insert(item.contentHash)
                 Self.logger.warning("Failed to pre-generate scrub thumbnails for \(item.filename): \(error.localizedDescription)")
             }
 
@@ -227,6 +230,8 @@ actor ThumbnailCache {
         if generated > 0 {
             Self.logger.info("Pre-generated scrub thumbnails for \(generated) videos")
         }
+
+        return failedHashes
     }
 
     func clearScrubThumbnails() {

@@ -109,6 +109,12 @@ final class MediaLibrary {
         queryService.unplayableVideos(sortedBy: sortOrder, ascending: ascending)
     }
 
+    var decodeErrorVideoCount: Int { queryService.decodeErrorVideoCount }
+
+    func decodeErrorVideos(sortedBy sortOrder: SortOrder, ascending: Bool) -> [MediaItem] {
+        queryService.decodeErrorVideos(sortedBy: sortOrder, ascending: ascending)
+    }
+
     // MARK: - Item Management
 
     func add(_ item: MediaItem) {
@@ -250,8 +256,11 @@ final class MediaLibrary {
 
         guard !videoItems.isEmpty else { return }
 
-        Task.detached(priority: .utility) {
-            await cache.preGenerateScrubThumbnails(for: videoItems, count: count)
+        Task.detached(priority: .utility) { [weak self] in
+            let failedHashes = await cache.preGenerateScrubThumbnails(for: videoItems, count: count)
+            if !failedHashes.isEmpty {
+                await self?.markDecodeErrors(forHashes: failedHashes)
+            }
         }
     }
 
@@ -262,8 +271,11 @@ final class MediaLibrary {
 
         guard !videoItems.isEmpty else { return }
 
-        Task.detached(priority: .background) {
-            await cache.preGenerateScrubThumbnails(for: videoItems, count: count)
+        Task.detached(priority: .background) { [weak self] in
+            let failedHashes = await cache.preGenerateScrubThumbnails(for: videoItems, count: count)
+            if !failedHashes.isEmpty {
+                await self?.markDecodeErrors(forHashes: failedHashes)
+            }
         }
     }
 
@@ -288,14 +300,62 @@ final class MediaLibrary {
         let totalCount = videoItems.count
         guard totalCount > 0 else { return 0 }
 
-        await cache.preGenerateScrubThumbnails(
+        let failedHashes = await cache.preGenerateScrubThumbnails(
             for: videoItems,
             count: count
         ) { current, total in
             progress(current, total)
         }
 
+        if !failedHashes.isEmpty {
+            markDecodeErrors(forHashes: failedHashes)
+        }
+
         return totalCount
+    }
+
+    // MARK: - Decode Error Retry
+
+    func retryDecodeErrorThumbnails(
+        for items: [MediaItem],
+        progress: @escaping @MainActor (Int, Int) -> Void
+    ) async -> Int {
+        let cache = thumbnailCache
+        let descriptor = FetchDescriptor<AppSettings>()
+        let count = (try? modelContainer.mainContext.fetch(descriptor).first?.scrubThumbnailCount) ?? 100
+
+        // Clear existing scrub thumbnails for these items so they get regenerated
+        for item in items {
+            await cache.removeThumbnails(forHash: item.contentHash)
+        }
+
+        let pregenItems = items.map {
+            PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename)
+        }
+
+        let failedHashes = await cache.preGenerateScrubThumbnails(
+            for: pregenItems,
+            count: count
+        ) { current, total in
+            progress(current, total)
+        }
+
+        // Clear decode error flag for items that succeeded
+        var recovered = 0
+        for item in items {
+            if !failedHashes.contains(item.contentHash) {
+                item.hasDecodeError = false
+                recovered += 1
+            }
+        }
+
+        if recovered > 0 {
+            try? modelContainer.mainContext.save()
+            libraryVersion += 1
+            Logger.library.info("Recovered \(recovered) video(s) from decode errors")
+        }
+
+        return recovered
     }
 
     // MARK: - Library Path Management
@@ -426,6 +486,20 @@ final class MediaLibrary {
             return libraryRoot.appendingPathComponent("External/\(item.relativePath)")
         case .local:
             return libraryRoot.appendingPathComponent(item.relativePath)
+        }
+    }
+
+    private func markDecodeErrors(forHashes hashes: Set<String>) {
+        var marked = 0
+        for hash in hashes {
+            if let item = queryService.item(withHash: hash), !item.hasDecodeError {
+                item.hasDecodeError = true
+                marked += 1
+            }
+        }
+        if marked > 0 {
+            try? modelContainer.mainContext.save()
+            Logger.library.info("Marked \(marked) video(s) with decode errors")
         }
     }
 

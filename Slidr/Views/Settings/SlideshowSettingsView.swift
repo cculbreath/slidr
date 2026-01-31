@@ -29,7 +29,7 @@ struct SlideshowSettingsView: View {
                     TextField("Caption template", text: $settings.captionTemplate)
                         .textFieldStyle(.roundedBorder)
 
-                    Text("Variables: {filename}, {date}, {size}, {dimensions}, {duration}, {type}")
+                    Text("Variables: {filename}, {date}, {size}, {dimensions}, {duration}, {type}, {summary}")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 

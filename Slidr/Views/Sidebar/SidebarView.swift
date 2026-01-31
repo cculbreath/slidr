@@ -6,16 +6,20 @@ struct SidebarView: View {
     @Environment(PlaylistService.self) private var playlistService
     @Environment(\.openWindow) private var openWindow
     @Bindable var viewModel: SidebarViewModel
+    @Binding var searchText: String
 
     @State private var playlistDropTargetID: UUID?
 
     var body: some View {
-        List(selection: $viewModel.selectedItem) {
-            librarySection
-            manualPlaylistsSection
-            smartPlaylistsSection
+        VStack(spacing: 0) {
+            sidebarSearchField
+            List(selection: $viewModel.selectedItem) {
+                librarySection
+                manualPlaylistsSection
+                smartPlaylistsSection
+            }
+            .listStyle(.sidebar)
         }
-        .listStyle(.sidebar)
         .frame(minWidth: 200)
         .confirmationDialog(
             "Delete Playlist?",
@@ -36,6 +40,32 @@ struct SidebarView: View {
         }
     }
 
+    // MARK: - Search Field
+
+    private var sidebarSearchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Search media", text: $searchText)
+                .textFieldStyle(.plain)
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(7)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 10)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+
     // MARK: - Library Section
 
     private var librarySection: some View {
@@ -47,6 +77,7 @@ struct SidebarView: View {
             Label("Imported Today", systemImage: "calendar")
                 .tag(SidebarItem.importedToday)
             unplayableVideosRow
+            decodeErrorsRow
         }
     }
 
@@ -67,6 +98,26 @@ struct SidebarView: View {
                     .foregroundStyle(.yellow)
             }
             .tag(SidebarItem.unplayableVideos)
+        }
+    }
+
+    @ViewBuilder
+    private var decodeErrorsRow: some View {
+        let count = library.decodeErrorVideoCount
+        if count > 0 {
+            Label {
+                HStack {
+                    Text("Decode Errors")
+                    Spacer()
+                    Text("\(count)")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
+            } icon: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.orange)
+            }
+            .tag(SidebarItem.decodeErrors)
         }
     }
 
@@ -233,6 +284,7 @@ enum SidebarItem: Hashable, Identifiable {
     case lastImport
     case importedToday
     case unplayableVideos
+    case decodeErrors
     case playlist(UUID)
 
     var id: String {
@@ -242,6 +294,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .lastImport: return "lastImport"
         case .importedToday: return "importedToday"
         case .unplayableVideos: return "unplayableVideos"
+        case .decodeErrors: return "decodeErrors"
         case .playlist(let uuid): return "playlist-\(uuid.uuidString)"
         }
     }

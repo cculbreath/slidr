@@ -36,6 +36,7 @@ final class MediaItem {
     var tags: [String]
     var source: String?
     var production: ProductionType?
+    var summary: String?
 
     // MARK: - Transcript
     var transcriptText: String?
@@ -44,6 +45,7 @@ final class MediaItem {
     // MARK: - Status
     var status: MediaStatus
     var hasThumbnailErrorRaw: Bool?
+    var hasDecodeErrorRaw: Bool?
 
     // MARK: - Verification
     var lastVerifiedDate: Date?
@@ -111,6 +113,11 @@ final class MediaItem {
         set { hasThumbnailErrorRaw = newValue }
     }
 
+    var hasDecodeError: Bool {
+        get { hasDecodeErrorRaw ?? false }
+        set { hasDecodeErrorRaw = newValue }
+    }
+
     var hasCaption: Bool {
         guard let caption = caption else { return false }
         return !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -122,6 +129,15 @@ final class MediaItem {
             return caption
         }
         return displayName
+    }
+
+    var hasSummary: Bool {
+        guard let summary = summary else { return false }
+        return !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var displaySummary: String {
+        summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     var formattedDuration: String? {
@@ -156,7 +172,7 @@ final class MediaItem {
     }
 
     func addTag(_ tag: String) {
-        let normalized = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = tag.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalized.isEmpty, !hasTag(normalized) else { return }
         tags.append(normalized)
     }

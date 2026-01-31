@@ -1,9 +1,13 @@
 import SwiftUI
+import SwiftData
 
 struct GeneralSettingsView: View {
     @Bindable var settings: AppSettings
+    @Environment(\.modelContext) private var modelContext
     @State private var showLibraryLocationPicker = false
     @State private var showResetConfirmation = false
+    @State private var aiImporter = AIMetadataImporter()
+    @State private var importResult: AIMetadataImportResult?
 
     var body: some View {
         Form {
@@ -60,7 +64,7 @@ struct GeneralSettingsView: View {
                     Text("Small").tag(ThumbnailSize.small)
                     Text("Medium").tag(ThumbnailSize.medium)
                     Text("Large").tag(ThumbnailSize.large)
-                    
+
                 }
 
                 Toggle("Animate GIFs in grid", isOn: $settings.animateGIFsInGrid)
@@ -68,6 +72,25 @@ struct GeneralSettingsView: View {
                 Text("Enabling GIF animation may increase memory usage.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            Section("AI Metadata") {
+                Button("Import Tags & Summaries...") {
+                    pickDirectoryAndImport()
+                }
+                .disabled(aiImporter.isImporting)
+
+                if aiImporter.isImporting {
+                    ProgressView("Processing \(aiImporter.processedCount) of \(aiImporter.totalCount)...",
+                                 value: Double(aiImporter.processedCount),
+                                 total: Double(max(aiImporter.totalCount, 1)))
+                }
+
+                if let result = importResult {
+                    Text("Updated \(result.updated) items. \(result.notFound) files had no match.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .formStyle(.grouped)
@@ -89,6 +112,26 @@ struct GeneralSettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will change the library location back to the default. Existing files will not be moved.")
+        }
+    }
+
+    private func pickDirectoryAndImport() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Select directory containing AI metadata JSON files"
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        importResult = nil
+        Task {
+            do {
+                let result = try await aiImporter.importMetadata(from: url, modelContext: modelContext)
+                importResult = result
+            } catch {
+                importResult = AIMetadataImportResult(notFound: 0, totalFiles: 0)
+            }
         }
     }
 

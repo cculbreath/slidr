@@ -16,11 +16,16 @@ struct MediaGridView: View {
     var onImportFiles: (() -> Void)?
     var onToggleInspector: (() -> Void)?
     var activePlaylist: Playlist?
+    var isDecodeErrorsView: Bool = false
 
     @State private var showDeleteConfirmation = false
     @State private var itemsToDelete: [MediaItem] = []
     @State private var containerWidth: CGFloat = 0
     @State private var hoveredItemID: UUID?
+    @State private var isRetryingThumbnails = false
+    @State private var retryProgress: (current: Int, total: Int)?
+    @State private var retryResult: Int?
+    @State private var showTrashAllConfirmation = false
     @FocusState private var isFocused: Bool
 
     private var settings: AppSettings? { settingsQuery.first }
@@ -28,11 +33,22 @@ struct MediaGridView: View {
     private var allTags: [String] {
         Array(Set(items.flatMap(\.tags))).sorted()
     }
+    private var hasActiveFilters: Bool {
+        !viewModel.searchText.isEmpty
+        || !viewModel.mediaTypeFilter.isEmpty
+        || !viewModel.tagFilter.isEmpty
+        || (viewModel.ratingFilterEnabled && !viewModel.ratingFilter.isEmpty)
+        || viewModel.subtitleFilter
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             externalDriveBanner
+            decodeErrorBanner
             gridContent
+            if !items.isEmpty {
+                itemCountBar
+            }
         }
         .toolbar {
             GridToolbarContent(
@@ -86,6 +102,18 @@ struct MediaGridView: View {
                 Text("\(itemsToDelete.count) items will be moved to the Trash.")
             }
         }
+        .alert(
+            "Move All to Trash?",
+            isPresented: $showTrashAllConfirmation
+        ) {
+            Button("Move to Trash", role: .destructive) {
+                performDelete(items)
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("\(items.count) video\(items.count == 1 ? "" : "s") with decode errors will be moved to the Trash.")
+        }
     }
 
     // MARK: - View Components
@@ -109,6 +137,68 @@ struct MediaGridView: View {
             .padding(.vertical, 8)
             .background(.orange.opacity(0.1))
         }
+    }
+
+    @ViewBuilder
+    private var decodeErrorBanner: some View {
+        if isDecodeErrorsView && !items.isEmpty {
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.yellow)
+                    Text("\(items.count) video\(items.count == 1 ? "" : "s") failed thumbnail decoding")
+                        .font(.callout)
+                    Spacer()
+                    Button("Retry Thumbnails") {
+                        retryThumbnails()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(isRetryingThumbnails)
+
+                    Button("Move All to Trash", role: .destructive) {
+                        showTrashAllConfirmation = true
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(isRetryingThumbnails)
+                }
+
+                if isRetryingThumbnails, let progress = retryProgress {
+                    ProgressView("Processing \(progress.current) of \(progress.total)...",
+                                 value: Double(progress.current),
+                                 total: Double(max(progress.total, 1)))
+                        .font(.caption)
+                }
+
+                if let recovered = retryResult {
+                    Text(recovered > 0
+                         ? "Recovered \(recovered) video\(recovered == 1 ? "" : "s"). Remaining items still have decode errors."
+                         : "No videos recovered \u{2014} all items still have decode errors.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(.yellow.opacity(0.1))
+        }
+    }
+
+    private var itemCountBar: some View {
+        HStack {
+            Spacer()
+            if hasActiveFilters {
+                Text("\(displayedItems.count) of \(items.count) items")
+            } else {
+                Text("\(items.count) items")
+            }
+            Spacer()
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 4)
+        .background(.bar)
     }
 
     @ViewBuilder
@@ -302,6 +392,22 @@ struct MediaGridView: View {
     private func performDelete(_ items: [MediaItem]) {
         library.delete(items)
         viewModel.clearSelection()
+    }
+
+    // MARK: - Decode Error Actions
+
+    private func retryThumbnails() {
+        isRetryingThumbnails = true
+        retryResult = nil
+        retryProgress = (0, items.count)
+
+        Task {
+            let recovered = await library.retryDecodeErrorThumbnails(for: items) { current, total in
+                retryProgress = (current, total)
+            }
+            retryResult = recovered
+            isRetryingThumbnails = false
+        }
     }
 
     // MARK: - Context Menu Actions

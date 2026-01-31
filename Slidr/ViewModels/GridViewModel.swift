@@ -22,6 +22,7 @@ final class GridViewModel {
     // MARK: - Search
     var searchText: String = ""
     var isSearchFocused: Bool = false
+    var searchIncludesSummary: Bool = true
 
     // MARK: - Keyboard Navigation
     var focusedIndex: Int? = nil
@@ -108,6 +109,7 @@ final class GridViewModel {
             if item.tags.contains(where: { $0.lowercased().contains(query) }) { return true }
             if let caption = item.caption?.lowercased(), caption.contains(query) { return true }
             if let transcript = item.transcriptText?.lowercased(), transcript.contains(query) { return true }
+            if searchIncludesSummary, let summary = item.summary?.lowercased(), summary.contains(query) { return true }
             return false
         }
     }

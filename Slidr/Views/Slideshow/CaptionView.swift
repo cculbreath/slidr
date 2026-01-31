@@ -29,6 +29,7 @@ struct CaptionView: View {
         result = result.replacingOccurrences(of: "{dimensions}", with: formattedDimensions)
         result = result.replacingOccurrences(of: "{duration}", with: formattedDuration)
         result = result.replacingOccurrences(of: "{type}", with: item.mediaType.rawValue.capitalized)
+        result = result.replacingOccurrences(of: "{summary}", with: item.displaySummary)
         return result
     }
 

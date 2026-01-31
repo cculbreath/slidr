@@ -10,6 +10,11 @@ struct TranscriptCue: Sendable {
     let text: String
 }
 
+struct SpeakerSegment: Sendable {
+    let speaker: String?
+    let text: String
+}
+
 enum TranscriptFormat: String, Sendable {
     case srt
     case vtt
@@ -242,6 +247,100 @@ struct TranscriptParser {
                   let seconds = Double(components[1]) else { return nil }
             return minutes * 60 + seconds
         }
+    }
+
+    // MARK: - Speaker Segment Parsing
+
+    /// Parses a cue's raw text into speaker-attributed segments.
+    /// Handles VTT `<v SpeakerName>text</v>` voice tags and SRT `Speaker: text` prefixes.
+    static func parseSpeakerSegments(_ rawText: String) -> [SpeakerSegment] {
+        let lines = rawText.components(separatedBy: "\n")
+        var segments: [SpeakerSegment] = []
+
+        for line in lines {
+            let lineSegments = parseLineSegments(line)
+            segments.append(contentsOf: lineSegments)
+        }
+
+        if segments.isEmpty {
+            let stripped = stripHTMLTags(rawText).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !stripped.isEmpty {
+                return [SpeakerSegment(speaker: nil, text: stripped)]
+            }
+        }
+
+        return segments
+    }
+
+    /// Returns ordered unique speaker names found across all cues.
+    static func uniqueSpeakers(in cues: [TranscriptCue]) -> [String] {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for cue in cues {
+            for segment in parseSpeakerSegments(cue.text) {
+                if let speaker = segment.speaker, !seen.contains(speaker) {
+                    seen.insert(speaker)
+                    ordered.append(speaker)
+                }
+            }
+        }
+        return ordered
+    }
+
+    private static func parseLineSegments(_ line: String) -> [SpeakerSegment] {
+        // Try VTT voice tags first
+        let voicePattern = #"<v(?:\.[^\s>]*)?\s+([^>]+)>(.*?)(?:</v>|$)"#
+        if let regex = try? NSRegularExpression(pattern: voicePattern) {
+            let matches = regex.matches(in: line, range: NSRange(line.startIndex..., in: line))
+            if !matches.isEmpty {
+                var segments: [SpeakerSegment] = []
+                for match in matches {
+                    guard let speakerRange = Range(match.range(at: 1), in: line),
+                          let textRange = Range(match.range(at: 2), in: line) else { continue }
+                    let speaker = String(line[speakerRange]).trimmingCharacters(in: .whitespaces)
+                    let text = stripHTMLTags(String(line[textRange]))
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !text.isEmpty {
+                        segments.append(SpeakerSegment(speaker: speaker, text: text))
+                    }
+                }
+                return segments
+            }
+        }
+
+        // Try SRT speaker prefix (e.g., "Alice: Hello")
+        if let segment = parseSpeakerPrefix(line) {
+            return [segment]
+        }
+
+        // Plain text — strip any remaining HTML tags
+        let stripped = stripHTMLTags(line).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !stripped.isEmpty {
+            return [SpeakerSegment(speaker: nil, text: stripped)]
+        }
+
+        return []
+    }
+
+    /// Parses `Speaker: text` prefix common in SRT files.
+    /// Requires name to start with an uppercase letter to avoid false positives.
+    private static func parseSpeakerPrefix(_ line: String) -> SpeakerSegment? {
+        let pattern = #"^([A-Z][A-Za-z0-9 .'\-]{0,39}):\s+(.+)$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) else {
+            return nil
+        }
+
+        guard let speakerRange = Range(match.range(at: 1), in: line),
+              let textRange = Range(match.range(at: 2), in: line) else {
+            return nil
+        }
+
+        let speaker = String(line[speakerRange]).trimmingCharacters(in: .whitespaces)
+        let text = String(line[textRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !text.isEmpty else { return nil }
+        return SpeakerSegment(speaker: speaker, text: text)
     }
 
     // MARK: - HTML Tag Stripping

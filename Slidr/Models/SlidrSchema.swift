@@ -20,6 +20,9 @@
 /// | V6 | Added showTimerBarRaw to AppSettings |
 /// | V7 | Added production field to MediaItem |
 /// | V8 | Added transcriptText, transcriptRelativePath to MediaItem |
+/// | V9 | Added subtitle display settings to AppSettings |
+/// | V10 | Added hasDecodeErrorRaw to MediaItem |
+/// | V11 | Added summary to MediaItem for AI-generated descriptions |
 ///
 /// ## Adding a New Version
 ///
@@ -1472,12 +1475,670 @@ enum SlidrSchemaV7: VersionedSchema {
     }
 }
 
-// MARK: - Schema V8 (Current)
+// MARK: - Schema V8
 // Adds: transcriptText, transcriptRelativePath to MediaItem for subtitle support
-// This schema uses the live model definitions.
 
 enum SlidrSchemaV8: VersionedSchema {
     static var versionIdentifier = Schema.Version(8, 0, 0)
+
+    static var models: [any PersistentModel.Type] {
+        [SlidrSchemaV8.MediaItem.self, SlidrSchemaV8.Playlist.self, SlidrSchemaV8.AppSettings.self]
+    }
+
+    @Model
+    final class MediaItem {
+        @Attribute(.unique) var id: UUID
+        var contentHash: String
+        var originalFilename: String
+        var relativePath: String
+        var storageLocation: StorageLocation
+        var fileSize: Int64
+        var importDate: Date
+        var fileModifiedDate: Date
+        var mediaType: MediaType
+        var width: Int?
+        var height: Int?
+        var duration: TimeInterval?
+        var frameRate: Double?
+        var hasAudio: Bool?
+        var frameCount: Int?
+        @Relationship(deleteRule: .nullify)
+        var playlists: [SlidrSchemaV8.Playlist]?
+        var caption: String?
+        var isFavorite: Bool
+        var rating: Int?
+        var tags: [String]
+        var status: MediaStatus
+        var hasThumbnailErrorRaw: Bool?
+        var lastVerifiedDate: Date?
+        var source: String?
+        var production: ProductionType?
+        var transcriptText: String?
+        var transcriptRelativePath: String?
+
+        init(
+            originalFilename: String,
+            relativePath: String,
+            storageLocation: StorageLocation,
+            contentHash: String,
+            fileSize: Int64,
+            mediaType: MediaType,
+            fileModifiedDate: Date
+        ) {
+            self.id = UUID()
+            self.originalFilename = originalFilename
+            self.relativePath = relativePath
+            self.storageLocation = storageLocation
+            self.contentHash = contentHash
+            self.fileSize = fileSize
+            self.mediaType = mediaType
+            self.fileModifiedDate = fileModifiedDate
+            self.importDate = Date()
+            self.status = .available
+            self.hasThumbnailErrorRaw = false
+            self.isFavorite = false
+            self.rating = nil
+            self.tags = []
+            self.lastVerifiedDate = nil
+            self.playlists = []
+        }
+    }
+
+    @Model
+    final class Playlist {
+        @Attribute(.unique) var id: UUID
+        var name: String
+        var type: PlaylistType
+        var createdDate: Date
+        var modifiedDate: Date
+        var sortOrder: SortOrder
+        var sortAscending: Bool
+        @Relationship(deleteRule: .nullify, inverse: \SlidrSchemaV8.MediaItem.playlists)
+        var manualItems: [SlidrSchemaV8.MediaItem]?
+        var manualItemOrder: [UUID]
+        var watchedFolderPath: String?
+        var includeSubfolders: Bool
+        var filterMinDuration: TimeInterval?
+        var filterMaxDuration: TimeInterval?
+        var filterMediaTypes: [String]?
+        var filterFavoritesOnly: Bool
+        var filterMinRating: Int?
+        var iconName: String?
+        var colorHex: String?
+
+        init(name: String, type: PlaylistType) {
+            self.id = UUID()
+            self.name = name
+            self.type = type
+            self.createdDate = Date()
+            self.modifiedDate = Date()
+            self.sortOrder = .dateImported
+            self.sortAscending = false
+            self.manualItems = []
+            self.manualItemOrder = []
+            self.includeSubfolders = true
+            self.filterFavoritesOnly = false
+            self.filterMinRating = nil
+        }
+    }
+
+    @Model
+    final class AppSettings {
+        @Attribute(.unique) var id: UUID
+        var showWelcomeOnLaunch: Bool
+        var confirmBeforeDelete: Bool
+        var defaultSortOrder: SortOrder
+        var defaultSortAscending: Bool
+        var customLibraryPath: String?
+        var importMode: ImportMode
+        var convertIncompatibleFormats: Bool
+        var keepOriginalAfterConversion: Bool
+        var skipDuplicates: Bool
+        var defaultImportLocation: StorageLocation
+        var importTargetFormat: VideoFormat
+        var importOrganizeByDate: Bool
+        var createPlaylistsFromFolders: Bool
+        var externalDrivePath: String?
+        var defaultThumbnailSize: ThumbnailSize
+        var maxMemoryCacheItems: Int
+        var maxDiskCacheMB: Int
+        var animateGIFsInGrid: Bool
+        var scrubThumbnailCount: Int
+        var defaultImageDuration: TimeInterval
+        var defaultGIFDuration: TimeInterval
+        var loopSlideshow: Bool
+        var shuffleSlideshow: Bool
+        var showCaptions: Bool
+        var captionTemplate: String
+        var captionPosition: CaptionPosition
+        var captionFontSize: Double
+        var captionBackgroundOpacity: Double
+        var captionDisplayModeRaw: String?
+        var videoCaptionDurationRaw: Double?
+        var slideshowTransition: TransitionType
+        var slideshowTransitionDuration: TimeInterval
+        var slideshowVideoMode: VideoPlaybackMode
+        var videoPlayDurationTag: String
+        var videoPlayDurationSeconds: Double
+        var randomizeClipLocation: Bool
+        var playFullGIF: Bool
+        var showTimerBarRaw: Bool?
+        var useAllMonitors: Bool
+        var controlPanelOnSeparateMonitor: Bool
+        var preferredControlMonitor: Int?
+        var gridShowFilenames: Bool
+        var gridShowCaptionsRaw: Bool?
+        var gridVideoHoverScrub: Bool
+        var gridMediaTypeFilterRaw: String?
+        var verifyFilesOnLaunch: Bool
+        var removeOrphanedThumbnails: Bool
+        var lastVerificationDate: Date?
+        var defaultVolume: Float
+        var muteByDefault: Bool
+
+        init() {
+            self.id = UUID()
+            self.showWelcomeOnLaunch = true
+            self.confirmBeforeDelete = true
+            self.defaultSortOrder = .dateImported
+            self.defaultSortAscending = false
+            self.importMode = .copy
+            self.convertIncompatibleFormats = true
+            self.keepOriginalAfterConversion = false
+            self.skipDuplicates = true
+            self.defaultImportLocation = .local
+            self.importTargetFormat = .h264MP4
+            self.importOrganizeByDate = false
+            self.createPlaylistsFromFolders = false
+            self.defaultThumbnailSize = .medium
+            self.maxMemoryCacheItems = 100
+            self.maxDiskCacheMB = 500
+            self.animateGIFsInGrid = false
+            self.scrubThumbnailCount = 100
+            self.defaultImageDuration = 5.0
+            self.defaultGIFDuration = 10.0
+            self.loopSlideshow = true
+            self.shuffleSlideshow = false
+            self.showCaptions = false
+            self.captionTemplate = "{filename}"
+            self.captionPosition = .bottom
+            self.captionFontSize = 16.0
+            self.captionBackgroundOpacity = 0.6
+            self.captionDisplayModeRaw = CaptionDisplayMode.overlay.rawValue
+            self.videoCaptionDurationRaw = 5.0
+            self.slideshowTransition = .crossfade
+            self.slideshowTransitionDuration = 0.5
+            self.slideshowVideoMode = .playFull
+            self.videoPlayDurationTag = "fixed"
+            self.videoPlayDurationSeconds = 30
+            self.randomizeClipLocation = false
+            self.playFullGIF = false
+            self.showTimerBarRaw = false
+            self.useAllMonitors = false
+            self.controlPanelOnSeparateMonitor = false
+            self.gridShowFilenames = false
+            self.gridShowCaptionsRaw = true
+            self.gridVideoHoverScrub = true
+            self.gridMediaTypeFilterRaw = nil
+            self.verifyFilesOnLaunch = false
+            self.removeOrphanedThumbnails = true
+            self.defaultVolume = 1.0
+            self.muteByDefault = false
+        }
+    }
+}
+
+// MARK: - Schema V9
+// Adds: showSubtitlesRaw, subtitlePositionRaw, subtitleFontSizeRaw, subtitleOpacityRaw to AppSettings
+// Frozen snapshot before hasDecodeErrorRaw was added to MediaItem
+
+enum SlidrSchemaV9: VersionedSchema {
+    static var versionIdentifier = Schema.Version(9, 0, 0)
+
+    static var models: [any PersistentModel.Type] {
+        [SlidrSchemaV9.MediaItem.self, SlidrSchemaV9.Playlist.self, SlidrSchemaV9.AppSettings.self]
+    }
+
+    @Model
+    final class MediaItem {
+        @Attribute(.unique) var id: UUID
+        var contentHash: String
+        var originalFilename: String
+        var relativePath: String
+        var storageLocation: StorageLocation
+        var fileSize: Int64
+        var importDate: Date
+        var fileModifiedDate: Date
+        var mediaType: MediaType
+        var width: Int?
+        var height: Int?
+        var duration: TimeInterval?
+        var frameRate: Double?
+        var hasAudio: Bool?
+        var frameCount: Int?
+        @Relationship(deleteRule: .nullify)
+        var playlists: [SlidrSchemaV9.Playlist]?
+        var caption: String?
+        var isFavorite: Bool
+        var rating: Int?
+        var tags: [String]
+        var status: MediaStatus
+        var hasThumbnailErrorRaw: Bool?
+        var lastVerifiedDate: Date?
+        var source: String?
+        var production: ProductionType?
+        var transcriptText: String?
+        var transcriptRelativePath: String?
+
+        init(
+            originalFilename: String,
+            relativePath: String,
+            storageLocation: StorageLocation,
+            contentHash: String,
+            fileSize: Int64,
+            mediaType: MediaType,
+            fileModifiedDate: Date
+        ) {
+            self.id = UUID()
+            self.originalFilename = originalFilename
+            self.relativePath = relativePath
+            self.storageLocation = storageLocation
+            self.contentHash = contentHash
+            self.fileSize = fileSize
+            self.mediaType = mediaType
+            self.fileModifiedDate = fileModifiedDate
+            self.importDate = Date()
+            self.status = .available
+            self.hasThumbnailErrorRaw = false
+            self.isFavorite = false
+            self.rating = nil
+            self.tags = []
+            self.lastVerifiedDate = nil
+            self.playlists = []
+        }
+    }
+
+    @Model
+    final class Playlist {
+        @Attribute(.unique) var id: UUID
+        var name: String
+        var type: PlaylistType
+        var createdDate: Date
+        var modifiedDate: Date
+        var sortOrder: SortOrder
+        var sortAscending: Bool
+        @Relationship(deleteRule: .nullify, inverse: \SlidrSchemaV9.MediaItem.playlists)
+        var manualItems: [SlidrSchemaV9.MediaItem]?
+        var manualItemOrder: [UUID]
+        var watchedFolderPath: String?
+        var includeSubfolders: Bool
+        var filterMinDuration: TimeInterval?
+        var filterMaxDuration: TimeInterval?
+        var filterMediaTypes: [String]?
+        var filterFavoritesOnly: Bool
+        var filterMinRating: Int?
+        var iconName: String?
+        var colorHex: String?
+
+        init(name: String, type: PlaylistType) {
+            self.id = UUID()
+            self.name = name
+            self.type = type
+            self.createdDate = Date()
+            self.modifiedDate = Date()
+            self.sortOrder = .dateImported
+            self.sortAscending = false
+            self.manualItems = []
+            self.manualItemOrder = []
+            self.includeSubfolders = true
+            self.filterFavoritesOnly = false
+            self.filterMinRating = nil
+        }
+    }
+
+    @Model
+    final class AppSettings {
+        @Attribute(.unique) var id: UUID
+        var showWelcomeOnLaunch: Bool
+        var confirmBeforeDelete: Bool
+        var defaultSortOrder: SortOrder
+        var defaultSortAscending: Bool
+        var customLibraryPath: String?
+        var importMode: ImportMode
+        var convertIncompatibleFormats: Bool
+        var keepOriginalAfterConversion: Bool
+        var skipDuplicates: Bool
+        var defaultImportLocation: StorageLocation
+        var importTargetFormat: VideoFormat
+        var importOrganizeByDate: Bool
+        var createPlaylistsFromFolders: Bool
+        var externalDrivePath: String?
+        var defaultThumbnailSize: ThumbnailSize
+        var maxMemoryCacheItems: Int
+        var maxDiskCacheMB: Int
+        var animateGIFsInGrid: Bool
+        var scrubThumbnailCount: Int
+        var defaultImageDuration: TimeInterval
+        var defaultGIFDuration: TimeInterval
+        var loopSlideshow: Bool
+        var shuffleSlideshow: Bool
+        var showCaptions: Bool
+        var captionTemplate: String
+        var captionPosition: CaptionPosition
+        var captionFontSize: Double
+        var captionBackgroundOpacity: Double
+        var captionDisplayModeRaw: String?
+        var videoCaptionDurationRaw: Double?
+        var slideshowTransition: TransitionType
+        var slideshowTransitionDuration: TimeInterval
+        var slideshowVideoMode: VideoPlaybackMode
+        var videoPlayDurationTag: String
+        var videoPlayDurationSeconds: Double
+        var randomizeClipLocation: Bool
+        var playFullGIF: Bool
+        var showTimerBarRaw: Bool?
+        var showSubtitlesRaw: Bool?
+        var subtitlePositionRaw: String?
+        var subtitleFontSizeRaw: Double?
+        var subtitleOpacityRaw: Double?
+        var useAllMonitors: Bool
+        var controlPanelOnSeparateMonitor: Bool
+        var preferredControlMonitor: Int?
+        var gridShowFilenames: Bool
+        var gridShowCaptionsRaw: Bool?
+        var gridVideoHoverScrub: Bool
+        var gridMediaTypeFilterRaw: String?
+        var verifyFilesOnLaunch: Bool
+        var removeOrphanedThumbnails: Bool
+        var lastVerificationDate: Date?
+        var defaultVolume: Float
+        var muteByDefault: Bool
+
+        init() {
+            self.id = UUID()
+            self.showWelcomeOnLaunch = true
+            self.confirmBeforeDelete = true
+            self.defaultSortOrder = .dateImported
+            self.defaultSortAscending = false
+            self.importMode = .copy
+            self.convertIncompatibleFormats = true
+            self.keepOriginalAfterConversion = false
+            self.skipDuplicates = true
+            self.defaultImportLocation = .local
+            self.importTargetFormat = .h264MP4
+            self.importOrganizeByDate = false
+            self.createPlaylistsFromFolders = false
+            self.defaultThumbnailSize = .medium
+            self.maxMemoryCacheItems = 100
+            self.maxDiskCacheMB = 500
+            self.animateGIFsInGrid = false
+            self.scrubThumbnailCount = 100
+            self.defaultImageDuration = 5.0
+            self.defaultGIFDuration = 10.0
+            self.loopSlideshow = true
+            self.shuffleSlideshow = false
+            self.showCaptions = false
+            self.captionTemplate = "{filename}"
+            self.captionPosition = .bottom
+            self.captionFontSize = 16.0
+            self.captionBackgroundOpacity = 0.6
+            self.captionDisplayModeRaw = CaptionDisplayMode.overlay.rawValue
+            self.videoCaptionDurationRaw = 5.0
+            self.slideshowTransition = .crossfade
+            self.slideshowTransitionDuration = 0.5
+            self.slideshowVideoMode = .playFull
+            self.videoPlayDurationTag = "fixed"
+            self.videoPlayDurationSeconds = 30
+            self.randomizeClipLocation = false
+            self.playFullGIF = false
+            self.showTimerBarRaw = false
+            self.showSubtitlesRaw = false
+            self.subtitlePositionRaw = CaptionPosition.bottom.rawValue
+            self.subtitleFontSizeRaw = 16.0
+            self.subtitleOpacityRaw = 0.7
+            self.useAllMonitors = false
+            self.controlPanelOnSeparateMonitor = false
+            self.gridShowFilenames = false
+            self.gridShowCaptionsRaw = true
+            self.gridVideoHoverScrub = true
+            self.gridMediaTypeFilterRaw = nil
+            self.verifyFilesOnLaunch = false
+            self.removeOrphanedThumbnails = true
+            self.defaultVolume = 1.0
+            self.muteByDefault = false
+        }
+    }
+}
+
+// MARK: - Schema V10
+// Adds: hasDecodeErrorRaw to MediaItem for flagging videos with scrub thumbnail decode failures
+// Frozen snapshot before summary field was added to MediaItem
+
+enum SlidrSchemaV10: VersionedSchema {
+    static var versionIdentifier = Schema.Version(10, 0, 0)
+
+    static var models: [any PersistentModel.Type] {
+        [SlidrSchemaV10.MediaItem.self, SlidrSchemaV10.Playlist.self, SlidrSchemaV10.AppSettings.self]
+    }
+
+    @Model
+    final class MediaItem {
+        @Attribute(.unique) var id: UUID
+        var contentHash: String
+        var originalFilename: String
+        var relativePath: String
+        var storageLocation: StorageLocation
+        var fileSize: Int64
+        var importDate: Date
+        var fileModifiedDate: Date
+        var mediaType: MediaType
+        var width: Int?
+        var height: Int?
+        var duration: TimeInterval?
+        var frameRate: Double?
+        var hasAudio: Bool?
+        var frameCount: Int?
+        @Relationship(deleteRule: .nullify)
+        var playlists: [SlidrSchemaV10.Playlist]?
+        var caption: String?
+        var isFavorite: Bool
+        var rating: Int?
+        var tags: [String]
+        var status: MediaStatus
+        var hasThumbnailErrorRaw: Bool?
+        var hasDecodeErrorRaw: Bool?
+        var lastVerifiedDate: Date?
+        var source: String?
+        var production: ProductionType?
+        var transcriptText: String?
+        var transcriptRelativePath: String?
+
+        init(
+            originalFilename: String,
+            relativePath: String,
+            storageLocation: StorageLocation,
+            contentHash: String,
+            fileSize: Int64,
+            mediaType: MediaType,
+            fileModifiedDate: Date
+        ) {
+            self.id = UUID()
+            self.originalFilename = originalFilename
+            self.relativePath = relativePath
+            self.storageLocation = storageLocation
+            self.contentHash = contentHash
+            self.fileSize = fileSize
+            self.mediaType = mediaType
+            self.fileModifiedDate = fileModifiedDate
+            self.importDate = Date()
+            self.status = .available
+            self.hasThumbnailErrorRaw = false
+            self.isFavorite = false
+            self.rating = nil
+            self.tags = []
+            self.lastVerifiedDate = nil
+            self.playlists = []
+        }
+    }
+
+    @Model
+    final class Playlist {
+        @Attribute(.unique) var id: UUID
+        var name: String
+        var type: PlaylistType
+        var createdDate: Date
+        var modifiedDate: Date
+        var sortOrder: SortOrder
+        var sortAscending: Bool
+        @Relationship(deleteRule: .nullify, inverse: \SlidrSchemaV10.MediaItem.playlists)
+        var manualItems: [SlidrSchemaV10.MediaItem]?
+        var manualItemOrder: [UUID]
+        var watchedFolderPath: String?
+        var includeSubfolders: Bool
+        var filterMinDuration: TimeInterval?
+        var filterMaxDuration: TimeInterval?
+        var filterMediaTypes: [String]?
+        var filterFavoritesOnly: Bool
+        var filterMinRating: Int?
+        var iconName: String?
+        var colorHex: String?
+
+        init(name: String, type: PlaylistType) {
+            self.id = UUID()
+            self.name = name
+            self.type = type
+            self.createdDate = Date()
+            self.modifiedDate = Date()
+            self.sortOrder = .dateImported
+            self.sortAscending = false
+            self.manualItems = []
+            self.manualItemOrder = []
+            self.includeSubfolders = true
+            self.filterFavoritesOnly = false
+            self.filterMinRating = nil
+        }
+    }
+
+    @Model
+    final class AppSettings {
+        @Attribute(.unique) var id: UUID
+        var showWelcomeOnLaunch: Bool
+        var confirmBeforeDelete: Bool
+        var defaultSortOrder: SortOrder
+        var defaultSortAscending: Bool
+        var customLibraryPath: String?
+        var importMode: ImportMode
+        var convertIncompatibleFormats: Bool
+        var keepOriginalAfterConversion: Bool
+        var skipDuplicates: Bool
+        var defaultImportLocation: StorageLocation
+        var importTargetFormat: VideoFormat
+        var importOrganizeByDate: Bool
+        var createPlaylistsFromFolders: Bool
+        var externalDrivePath: String?
+        var defaultThumbnailSize: ThumbnailSize
+        var maxMemoryCacheItems: Int
+        var maxDiskCacheMB: Int
+        var animateGIFsInGrid: Bool
+        var scrubThumbnailCount: Int
+        var defaultImageDuration: TimeInterval
+        var defaultGIFDuration: TimeInterval
+        var loopSlideshow: Bool
+        var shuffleSlideshow: Bool
+        var showCaptions: Bool
+        var captionTemplate: String
+        var captionPosition: CaptionPosition
+        var captionFontSize: Double
+        var captionBackgroundOpacity: Double
+        var captionDisplayModeRaw: String?
+        var videoCaptionDurationRaw: Double?
+        var slideshowTransition: TransitionType
+        var slideshowTransitionDuration: TimeInterval
+        var slideshowVideoMode: VideoPlaybackMode
+        var videoPlayDurationTag: String
+        var videoPlayDurationSeconds: Double
+        var randomizeClipLocation: Bool
+        var playFullGIF: Bool
+        var showTimerBarRaw: Bool?
+        var showSubtitlesRaw: Bool?
+        var subtitlePositionRaw: String?
+        var subtitleFontSizeRaw: Double?
+        var subtitleOpacityRaw: Double?
+        var useAllMonitors: Bool
+        var controlPanelOnSeparateMonitor: Bool
+        var preferredControlMonitor: Int?
+        var gridShowFilenames: Bool
+        var gridShowCaptionsRaw: Bool?
+        var gridVideoHoverScrub: Bool
+        var gridMediaTypeFilterRaw: String?
+        var verifyFilesOnLaunch: Bool
+        var removeOrphanedThumbnails: Bool
+        var lastVerificationDate: Date?
+        var defaultVolume: Float
+        var muteByDefault: Bool
+
+        init() {
+            self.id = UUID()
+            self.showWelcomeOnLaunch = true
+            self.confirmBeforeDelete = true
+            self.defaultSortOrder = .dateImported
+            self.defaultSortAscending = false
+            self.importMode = .copy
+            self.convertIncompatibleFormats = true
+            self.keepOriginalAfterConversion = false
+            self.skipDuplicates = true
+            self.defaultImportLocation = .local
+            self.importTargetFormat = .h264MP4
+            self.importOrganizeByDate = false
+            self.createPlaylistsFromFolders = false
+            self.defaultThumbnailSize = .medium
+            self.maxMemoryCacheItems = 100
+            self.maxDiskCacheMB = 500
+            self.animateGIFsInGrid = false
+            self.scrubThumbnailCount = 100
+            self.defaultImageDuration = 5.0
+            self.defaultGIFDuration = 10.0
+            self.loopSlideshow = true
+            self.shuffleSlideshow = false
+            self.showCaptions = false
+            self.captionTemplate = "{filename}"
+            self.captionPosition = .bottom
+            self.captionFontSize = 16.0
+            self.captionBackgroundOpacity = 0.6
+            self.captionDisplayModeRaw = CaptionDisplayMode.overlay.rawValue
+            self.videoCaptionDurationRaw = 5.0
+            self.slideshowTransition = .crossfade
+            self.slideshowTransitionDuration = 0.5
+            self.slideshowVideoMode = .playFull
+            self.videoPlayDurationTag = "fixed"
+            self.videoPlayDurationSeconds = 30
+            self.randomizeClipLocation = false
+            self.playFullGIF = false
+            self.showTimerBarRaw = false
+            self.showSubtitlesRaw = false
+            self.subtitlePositionRaw = CaptionPosition.bottom.rawValue
+            self.subtitleFontSizeRaw = 16.0
+            self.subtitleOpacityRaw = 0.7
+            self.useAllMonitors = false
+            self.controlPanelOnSeparateMonitor = false
+            self.gridShowFilenames = false
+            self.gridShowCaptionsRaw = true
+            self.gridVideoHoverScrub = true
+            self.gridMediaTypeFilterRaw = nil
+            self.verifyFilesOnLaunch = false
+            self.removeOrphanedThumbnails = true
+            self.defaultVolume = 1.0
+            self.muteByDefault = false
+        }
+    }
+}
+
+// MARK: - Schema V11 (Current)
+// Adds: summary (String?) to MediaItem for AI-generated descriptions
+// This schema uses the live model definitions.
+
+enum SlidrSchemaV11: VersionedSchema {
+    static var versionIdentifier = Schema.Version(11, 0, 0)
 
     static var models: [any PersistentModel.Type] {
         [MediaItem.self, Playlist.self, AppSettings.self]
@@ -1488,11 +2149,11 @@ enum SlidrSchemaV8: VersionedSchema {
 
 enum SlidrMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [SlidrSchemaV1.self, SlidrSchemaV2.self, SlidrSchemaV3.self, SlidrSchemaV4.self, SlidrSchemaV5.self, SlidrSchemaV6.self, SlidrSchemaV7.self, SlidrSchemaV8.self]
+        [SlidrSchemaV1.self, SlidrSchemaV2.self, SlidrSchemaV3.self, SlidrSchemaV4.self, SlidrSchemaV5.self, SlidrSchemaV6.self, SlidrSchemaV7.self, SlidrSchemaV8.self, SlidrSchemaV9.self, SlidrSchemaV10.self, SlidrSchemaV11.self]
     }
 
     static var stages: [MigrationStage] {
-        [migrateV1toV2, migrateV2toV3, migrateV3toV4, migrateV4toV5, migrateV5toV6, migrateV6toV7, migrateV7toV8]
+        [migrateV1toV2, migrateV2toV3, migrateV3toV4, migrateV4toV5, migrateV5toV6, migrateV6toV7, migrateV7toV8, migrateV8toV9, migrateV9toV10, migrateV10toV11]
     }
 
     // V1 -> V2: Custom migration to handle copyFilesToLibrary -> importMode conversion
@@ -1550,5 +2211,23 @@ enum SlidrMigrationPlan: SchemaMigrationPlan {
     static let migrateV7toV8 = MigrationStage.lightweight(
         fromVersion: SlidrSchemaV7.self,
         toVersion: SlidrSchemaV8.self
+    )
+
+    // V8 -> V9: Lightweight migration for new subtitle display settings on AppSettings
+    static let migrateV8toV9 = MigrationStage.lightweight(
+        fromVersion: SlidrSchemaV8.self,
+        toVersion: SlidrSchemaV9.self
+    )
+
+    // V9 -> V10: Lightweight migration for new hasDecodeErrorRaw on MediaItem
+    static let migrateV9toV10 = MigrationStage.lightweight(
+        fromVersion: SlidrSchemaV9.self,
+        toVersion: SlidrSchemaV10.self
+    )
+
+    // V10 -> V11: Lightweight migration for new summary field on MediaItem
+    static let migrateV10toV11 = MigrationStage.lightweight(
+        fromVersion: SlidrSchemaV10.self,
+        toVersion: SlidrSchemaV11.self
     )
 }

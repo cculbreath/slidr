@@ -85,7 +85,7 @@ struct GridToolbarContent: ToolbarContent {
 
         ToolbarSpacer(.flexible)
 
-        // Group 4: Subtitle, Rating, Tags, Media Type, Sort
+        // Group 4: Subtitle, Summary Search, Rating, Tags, Media Type, Sort
         ToolbarItemGroup {
             Button {
                 viewModel.subtitleFilter.toggle()
@@ -95,6 +95,14 @@ struct GridToolbarContent: ToolbarContent {
                     .foregroundStyle(hasSubtitleFilter ? Color.accentColor : .primary)
             }
             .help("Show only items with subtitles")
+
+            Button {
+                viewModel.searchIncludesSummary.toggle()
+            } label: {
+                Label("Search Summaries", systemImage: "text.magnifyingglass")
+                    .foregroundStyle(viewModel.searchIncludesSummary ? Color.accentColor : .primary)
+            }
+            .help("Include AI summaries in search results")
 
             ratingFilterMenu
             tagFilterMenu
@@ -174,44 +182,11 @@ struct GridToolbarContent: ToolbarContent {
     }
 
     private var tagFilterMenu: some View {
-        Menu {
-            if hasTagFilter {
-                Button {
-                    viewModel.tagFilter.removeAll()
-                } label: {
-                    Label("Clear Tag Filter", systemImage: "xmark.circle")
-                }
-                Divider()
-            }
-
-            if allTags.isEmpty {
-                Text("No tags in library")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(allTags, id: \.self) { tag in
-                    Button {
-                        if viewModel.tagFilter.contains(tag) {
-                            viewModel.tagFilter.remove(tag)
-                        } else {
-                            viewModel.tagFilter.insert(tag)
-                        }
-                    } label: {
-                        HStack {
-                            Text(tag)
-                            Spacer()
-                            if viewModel.tagFilter.contains(tag) {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-            }
-        } label: {
-            // Static label structure
-            Label("Tags", systemImage: "tag")
-                .symbolVariant(hasTagFilter ? .fill : .none)
-                .foregroundStyle(hasTagFilter ? Color.accentColor : .primary)
-        }
+        TagFilterPopover(
+            allTags: allTags,
+            tagFilter: $viewModel.tagFilter,
+            hasTagFilter: hasTagFilter
+        )
     }
 
     private var ratingFilterMenu: some View {
@@ -311,5 +286,115 @@ struct GridToolbarContent: ToolbarContent {
         } label: {
             Label("Sort", systemImage: "arrow.up.arrow.down.circle")
         }
+    }
+}
+
+// MARK: - Tag Filter Popover
+
+private struct TagFilterPopover: View {
+    let allTags: [String]
+    @Binding var tagFilter: Set<String>
+    let hasTagFilter: Bool
+
+    @State private var searchText = ""
+    @State private var isPresented = false
+
+    private var filteredTags: [String] {
+        if searchText.isEmpty { return allTags }
+        let query = searchText.lowercased()
+        return allTags.filter { $0.lowercased().contains(query) }
+    }
+
+    var body: some View {
+        Button {
+            isPresented.toggle()
+        } label: {
+            Label("Tags", systemImage: "tag")
+                .symbolVariant(hasTagFilter ? .fill : .none)
+                .foregroundStyle(hasTagFilter ? Color.accentColor : .primary)
+        }
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+            VStack(spacing: 0) {
+                // Search field
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Search tags...", text: $searchText)
+                        .textFieldStyle(.plain)
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(8)
+
+                Divider()
+
+                // Clear filter button
+                if hasTagFilter {
+                    Button {
+                        tagFilter.removeAll()
+                    } label: {
+                        Label("Clear Tag Filter", systemImage: "xmark.circle")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+
+                    Divider()
+                }
+
+                // Tag list
+                if allTags.isEmpty {
+                    Text("No tags in library")
+                        .foregroundStyle(.secondary)
+                        .padding()
+                } else if filteredTags.isEmpty {
+                    Text("No matching tags")
+                        .foregroundStyle(.secondary)
+                        .padding()
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(filteredTags, id: \.self) { tag in
+                                tagRow(tag)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 300)
+                }
+            }
+            .frame(width: 240)
+        }
+    }
+
+    private func tagRow(_ tag: String) -> some View {
+        Button {
+            if tagFilter.contains(tag) {
+                tagFilter.remove(tag)
+            } else {
+                tagFilter.insert(tag)
+            }
+        } label: {
+            HStack {
+                Text(tag)
+                    .lineLimit(1)
+                Spacer()
+                if tagFilter.contains(tag) {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            .contentShape(Rectangle())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
     }
 }

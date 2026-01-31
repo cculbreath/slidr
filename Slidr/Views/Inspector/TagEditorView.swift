@@ -78,9 +78,9 @@ struct TagEditorView: View {
     }
 
     private func addTag() {
-        let tag = newTagText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tag = newTagText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !tag.isEmpty else { return }
-        guard !tags.contains(where: { $0.lowercased() == tag.lowercased() }) else {
+        guard !tags.contains(where: { $0 == tag }) else {
             newTagText = ""
             return
         }

@@ -31,6 +31,13 @@ struct MediaInspectorView: View {
                 // Production type
                 productionSection
 
+                if item.hasSummary {
+                    Divider()
+
+                    // AI Summary
+                    summarySection
+                }
+
                 if item.isVideo {
                     Divider()
 
@@ -178,6 +185,21 @@ struct MediaInspectorView: View {
         }
     }
 
+    // MARK: - Summary Section
+
+    private var summarySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Summary")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            Text(item.displaySummary)
+                .font(.body)
+                .textSelection(.enabled)
+        }
+    }
+
     // MARK: - Tags Section
 
     private var tagsSection: some View {
@@ -190,7 +212,7 @@ struct MediaInspectorView: View {
             // Existing tags
             if !item.tags.isEmpty {
                 FlowLayout(spacing: 4) {
-                    ForEach(item.tags, id: \.self) { tag in
+                    ForEach(item.tags.sorted(), id: \.self) { tag in
                         TagChipView(tag: tag, onRemove: {
                             item.removeTag(tag)
                         })

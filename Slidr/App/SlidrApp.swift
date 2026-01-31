@@ -30,6 +30,12 @@ struct SlidrApp: App {
 
         Self.configureExternalDrive(library: mediaLibrary, container: modelContainer)
 
+        TagCleanup.runIfNeeded(
+            container: modelContainer,
+            allowlistPath: NSString("~/Downloads/modnewtaglist.csv").expandingTildeInPath,
+            replacementsPath: NSString("~/devlocal/video-tags/newReplacements.txt").expandingTildeInPath
+        )
+
         folderWatcher = FolderWatcher()
         playlistService = PlaylistService(modelContainer: modelContainer, mediaLibrary: mediaLibrary, folderWatcher: folderWatcher)
         hoverVideoPlayer = HoverVideoPlayer()
@@ -45,7 +51,7 @@ struct SlidrApp: App {
     }
 
     private static func createModelContainer(slidrDir: URL) -> ModelContainer {
-        let schema = Schema(versionedSchema: SlidrSchemaV8.self)
+        let schema = Schema(versionedSchema: SlidrSchemaV11.self)
         let storeURL = slidrDir.appendingPathComponent("Slidr.store")
         let config = ModelConfiguration("Slidr", schema: schema, url: storeURL)
 

@@ -6,11 +6,13 @@ struct ContentView: View {
     @Environment(MediaLibrary.self) private var library
     @Environment(PlaylistService.self) private var playlistService
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.transcriptStore) private var transcriptStore
     @Query private var settingsQuery: [AppSettings]
 
     @State private var sidebarViewModel = SidebarViewModel()
     @State private var gridViewModel = GridViewModel()
     @State private var slideshowViewModel = SlideshowViewModel()
+    @State private var transcriptSearchService = TranscriptSearchService()
     @State private var showSlideshow = false
     @State private var externalSlideshowActive = false
     @State private var showInspector = false
@@ -19,6 +21,7 @@ struct ContentView: View {
     @State private var cachedItems: [MediaItem] = []
     @State private var subtitleImportAlert: String?
     @State private var transcriptSeekAction: ((TimeInterval) -> Void)?
+    @State private var pendingTranscriptSeek: TimeInterval?
 
     // Local state for menu bindings (avoids SwiftData infinite loop)
     @State private var importDestination: StorageLocation = .local
@@ -92,6 +95,7 @@ struct ContentView: View {
             .toolbar(showSlideshow ? .hidden : .automatic, for: .windowToolbar)
             .onAppear {
                 sidebarViewModel.configure(with: playlistService)
+                transcriptSearchService.configure(transcriptStore: transcriptStore)
                 if sidebarViewModel.selectedItem == nil {
                     sidebarViewModel.selectedItem = .allMedia
                 }
@@ -112,6 +116,9 @@ struct ContentView: View {
                 refreshItems()
                 let count = settingsQuery.first?.scrubThumbnailCount ?? 100
                 library.backgroundGenerateMissingScrubThumbnails(count: count)
+            }
+            .onChange(of: gridViewModel.searchText) { _, newText in
+                transcriptSearchService.search(query: newText, in: cachedItems)
             }
             .onChange(of: gridViewModel.mediaTypeFilter) { _, newFilter in
                 refreshItems()
@@ -170,18 +177,13 @@ struct ContentView: View {
 
     private var navigationView: some View {
         NavigationSplitView {
-            SidebarView(viewModel: sidebarViewModel)
+            SidebarView(viewModel: sidebarViewModel, searchText: $gridViewModel.searchText)
         } detail: {
             detailContent
         }
         .modifier(ToolbarBackgroundModifier())
         .animation(.easeInOut(duration: 0.25), value: previewItem != nil)
         .environment(\.transcriptSeekAction, transcriptSeekAction)
-        .searchable(
-            text: $gridViewModel.searchText,
-            placement: .sidebar,
-            prompt: "Search media"
-        )
         .inspector(isPresented: $showInspector) {
             inspectorContent
         }
@@ -199,25 +201,51 @@ struct ContentView: View {
 
     @ViewBuilder
     private var detailContent: some View {
-        if let previewItem {
-            MediaPreviewView(item: previewItem, items: cachedItems, library: library, onSeekAction: $transcriptSeekAction) {
-                self.previewItem = nil
+        ZStack(alignment: .topLeading) {
+            if let previewItem {
+                MediaPreviewView(item: previewItem, items: cachedItems, library: library, onSeekAction: $transcriptSeekAction) {
+                    self.previewItem = nil
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            } else {
+                MediaGridView(
+                    viewModel: gridViewModel,
+                    items: cachedItems,
+                    onStartSlideshow: startSlideshow,
+                    onQuickLook: { item in
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            previewItem = item
+                        }
+                    },
+                    onImportFiles: { importFiles() },
+                    onToggleInspector: { showInspector.toggle() },
+                    activePlaylist: activePlaylist,
+                    isDecodeErrorsView: sidebarViewModel.selectedItem == .decodeErrors
+                )
             }
-            .transition(.opacity.combined(with: .scale(scale: 0.95)))
-        } else {
-            MediaGridView(
-                viewModel: gridViewModel,
-                items: cachedItems,
-                onStartSlideshow: startSlideshow,
-                onQuickLook: { item in
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        previewItem = item
-                    }
-                },
-                onImportFiles: { importFiles() },
-                onToggleInspector: { showInspector.toggle() },
-                activePlaylist: activePlaylist
-            )
+
+            if transcriptSearchService.isPopupVisible && previewItem == nil {
+                TranscriptSearchPopup(
+                    results: transcriptSearchService.results,
+                    query: gridViewModel.searchText,
+                    onSelect: { selectTranscriptResult($0) },
+                    onDismiss: { transcriptSearchService.clearResults() }
+                )
+                .padding(.top, 8)
+                .padding(.leading, 16)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: transcriptSearchService.isPopupVisible)
+        .onChange(of: transcriptSeekAction != nil) { _, hasAction in
+            if hasAction, let pending = pendingTranscriptSeek {
+                let seekAction = transcriptSeekAction
+                pendingTranscriptSeek = nil
+                Task {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    seekAction?(pending)
+                }
+            }
         }
     }
 
@@ -251,6 +279,8 @@ struct ContentView: View {
             return library.importedTodayItems(sortedBy: gridViewModel.sortOrder, ascending: gridViewModel.sortAscending)
         case .unplayableVideos:
             return library.unplayableVideos(sortedBy: gridViewModel.sortOrder, ascending: gridViewModel.sortAscending)
+        case .decodeErrors:
+            return library.decodeErrorVideos(sortedBy: gridViewModel.sortOrder, ascending: gridViewModel.sortAscending)
         case .playlist(let id):
             if let playlist = playlistService.playlist(withID: id) {
                 return playlistService.items(for: playlist)
@@ -429,6 +459,16 @@ struct ContentView: View {
                 previewItem = item
             }
         }
+    }
+
+    private func selectTranscriptResult(_ result: TranscriptSearchResult) {
+        gridViewModel.selectedItems = [result.mediaItem.id]
+        pendingTranscriptSeek = result.cue.startTime
+        withAnimation(.easeInOut(duration: 0.25)) {
+            previewItem = result.mediaItem
+        }
+        transcriptSearchService.clearResults()
+        gridViewModel.searchText = ""
     }
 
     // MARK: - Inspector
