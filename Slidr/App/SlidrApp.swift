@@ -45,7 +45,7 @@ struct SlidrApp: App {
     }
 
     private static func createModelContainer(slidrDir: URL) -> ModelContainer {
-        let schema = Schema(versionedSchema: SlidrSchemaV12.self)
+        let schema = Schema(versionedSchema: SlidrSchemaV13.self)
         let storeURL = slidrDir.appendingPathComponent("Slidr.store")
         let config = ModelConfiguration("Slidr", schema: schema, url: storeURL)
 
