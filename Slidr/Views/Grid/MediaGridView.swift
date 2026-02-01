@@ -71,7 +71,6 @@ struct MediaGridView: View {
                 onShowAdvancedFilter: { showAdvancedFilter = true }
             )
         }
-        .toolbarRole(.editor)
         .modifier(ToolbarBackgroundModifier())
         .gridKeyboardHandling(
             onDelete: deleteSelectedItems,
