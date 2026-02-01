@@ -428,6 +428,42 @@ struct SlidrCommands: Commands {
                 }
             }
 
+            Menu("Tags") {
+                if let allTags, let tagFilterBinding {
+                    Button {
+                        tagFilterBinding.wrappedValue = []
+                    } label: {
+                        HStack {
+                            Text("All")
+                            if tagFilterBinding.wrappedValue.isEmpty {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    ForEach(allTags, id: \.self) { tag in
+                        Button {
+                            if tagFilterBinding.wrappedValue.contains(tag) {
+                                tagFilterBinding.wrappedValue.remove(tag)
+                            } else {
+                                tagFilterBinding.wrappedValue.insert(tag)
+                            }
+                        } label: {
+                            HStack {
+                                Text(tag)
+                                if tagFilterBinding.wrappedValue.contains(tag) {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Divider()
 
             if let subtitleFilterBinding {
