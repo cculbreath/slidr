@@ -104,7 +104,7 @@ struct MediaGridView: View {
                 itemCountBar
             }
         }
-        .toolbar {
+        .toolbar(id: "gridToolbar") {
             GridToolbarContent(
                 viewModel: viewModel,
                 settings: settings,

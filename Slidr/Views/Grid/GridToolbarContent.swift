@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-struct GridToolbarContent: ToolbarContent {
+struct GridToolbarContent: CustomizableToolbarContent {
     @Bindable var viewModel: GridViewModel
     let settings: AppSettings?
     let itemsEmpty: Bool
@@ -23,7 +23,7 @@ struct GridToolbarContent: ToolbarContent {
     private var hasCaptionsEnabled: Bool { (settings?.gridShowCaptions ?? true) || (settings?.gridShowFilenames ?? false) }
     private var hasAdvancedFilter: Bool { viewModel.advancedFilter != nil }
 
-    var body: some ToolbarContent {
+    var body: some CustomizableToolbarContent {
         navigationItems
         displayItems
         filterItems
@@ -33,8 +33,8 @@ struct GridToolbarContent: ToolbarContent {
     // MARK: - Toolbar Groups
 
     @ToolbarContentBuilder
-    private var navigationItems: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
+    private var navigationItems: some CustomizableToolbarContent {
+        ToolbarItem(id: "slideshow", placement: .navigation) {
             Button {
                 onStartSlideshow()
             } label: {
@@ -44,7 +44,7 @@ struct GridToolbarContent: ToolbarContent {
             .help("Start Slideshow")
         }
 
-        ToolbarItem(placement: .navigation) {
+        ToolbarItem(id: "import", placement: .navigation) {
             Button {
                 onImport()
             } label: {
@@ -53,7 +53,7 @@ struct GridToolbarContent: ToolbarContent {
             .help("Import Files")
         }
 
-        ToolbarItem(placement: .secondaryAction) {
+        ToolbarItem(id: "thumbnailSize", placement: .secondaryAction) {
             LabeledContent("Thumbnail Size") {
                 Picker("Size", selection: $viewModel.thumbnailSize) {
                     Label("Large", systemImage: "square.grid.2x2").tag(ThumbnailSize.large)
@@ -68,12 +68,12 @@ struct GridToolbarContent: ToolbarContent {
     }
 
     @ToolbarContentBuilder
-    private var displayItems: some ToolbarContent {
-        ToolbarItem(placement: .secondaryAction) {
+    private var displayItems: some CustomizableToolbarContent {
+        ToolbarItem(id: "captionVisibility", placement: .secondaryAction) {
             showMenu
         }
 
-        ToolbarItem(placement: .secondaryAction) {
+        ToolbarItem(id: "hoverScrub", placement: .secondaryAction) {
             Button {
                 onToggleHoverScrub()
             } label: {
@@ -83,7 +83,7 @@ struct GridToolbarContent: ToolbarContent {
             .help("Toggle video scrub on hover")
         }
 
-        ToolbarItem(placement: .secondaryAction) {
+        ToolbarItem(id: "gifAnimation", placement: .secondaryAction) {
             Button {
                 onToggleGIFAnimation()
             } label: {
@@ -95,23 +95,23 @@ struct GridToolbarContent: ToolbarContent {
     }
 
     @ToolbarContentBuilder
-    private var filterItems: some ToolbarContent {
-        ToolbarItem(placement: .secondaryAction) {
+    private var filterItems: some CustomizableToolbarContent {
+        ToolbarItem(id: "mediaTypeFilter", placement: .secondaryAction) {
             filterMenu
         }
 
-        ToolbarItem(placement: .secondaryAction) {
+        ToolbarItem(id: "productionFilter", placement: .secondaryAction) {
             productionFilterMenu
         }
 
-        ToolbarItem(placement: .secondaryAction) {
+        ToolbarItem(id: "tagFilter", placement: .secondaryAction) {
             tagFilterMenu
         }
     }
 
     @ToolbarContentBuilder
-    private var sortAndActionItems: some ToolbarContent {
-        ToolbarItem(placement: .secondaryAction) {
+    private var sortAndActionItems: some CustomizableToolbarContent {
+        ToolbarItem(id: "advancedFilter", placement: .secondaryAction) {
             Button {
                 onShowAdvancedFilter()
             } label: {
@@ -122,11 +122,11 @@ struct GridToolbarContent: ToolbarContent {
             .help("Open advanced filter")
         }
 
-        ToolbarItem(placement: .secondaryAction) {
+        ToolbarItem(id: "sortOrder", placement: .secondaryAction) {
             sortMenu
         }
 
-        ToolbarItem(placement: .primaryAction) {
+        ToolbarItem(id: "inspector", placement: .primaryAction) {
             Button {
                 onToggleInspector()
             } label: {
