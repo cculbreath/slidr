@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var gridViewModel = GridViewModel()
     @State private var slideshowViewModel = SlideshowViewModel()
     @State private var transcriptSearchService = TranscriptSearchService()
+    @State private var toolbarCoordinator = GridToolbarCoordinator()
     @State private var showSlideshow = false
     @State private var externalSlideshowActive = false
     @State private var showInspector = false
@@ -96,7 +97,9 @@ struct ContentView: View {
             .onChange(of: library.libraryVersion) { refreshItems() }
             .onChange(of: playlistService.playlistChangeGeneration) { refreshItems() }
             .allowsHitTesting(!showSlideshow)
-            .toolbar(showSlideshow ? .hidden : .automatic, for: .windowToolbar)
+            .onChange(of: showSlideshow) { _, isSlideshow in
+                toolbarCoordinator.toolbar.isVisible = !isSlideshow
+            }
             .onAppear {
                 sidebarViewModel.configure(with: playlistService)
                 transcriptSearchService.configure(transcriptStore: transcriptStore)
@@ -200,7 +203,6 @@ struct ContentView: View {
         } detail: {
             detailContent
         }
-        .modifier(ToolbarBackgroundModifier())
         .animation(.easeInOut(duration: 0.25), value: previewItem != nil)
         .environment(\.transcriptSeekAction, transcriptSeekAction)
         .inspector(isPresented: $showInspector) {
@@ -239,7 +241,8 @@ struct ContentView: View {
                     onImportFiles: { importFiles() },
                     onToggleInspector: { showInspector.toggle() },
                     activePlaylist: activePlaylist,
-                    isDecodeErrorsView: sidebarViewModel.selectedItem == .decodeErrors
+                    isDecodeErrorsView: sidebarViewModel.selectedItem == .decodeErrors,
+                    toolbarCoordinator: toolbarCoordinator
                 )
             }
 

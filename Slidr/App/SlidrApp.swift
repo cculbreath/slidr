@@ -129,7 +129,6 @@ struct SlidrApp: App {
                 .preferredColorScheme(.dark)
         }
         .modelContainer(modelContainer)
-        .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified)
         .commands {
             SlidrCommands()

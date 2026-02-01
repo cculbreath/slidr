@@ -29,6 +29,8 @@ struct MediaGridView: View {
     @State private var showAdvancedFilter = false
     @FocusState private var isFocused: Bool
 
+    let toolbarCoordinator: GridToolbarCoordinator
+
     private var settings: AppSettings? { settingsQuery.first }
     private var displayedItems: [MediaItem] { viewModel.filteredItems(items) }
     private var allTags: [String] {
@@ -104,23 +106,7 @@ struct MediaGridView: View {
                 itemCountBar
             }
         }
-        .toolbar(id: "gridToolbar") {
-            GridToolbarContent(
-                viewModel: viewModel,
-                settings: settings,
-                itemsEmpty: items.isEmpty,
-                allTags: allTags,
-                onImport: { onImportFiles?() },
-                onToggleGIFAnimation: toggleGIFAnimation,
-                onToggleHoverScrub: toggleHoverScrub,
-                onToggleCaptions: toggleGridCaptions,
-                onToggleFilenames: toggleGridFilenames,
-                onStartSlideshow: startSlideshow,
-                onToggleInspector: { onToggleInspector?() },
-                onShowAdvancedFilter: { showAdvancedFilter = true }
-            )
-        }
-        .modifier(ToolbarBackgroundModifier())
+        .modifier(WindowToolbarModifier(coordinator: toolbarCoordinator))
         .gridKeyboardHandling(
             onDelete: deleteSelectedItems,
             onQuickLook: quickLookSelected,
@@ -129,6 +115,29 @@ struct MediaGridView: View {
                 viewModel.moveSelection(direction: direction, in: displayedItems, columns: columns)
             }
         )
+        .onAppear { configureToolbar() }
+        .onChange(of: items.isEmpty) { _, empty in
+            toolbarCoordinator.itemsEmpty = empty
+        }
+        .onChange(of: allTags) { _, tags in
+            toolbarCoordinator.allTags = tags
+        }
+    }
+
+    private func configureToolbar() {
+        toolbarCoordinator.viewModel = viewModel
+        toolbarCoordinator.settings = settings
+        toolbarCoordinator.itemsEmpty = items.isEmpty
+        toolbarCoordinator.allTags = allTags
+        toolbarCoordinator.onStartSlideshow = startSlideshow
+        toolbarCoordinator.onImport = { [onImportFiles] in onImportFiles?() }
+        toolbarCoordinator.onToggleGIFAnimation = toggleGIFAnimation
+        toolbarCoordinator.onToggleHoverScrub = toggleHoverScrub
+        toolbarCoordinator.onToggleCaptions = toggleGridCaptions
+        toolbarCoordinator.onToggleFilenames = toggleGridFilenames
+        toolbarCoordinator.onToggleInspector = { [onToggleInspector] in onToggleInspector?() }
+        toolbarCoordinator.onShowAdvancedFilter = { self.showAdvancedFilter = true }
+        toolbarCoordinator.startObserving()
     }
 
     // MARK: - View Components
