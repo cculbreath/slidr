@@ -67,6 +67,22 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.resetThumbnailSize) var resetThumbnailSize
     @FocusedValue(\.revealInFinder) var revealInFinder
 
+    // MARK: - Filter Action FocusedValues
+    @FocusedValue(\.showAdvancedFilter) var showAdvancedFilter
+    @FocusedValue(\.clearAllFilters) var clearAllFilters
+
+    // MARK: - Filter Binding FocusedValues
+    @FocusedValue(\.mediaTypeFilterBinding) var mediaTypeFilterBinding
+    @FocusedValue(\.productionTypeFilterBinding) var productionTypeFilterBinding
+    @FocusedValue(\.subtitleFilterBinding) var subtitleFilterBinding
+    @FocusedValue(\.captionFilterBinding) var captionFilterBinding
+    @FocusedValue(\.ratingFilterEnabledBinding) var ratingFilterEnabledBinding
+    @FocusedValue(\.ratingFilterBinding) var ratingFilterBinding
+    @FocusedValue(\.tagFilterBinding) var tagFilterBinding
+    @FocusedValue(\.sortOrderBinding) var sortOrderBinding
+    @FocusedValue(\.sortAscendingBinding) var sortAscendingBinding
+    @FocusedValue(\.allTags) var allTags
+
     // MARK: - Binding FocusedValues
     @FocusedValue(\.importDestination) var importDestination
     @FocusedValue(\.gridShowFilenames) var gridShowFilenames
@@ -83,6 +99,7 @@ struct SlidrCommands: Commands {
         searchCommands
         fileCommands
         viewCommands
+        filterCommands
         subtitleCommands
     }
 
@@ -264,6 +281,208 @@ struct SlidrCommands: Commands {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Filter Menu
+
+    private var filterCommands: some Commands {
+        CommandMenu("Filter") {
+            Menu("Media Type") {
+                Button {
+                    mediaTypeFilterBinding?.wrappedValue = []
+                } label: {
+                    HStack {
+                        Text("All")
+                        if mediaTypeFilterBinding?.wrappedValue.isEmpty ?? true {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+
+                Divider()
+
+                ForEach(MediaType.allCases, id: \.self) { type in
+                    Button {
+                        guard let binding = mediaTypeFilterBinding else { return }
+                        if binding.wrappedValue.contains(type) {
+                            binding.wrappedValue.remove(type)
+                        } else {
+                            binding.wrappedValue.insert(type)
+                        }
+                    } label: {
+                        HStack {
+                            Text(type.rawValue.capitalized)
+                            if mediaTypeFilterBinding?.wrappedValue.contains(type) ?? false {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Menu("Production Type") {
+                Button {
+                    productionTypeFilterBinding?.wrappedValue = []
+                } label: {
+                    HStack {
+                        Text("All")
+                        if productionTypeFilterBinding?.wrappedValue.isEmpty ?? true {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+
+                Divider()
+
+                ForEach(ProductionType.allCases, id: \.self) { type in
+                    Button {
+                        guard let binding = productionTypeFilterBinding else { return }
+                        if binding.wrappedValue.contains(type) {
+                            binding.wrappedValue.remove(type)
+                        } else {
+                            binding.wrappedValue.insert(type)
+                        }
+                    } label: {
+                        HStack {
+                            Label(type.displayName, systemImage: type.iconName)
+                            if productionTypeFilterBinding?.wrappedValue.contains(type) ?? false {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Menu("Rating") {
+                ForEach(1...5, id: \.self) { stars in
+                    Button {
+                        guard let binding = ratingFilterBinding else { return }
+                        if binding.wrappedValue.contains(stars) {
+                            binding.wrappedValue.remove(stars)
+                        } else {
+                            binding.wrappedValue.insert(stars)
+                        }
+                        if let enabledBinding = ratingFilterEnabledBinding, !binding.wrappedValue.isEmpty {
+                            enabledBinding.wrappedValue = true
+                        }
+                    } label: {
+                        HStack {
+                            Text(String(repeating: "\u{2605}", count: stars))
+                            if ratingFilterBinding?.wrappedValue.contains(stars) ?? false {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+
+                Button {
+                    guard let binding = ratingFilterBinding else { return }
+                    if binding.wrappedValue.contains(0) {
+                        binding.wrappedValue.remove(0)
+                    } else {
+                        binding.wrappedValue.insert(0)
+                    }
+                    if let enabledBinding = ratingFilterEnabledBinding, !binding.wrappedValue.isEmpty {
+                        enabledBinding.wrappedValue = true
+                    }
+                } label: {
+                    HStack {
+                        Text("No Rating")
+                        if ratingFilterBinding?.wrappedValue.contains(0) ?? false {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+
+                Divider()
+
+                Button {
+                    ratingFilterEnabledBinding?.wrappedValue = true
+                } label: {
+                    HStack {
+                        Text("Filter Enabled")
+                        if ratingFilterEnabledBinding?.wrappedValue ?? false {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+
+                Button {
+                    ratingFilterEnabledBinding?.wrappedValue = false
+                } label: {
+                    HStack {
+                        Text("Filter Disabled")
+                        if !(ratingFilterEnabledBinding?.wrappedValue ?? true) {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
+            if let subtitleFilterBinding {
+                Toggle("Has Transcript", isOn: subtitleFilterBinding)
+            } else {
+                Toggle("Has Transcript", isOn: .constant(false))
+                    .disabled(true)
+            }
+
+            if let captionFilterBinding {
+                Toggle("Has Caption", isOn: captionFilterBinding)
+            } else {
+                Toggle("Has Caption", isOn: .constant(false))
+                    .disabled(true)
+            }
+
+            Divider()
+
+            Menu("Sort By") {
+                if let sortOrderBinding {
+                    ForEach(SortOrder.allCases, id: \.self) { order in
+                        Button {
+                            sortOrderBinding.wrappedValue = order
+                        } label: {
+                            HStack {
+                                Text(order.rawValue)
+                                if sortOrderBinding.wrappedValue == order {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    if let sortAscendingBinding {
+                        Toggle("Ascending", isOn: sortAscendingBinding)
+                    }
+                }
+            }
+
+            Divider()
+
+            Button("Advanced Filter\u{2026}") {
+                showAdvancedFilter?()
+            }
+            .keyboardShortcut("f", modifiers: [.command, .option])
+
+            Divider()
+
+            Button("Clear All Filters") {
+                clearAllFilters?()
+            }
+            .keyboardShortcut(.delete, modifiers: [.command, .shift])
         }
     }
 

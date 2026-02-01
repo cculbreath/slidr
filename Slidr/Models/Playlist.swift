@@ -32,6 +32,12 @@ final class Playlist {
     var filterMediaTypes: [String]?
     var filterFavoritesOnly: Bool
     var filterMinRating: Int?
+    var filterProductionTypes: [String]?
+    var filterHasTranscript: Bool?
+    var filterHasCaption: Bool?
+    var filterTags: [String]?
+    var filterTagsExcluded: [String]?
+    var filterSearchText: String?
 
     // MARK: - Display Properties
     var iconName: String?

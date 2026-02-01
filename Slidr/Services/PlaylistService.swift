@@ -228,6 +228,49 @@ final class PlaylistService {
             filtered = filtered.filter { ($0.duration ?? 0) <= maxDuration }
         }
 
+        // Filter by production type
+        if let productionTypes = playlist.filterProductionTypes, !productionTypes.isEmpty {
+            let allowed = Set(productionTypes.compactMap { ProductionType(rawValue: $0) })
+            filtered = filtered.filter { item in
+                guard let production = item.production else { return false }
+                return allowed.contains(production)
+            }
+        }
+
+        // Filter by has transcript
+        if let hasTranscript = playlist.filterHasTranscript, hasTranscript {
+            filtered = filtered.filter { $0.hasTranscript }
+        }
+
+        // Filter by has caption
+        if let hasCaption = playlist.filterHasCaption, hasCaption {
+            filtered = filtered.filter { $0.hasCaption }
+        }
+
+        // Filter by included tags
+        if let tags = playlist.filterTags, !tags.isEmpty {
+            filtered = filtered.filter { item in
+                tags.contains { tag in item.hasTag(tag) }
+            }
+        }
+
+        // Filter by excluded tags
+        if let excludedTags = playlist.filterTagsExcluded, !excludedTags.isEmpty {
+            filtered = filtered.filter { item in
+                !excludedTags.contains { tag in item.hasTag(tag) }
+            }
+        }
+
+        // Filter by search text
+        if let searchText = playlist.filterSearchText, !searchText.isEmpty {
+            let query = searchText.lowercased()
+            filtered = filtered.filter { item in
+                item.originalFilename.lowercased().contains(query)
+                    || item.tags.contains(where: { $0.lowercased().contains(query) })
+                    || (item.caption?.lowercased().contains(query) ?? false)
+            }
+        }
+
         // Apply sorting (manual playlists preserve order unless explicitly sorted)
         if playlist.isManualPlaylist && playlist.sortOrder == .dateImported && !playlist.sortAscending {
             // Default sort for manual playlists = manual order (no re-sort)

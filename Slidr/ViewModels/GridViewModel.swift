@@ -12,17 +12,19 @@ final class GridViewModel {
 
     // MARK: - Filter
     var mediaTypeFilter: Set<MediaType> = []
+    var productionTypeFilter: Set<ProductionType> = []
     var tagFilter: Set<String> = []
 
     // Rating filter: nil means include all, empty set with enabled means show nothing
     var ratingFilterEnabled: Bool = false
     var ratingFilter: Set<Int> = [] // 0-5, where 0 means "no rating"
     var subtitleFilter: Bool = false
+    var captionFilter: Bool = false
+    var advancedFilter: AdvancedFilter?
 
     // MARK: - Search
     var searchText: String = ""
     var isSearchFocused: Bool = false
-    var searchIncludesSummary: Bool = true
 
     // MARK: - Keyboard Navigation
     var focusedIndex: Int? = nil
@@ -80,6 +82,13 @@ final class GridViewModel {
             result = result.filter { mediaTypeFilter.contains($0.mediaType) }
         }
 
+        if !productionTypeFilter.isEmpty {
+            result = result.filter { item in
+                guard let production = item.production else { return false }
+                return productionTypeFilter.contains(production)
+            }
+        }
+
         if !tagFilter.isEmpty {
             result = result.filter { item in
                 tagFilter.contains { tag in item.hasTag(tag) }
@@ -102,6 +111,14 @@ final class GridViewModel {
             result = result.filter { $0.hasTranscript }
         }
 
+        if captionFilter {
+            result = result.filter { $0.hasCaption }
+        }
+
+        if let advancedFilter, !advancedFilter.isEmpty {
+            result = result.filter { advancedFilter.matches($0) }
+        }
+
         guard !searchText.isEmpty else { return result }
         let query = searchText.lowercased()
         return result.filter { item in
@@ -109,13 +126,31 @@ final class GridViewModel {
             if item.tags.contains(where: { $0.lowercased().contains(query) }) { return true }
             if let caption = item.caption?.lowercased(), caption.contains(query) { return true }
             if let transcript = item.transcriptText?.lowercased(), transcript.contains(query) { return true }
-            if searchIncludesSummary, let summary = item.summary?.lowercased(), summary.contains(query) { return true }
+            if let summary = item.summary?.lowercased(), summary.contains(query) { return true }
             return false
         }
     }
 
     func clearSearch() {
         searchText = ""
+    }
+
+    func clearAllFilters() {
+        mediaTypeFilter = []
+        productionTypeFilter = []
+        tagFilter = []
+        ratingFilterEnabled = false
+        ratingFilter = []
+        subtitleFilter = false
+        captionFilter = false
+        advancedFilter = nil
+        searchText = ""
+        sortOrder = .dateImported
+        sortAscending = false
+    }
+
+    func clearAdvancedFilter() {
+        advancedFilter = nil
     }
 
     // MARK: - Keyboard Navigation

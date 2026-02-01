@@ -26,6 +26,7 @@ struct MediaGridView: View {
     @State private var retryProgress: (current: Int, total: Int)?
     @State private var retryResult: Int?
     @State private var showTrashAllConfirmation = false
+    @State private var showAdvancedFilter = false
     @FocusState private var isFocused: Bool
 
     private var settings: AppSettings? { settingsQuery.first }
@@ -36,21 +37,25 @@ struct MediaGridView: View {
     private var hasActiveFilters: Bool {
         !viewModel.searchText.isEmpty
         || !viewModel.mediaTypeFilter.isEmpty
+        || !viewModel.productionTypeFilter.isEmpty
         || !viewModel.tagFilter.isEmpty
         || (viewModel.ratingFilterEnabled && !viewModel.ratingFilter.isEmpty)
         || viewModel.subtitleFilter
+        || viewModel.captionFilter
+        || viewModel.advancedFilter != nil
     }
 
     var body: some View {
         VStack(spacing: 0) {
             externalDriveBanner
             decodeErrorBanner
+            advancedFilterBanner
             gridContent
             if !items.isEmpty {
                 itemCountBar
             }
         }
-        .toolbar {
+        .toolbar(id: "gridToolbar") {
             GridToolbarContent(
                 viewModel: viewModel,
                 settings: settings,
@@ -62,9 +67,11 @@ struct MediaGridView: View {
                 onToggleCaptions: toggleGridCaptions,
                 onToggleFilenames: toggleGridFilenames,
                 onStartSlideshow: startSlideshow,
-                onToggleInspector: { onToggleInspector?() }
+                onToggleInspector: { onToggleInspector?() },
+                onShowAdvancedFilter: { showAdvancedFilter = true }
             )
         }
+        .toolbarRole(.editor)
         .modifier(ToolbarBackgroundModifier())
         .gridKeyboardHandling(
             onDelete: deleteSelectedItems,
@@ -83,6 +90,11 @@ struct MediaGridView: View {
         .focusedSceneValue(\.increaseThumbnailSize, { viewModel.increaseThumbnailSize() })
         .focusedSceneValue(\.decreaseThumbnailSize, { viewModel.decreaseThumbnailSize() })
         .focusedSceneValue(\.resetThumbnailSize, { viewModel.resetThumbnailSize() })
+        .focusedSceneValue(\.showAdvancedFilter, { showAdvancedFilter = true })
+        .focusedSceneValue(\.clearAllFilters, { viewModel.clearAllFilters() })
+        .sheet(isPresented: $showAdvancedFilter) {
+            AdvancedFilterSheet(viewModel: viewModel)
+        }
         .alert(
             "Move to Trash?",
             isPresented: $showDeleteConfirmation
@@ -182,6 +194,27 @@ struct MediaGridView: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
             .background(.yellow.opacity(0.1))
+        }
+    }
+
+    @ViewBuilder
+    private var advancedFilterBanner: some View {
+        if let filter = viewModel.advancedFilter, !filter.isEmpty {
+            HStack(spacing: 8) {
+                Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                    .foregroundStyle(.blue)
+                Text("Advanced filter active \u{2014} \(filter.rules.count) rule\(filter.rules.count == 1 ? "" : "s")")
+                    .font(.callout)
+                Spacer()
+                Button("Clear") {
+                    viewModel.clearAdvancedFilter()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(.blue.opacity(0.1))
         }
     }
 

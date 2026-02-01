@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-struct GridToolbarContent: ToolbarContent {
+struct GridToolbarContent: CustomizableToolbarContent {
     @Bindable var viewModel: GridViewModel
     let settings: AppSettings?
     let itemsEmpty: Bool
@@ -13,20 +13,30 @@ struct GridToolbarContent: ToolbarContent {
     let onToggleFilenames: () -> Void
     let onStartSlideshow: () -> Void
     let onToggleInspector: () -> Void
+    let onShowAdvancedFilter: () -> Void
 
     private var gifAnimationEnabled: Bool { settings?.animateGIFsInGrid ?? false }
     private var hoverScrubEnabled: Bool { settings?.gridVideoHoverScrub ?? false }
     private var hasMediaTypeFilter: Bool { !viewModel.mediaTypeFilter.isEmpty }
+    private var hasProductionTypeFilter: Bool { !viewModel.productionTypeFilter.isEmpty }
     private var hasRatingFilter: Bool { viewModel.ratingFilterEnabled && !viewModel.ratingFilter.isEmpty }
     private var hasTagFilter: Bool { !viewModel.tagFilter.isEmpty }
     private var hasCaptionsEnabled: Bool { (settings?.gridShowCaptions ?? true) || (settings?.gridShowFilenames ?? false) }
     private var hasSubtitleFilter: Bool { viewModel.subtitleFilter }
+    private var hasAdvancedFilter: Bool { viewModel.advancedFilter != nil }
 
-    var body: some ToolbarContent {
-        // Layout: [sidebar, slideshow, import] [spacer] [size, captions] [spacer] [gifs, scrub] [spacer] [rating, tags, type, sort] [spacer] [inspector]
+    var body: some CustomizableToolbarContent {
+        navigationItems
+        displayItems
+        filterItems
+        sortAndActionItems
+    }
 
-        // Group 1: Slideshow, Import (sidebar toggle is provided by NavigationSplitView)
-        ToolbarItemGroup(placement: .navigation) {
+    // MARK: - Toolbar Groups
+
+    @ToolbarContentBuilder
+    private var navigationItems: some CustomizableToolbarContent {
+        ToolbarItem(id: "slideshow", placement: .navigation) {
             Button {
                 onStartSlideshow()
             } label: {
@@ -34,7 +44,9 @@ struct GridToolbarContent: ToolbarContent {
             }
             .disabled(itemsEmpty)
             .help("Start Slideshow")
+        }
 
+        ToolbarItem(id: "import", placement: .navigation) {
             Button {
                 onImport()
             } label: {
@@ -43,10 +55,7 @@ struct GridToolbarContent: ToolbarContent {
             .help("Import Files")
         }
 
-        ToolbarSpacer(.flexible)
-
-        // Group 2: Thumbnail Size, Captions
-        ToolbarItemGroup {
+        ToolbarItem(id: "thumbnailSize", placement: .secondaryAction) {
             LabeledContent("Thumbnail Size") {
                 Picker("Size", selection: $viewModel.thumbnailSize) {
                     Label("Large", systemImage: "square.grid.2x2").tag(ThumbnailSize.large)
@@ -57,23 +66,16 @@ struct GridToolbarContent: ToolbarContent {
                 .labelsHidden()
                 .fixedSize()
             }
+        }
+    }
 
+    @ToolbarContentBuilder
+    private var displayItems: some CustomizableToolbarContent {
+        ToolbarItem(id: "captionVisibility", placement: .secondaryAction) {
             showMenu
         }
 
-        ToolbarSpacer(.flexible)
-
-        // Group 3: Autoplay GIFs, Scrubbing
-        ToolbarItemGroup {
-            Button {
-                onToggleGIFAnimation()
-            } label: {
-                Label("Autoplay GIFs", systemImage: "play.circle")
-                    .symbolVariant(gifAnimationEnabled ? .fill : .none)
-                    .foregroundStyle(gifAnimationEnabled ? Color.accentColor : .primary)
-            }
-            .help("Toggle GIF animation in grid")
-
+        ToolbarItem(id: "hoverScrub", placement: .secondaryAction) {
             Button {
                 onToggleHoverScrub()
             } label: {
@@ -83,10 +85,32 @@ struct GridToolbarContent: ToolbarContent {
             .help("Toggle video scrub on hover")
         }
 
-        ToolbarSpacer(.flexible)
+        ToolbarItem(id: "gifAnimation", placement: .secondaryAction) {
+            Button {
+                onToggleGIFAnimation()
+            } label: {
+                Label("Autoplay GIFs", systemImage: "waveform.path.ecg.rectangle")
+                    .foregroundStyle(gifAnimationEnabled ? Color.accentColor : .primary)
+            }
+            .help("Toggle GIF animation in grid")
+        }
+    }
 
-        // Group 4: Subtitle, Summary Search, Rating, Tags, Media Type, Sort
-        ToolbarItemGroup {
+    @ToolbarContentBuilder
+    private var filterItems: some CustomizableToolbarContent {
+        ToolbarItem(id: "mediaTypeFilter", placement: .secondaryAction) {
+            filterMenu
+        }
+
+        ToolbarItem(id: "productionFilter", placement: .secondaryAction) {
+            productionFilterMenu
+        }
+
+        ToolbarItem(id: "tagFilter", placement: .secondaryAction) {
+            tagFilterMenu
+        }
+
+        ToolbarItem(id: "subtitleFilter", placement: .secondaryAction) {
             Button {
                 viewModel.subtitleFilter.toggle()
             } label: {
@@ -95,25 +119,33 @@ struct GridToolbarContent: ToolbarContent {
                     .foregroundStyle(hasSubtitleFilter ? Color.accentColor : .primary)
             }
             .help("Show only items with subtitles")
+        }
+        .defaultCustomization(.hidden)
 
-            Button {
-                viewModel.searchIncludesSummary.toggle()
-            } label: {
-                Label("Search Summaries", systemImage: "text.magnifyingglass")
-                    .foregroundStyle(viewModel.searchIncludesSummary ? Color.accentColor : .primary)
-            }
-            .help("Include AI summaries in search results")
-
+        ToolbarItem(id: "ratingFilter", placement: .secondaryAction) {
             ratingFilterMenu
-            tagFilterMenu
-            filterMenu
+        }
+        .defaultCustomization(.hidden)
+    }
+
+    @ToolbarContentBuilder
+    private var sortAndActionItems: some CustomizableToolbarContent {
+        ToolbarItem(id: "advancedFilter", placement: .secondaryAction) {
+            Button {
+                onShowAdvancedFilter()
+            } label: {
+                Label("Advanced Filter", systemImage: "line.3.horizontal.decrease.circle")
+                    .symbolVariant(hasAdvancedFilter ? .fill : .none)
+                    .foregroundStyle(hasAdvancedFilter ? Color.accentColor : .primary)
+            }
+            .help("Open advanced filter")
+        }
+
+        ToolbarItem(id: "sortOrder", placement: .secondaryAction) {
             sortMenu
         }
 
-        ToolbarSpacer(.flexible)
-
-        // Group 5: Inspector
-        ToolbarItem(placement: .primaryAction) {
+        ToolbarItem(id: "inspector", placement: .primaryAction) {
             Button {
                 onToggleInspector()
             } label: {
@@ -174,10 +206,46 @@ struct GridToolbarContent: ToolbarContent {
                 }
             }
         } label: {
-            // Static icon structure - only color/variant changes
-            Label("Media Types", systemImage: "line.3.horizontal.decrease.circle")
-                .symbolVariant(hasMediaTypeFilter ? .fill : .none)
+            Label("Media Types", systemImage: "square.stack.3d.forward.dottedline")
                 .foregroundStyle(hasMediaTypeFilter ? Color.accentColor : .primary)
+        }
+    }
+
+    private var productionFilterMenu: some View {
+        Menu {
+            Button {
+                viewModel.productionTypeFilter = []
+            } label: {
+                HStack {
+                    Text("All")
+                    if viewModel.productionTypeFilter.isEmpty {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+
+            Divider()
+
+            ForEach(ProductionType.allCases, id: \.self) { type in
+                Button {
+                    if viewModel.productionTypeFilter.contains(type) {
+                        viewModel.productionTypeFilter.remove(type)
+                    } else {
+                        viewModel.productionTypeFilter.insert(type)
+                    }
+                } label: {
+                    HStack {
+                        Label(type.displayName, systemImage: type.iconName)
+                        if viewModel.productionTypeFilter.contains(type) {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            Label("Production", systemImage: "film")
+                .symbolVariant(hasProductionTypeFilter ? .fill : .none)
+                .foregroundStyle(hasProductionTypeFilter ? Color.accentColor : .primary)
         }
     }
 
@@ -197,7 +265,7 @@ struct GridToolbarContent: ToolbarContent {
                     toggleRating(stars)
                 } label: {
                     HStack {
-                        Text(String(repeating: "★", count: stars))
+                        Text(String(repeating: "\u{2605}", count: stars))
                         Spacer()
                         if viewModel.ratingFilter.contains(stars) {
                             Image(systemName: "checkmark")
@@ -309,9 +377,14 @@ private struct TagFilterPopover: View {
         Button {
             isPresented.toggle()
         } label: {
-            Label("Tags", systemImage: "tag")
-                .symbolVariant(hasTagFilter ? .fill : .none)
-                .foregroundStyle(hasTagFilter ? Color.accentColor : .primary)
+            HStack(spacing: 2) {
+                Label("Tags", systemImage: "tag")
+                    .symbolVariant(hasTagFilter ? .fill : .none)
+                    .foregroundStyle(hasTagFilter ? Color.accentColor : .primary)
+                Image(systemName: "chevron.down")
+                    .font(.caption2)
+                    .foregroundStyle(hasTagFilter ? Color.accentColor : .primary)
+            }
         }
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             VStack(spacing: 0) {

@@ -67,6 +67,10 @@ struct ContentView: View {
         }
     }
 
+    private var allTags: [String] {
+        Array(Set(cachedItems.flatMap(\.tags))).sorted()
+    }
+
     private var importProgressSubtitle: String? {
         guard let progress = library.importProgress else { return nil }
         return "\(progress.currentItem + 1) of \(progress.totalItems): \(progress.currentFilename)"
@@ -151,12 +155,7 @@ struct ContentView: View {
     }
 
     private var navigationViewWithSubtitleBindings: some View {
-        navigationView
-            // Binding-based focused values for menu toggles/pickers
-            .focusedSceneValue(\.importDestination, $importDestination)
-            .focusedSceneValue(\.gridShowFilenames, $gridShowFilenames)
-            .focusedSceneValue(\.gridShowCaptions, $gridShowCaptions)
-            .focusedSceneValue(\.animateGIFs, $animateGIFs)
+        navigationViewWithFilterBindings
             .focusedSceneValue(\.subtitleShow, $showSubtitles)
             .focusedSceneValue(\.subtitlePosition, $subtitlePosition)
             .focusedSceneValue(\.subtitleFontSize, $subtitleFontSize)
@@ -173,6 +172,26 @@ struct ContentView: View {
             .onChange(of: subtitleOpacity) { _, newValue in
                 settingsQuery.first?.subtitleOpacity = newValue
             }
+    }
+
+    private var navigationViewWithFilterBindings: some View {
+        navigationView
+            // Binding-based focused values for menu toggles/pickers
+            .focusedSceneValue(\.importDestination, $importDestination)
+            .focusedSceneValue(\.gridShowFilenames, $gridShowFilenames)
+            .focusedSceneValue(\.gridShowCaptions, $gridShowCaptions)
+            .focusedSceneValue(\.animateGIFs, $animateGIFs)
+            // Filter binding focused values for Filter menu
+            .focusedSceneValue(\.mediaTypeFilterBinding, $gridViewModel.mediaTypeFilter)
+            .focusedSceneValue(\.productionTypeFilterBinding, $gridViewModel.productionTypeFilter)
+            .focusedSceneValue(\.subtitleFilterBinding, $gridViewModel.subtitleFilter)
+            .focusedSceneValue(\.captionFilterBinding, $gridViewModel.captionFilter)
+            .focusedSceneValue(\.ratingFilterEnabledBinding, $gridViewModel.ratingFilterEnabled)
+            .focusedSceneValue(\.ratingFilterBinding, $gridViewModel.ratingFilter)
+            .focusedSceneValue(\.tagFilterBinding, $gridViewModel.tagFilter)
+            .focusedSceneValue(\.sortOrderBinding, $gridViewModel.sortOrder)
+            .focusedSceneValue(\.sortAscendingBinding, $gridViewModel.sortAscending)
+            .focusedSceneValue(\.allTags, allTags)
     }
 
     private var navigationView: some View {

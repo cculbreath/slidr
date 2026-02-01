@@ -66,6 +66,56 @@ struct QuickLookKey: FocusedValueKey {
     typealias Value = () -> Void
 }
 
+struct ShowAdvancedFilterKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+struct ClearAllFiltersKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+// MARK: - Filter Binding Keys
+
+struct MediaTypeFilterBindingKey: FocusedValueKey {
+    typealias Value = Binding<Set<MediaType>>
+}
+
+struct ProductionTypeFilterBindingKey: FocusedValueKey {
+    typealias Value = Binding<Set<ProductionType>>
+}
+
+struct SubtitleFilterBindingKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+struct CaptionFilterBindingKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+struct RatingFilterEnabledBindingKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+struct RatingFilterBindingKey: FocusedValueKey {
+    typealias Value = Binding<Set<Int>>
+}
+
+struct TagFilterBindingKey: FocusedValueKey {
+    typealias Value = Binding<Set<String>>
+}
+
+struct SortOrderBindingKey: FocusedValueKey {
+    typealias Value = Binding<SortOrder>
+}
+
+struct SortAscendingBindingKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+struct AllTagsKey: FocusedValueKey {
+    typealias Value = [String]
+}
+
 // MARK: - Binding Keys (moved from AppDelegate)
 
 struct ImportDestinationKey: FocusedValueKey {
@@ -182,6 +232,67 @@ extension FocusedValues {
     var quickLook: (() -> Void)? {
         get { self[QuickLookKey.self] }
         set { self[QuickLookKey.self] = newValue }
+    }
+
+    var showAdvancedFilter: (() -> Void)? {
+        get { self[ShowAdvancedFilterKey.self] }
+        set { self[ShowAdvancedFilterKey.self] = newValue }
+    }
+
+    var clearAllFilters: (() -> Void)? {
+        get { self[ClearAllFiltersKey.self] }
+        set { self[ClearAllFiltersKey.self] = newValue }
+    }
+
+    // Filter binding values
+    var mediaTypeFilterBinding: Binding<Set<MediaType>>? {
+        get { self[MediaTypeFilterBindingKey.self] }
+        set { self[MediaTypeFilterBindingKey.self] = newValue }
+    }
+
+    var productionTypeFilterBinding: Binding<Set<ProductionType>>? {
+        get { self[ProductionTypeFilterBindingKey.self] }
+        set { self[ProductionTypeFilterBindingKey.self] = newValue }
+    }
+
+    var subtitleFilterBinding: Binding<Bool>? {
+        get { self[SubtitleFilterBindingKey.self] }
+        set { self[SubtitleFilterBindingKey.self] = newValue }
+    }
+
+    var captionFilterBinding: Binding<Bool>? {
+        get { self[CaptionFilterBindingKey.self] }
+        set { self[CaptionFilterBindingKey.self] = newValue }
+    }
+
+    var ratingFilterEnabledBinding: Binding<Bool>? {
+        get { self[RatingFilterEnabledBindingKey.self] }
+        set { self[RatingFilterEnabledBindingKey.self] = newValue }
+    }
+
+    var ratingFilterBinding: Binding<Set<Int>>? {
+        get { self[RatingFilterBindingKey.self] }
+        set { self[RatingFilterBindingKey.self] = newValue }
+    }
+
+    var tagFilterBinding: Binding<Set<String>>? {
+        get { self[TagFilterBindingKey.self] }
+        set { self[TagFilterBindingKey.self] = newValue }
+    }
+
+    var sortOrderBinding: Binding<SortOrder>? {
+        get { self[SortOrderBindingKey.self] }
+        set { self[SortOrderBindingKey.self] = newValue }
+    }
+
+    var sortAscendingBinding: Binding<Bool>? {
+        get { self[SortAscendingBindingKey.self] }
+        set { self[SortAscendingBindingKey.self] = newValue }
+    }
+
+    var allTags: [String]? {
+        get { self[AllTagsKey.self] }
+        set { self[AllTagsKey.self] = newValue }
     }
 
     // Binding values
