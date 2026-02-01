@@ -21,6 +21,7 @@ struct GridToolbarContent: CustomizableToolbarContent {
     private var hasProductionTypeFilter: Bool { !viewModel.productionTypeFilter.isEmpty }
     private var hasTagFilter: Bool { !viewModel.tagFilter.isEmpty }
     private var hasCaptionsEnabled: Bool { (settings?.gridShowCaptions ?? true) || (settings?.gridShowFilenames ?? false) }
+    private var hasSubtitleFilter: Bool { viewModel.subtitleFilter }
     private var hasAdvancedFilter: Bool { viewModel.advancedFilter != nil }
 
     var body: some CustomizableToolbarContent {
@@ -53,7 +54,7 @@ struct GridToolbarContent: CustomizableToolbarContent {
             .help("Import Files")
         }
 
-        ToolbarItem(id: "thumbnailSize", placement: .secondaryAction) {
+        ToolbarItem(id: "thumbnailSize") {
             LabeledContent("Thumbnail Size") {
                 Picker("Size", selection: $viewModel.thumbnailSize) {
                     Label("Large", systemImage: "square.grid.2x2").tag(ThumbnailSize.large)
@@ -69,11 +70,11 @@ struct GridToolbarContent: CustomizableToolbarContent {
 
     @ToolbarContentBuilder
     private var displayItems: some CustomizableToolbarContent {
-        ToolbarItem(id: "captionVisibility", placement: .secondaryAction) {
+        ToolbarItem(id: "captionVisibility") {
             showMenu
         }
 
-        ToolbarItem(id: "hoverScrub", placement: .secondaryAction) {
+        ToolbarItem(id: "hoverScrub") {
             Button {
                 onToggleHoverScrub()
             } label: {
@@ -83,7 +84,7 @@ struct GridToolbarContent: CustomizableToolbarContent {
             .help("Toggle video scrub on hover")
         }
 
-        ToolbarItem(id: "gifAnimation", placement: .secondaryAction) {
+        ToolbarItem(id: "gifAnimation") {
             Button {
                 onToggleGIFAnimation()
             } label: {
@@ -96,22 +97,34 @@ struct GridToolbarContent: CustomizableToolbarContent {
 
     @ToolbarContentBuilder
     private var filterItems: some CustomizableToolbarContent {
-        ToolbarItem(id: "mediaTypeFilter", placement: .secondaryAction) {
+        ToolbarItem(id: "mediaTypeFilter") {
             filterMenu
         }
 
-        ToolbarItem(id: "productionFilter", placement: .secondaryAction) {
+        ToolbarItem(id: "productionFilter") {
             productionFilterMenu
         }
 
-        ToolbarItem(id: "tagFilter", placement: .secondaryAction) {
+        ToolbarItem(id: "tagFilter") {
             tagFilterMenu
         }
+
+        ToolbarItem(id: "subtitleFilter") {
+            Button {
+                viewModel.subtitleFilter.toggle()
+            } label: {
+                Label("Has Transcript", systemImage: "captions.bubble")
+                    .symbolVariant(hasSubtitleFilter ? .fill : .none)
+                    .foregroundStyle(hasSubtitleFilter ? Color.accentColor : .primary)
+            }
+            .help("Show only items with transcripts")
+        }
+        .defaultCustomization(.hidden)
     }
 
     @ToolbarContentBuilder
     private var sortAndActionItems: some CustomizableToolbarContent {
-        ToolbarItem(id: "advancedFilter", placement: .secondaryAction) {
+        ToolbarItem(id: "advancedFilter") {
             Button {
                 onShowAdvancedFilter()
             } label: {
@@ -122,7 +135,7 @@ struct GridToolbarContent: CustomizableToolbarContent {
             .help("Open advanced filter")
         }
 
-        ToolbarItem(id: "sortOrder", placement: .secondaryAction) {
+        ToolbarItem(id: "sortOrder") {
             sortMenu
         }
 
