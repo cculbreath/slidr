@@ -74,6 +74,10 @@ struct ClearAllFiltersKey: FocusedValueKey {
     typealias Value = () -> Void
 }
 
+struct ToggleTagPaletteKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
 // MARK: - Filter Binding Keys
 
 struct MediaTypeFilterBindingKey: FocusedValueKey {
@@ -114,6 +118,28 @@ struct SortAscendingBindingKey: FocusedValueKey {
 
 struct AllTagsKey: FocusedValueKey {
     typealias Value = [String]
+}
+
+// MARK: - Browser & Slideshow Binding Keys
+
+struct BrowserViewModeKey: FocusedValueKey {
+    typealias Value = Binding<BrowserViewMode>
+}
+
+struct VideoHoverScrubKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+struct LoopSlideshowKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+struct ShuffleSlideshowKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+struct SlideshowTransitionKey: FocusedValueKey {
+    typealias Value = Binding<TransitionType>
 }
 
 // MARK: - Binding Keys (moved from AppDelegate)
@@ -244,6 +270,11 @@ extension FocusedValues {
         set { self[ClearAllFiltersKey.self] = newValue }
     }
 
+    var toggleTagPalette: (() -> Void)? {
+        get { self[ToggleTagPaletteKey.self] }
+        set { self[ToggleTagPaletteKey.self] = newValue }
+    }
+
     // Filter binding values
     var mediaTypeFilterBinding: Binding<Set<MediaType>>? {
         get { self[MediaTypeFilterBindingKey.self] }
@@ -293,6 +324,32 @@ extension FocusedValues {
     var allTags: [String]? {
         get { self[AllTagsKey.self] }
         set { self[AllTagsKey.self] = newValue }
+    }
+
+    // Browser & Slideshow bindings
+    var browserViewMode: Binding<BrowserViewMode>? {
+        get { self[BrowserViewModeKey.self] }
+        set { self[BrowserViewModeKey.self] = newValue }
+    }
+
+    var videoHoverScrub: Binding<Bool>? {
+        get { self[VideoHoverScrubKey.self] }
+        set { self[VideoHoverScrubKey.self] = newValue }
+    }
+
+    var loopSlideshow: Binding<Bool>? {
+        get { self[LoopSlideshowKey.self] }
+        set { self[LoopSlideshowKey.self] = newValue }
+    }
+
+    var shuffleSlideshow: Binding<Bool>? {
+        get { self[ShuffleSlideshowKey.self] }
+        set { self[ShuffleSlideshowKey.self] = newValue }
+    }
+
+    var slideshowTransition: Binding<TransitionType>? {
+        get { self[SlideshowTransitionKey.self] }
+        set { self[SlideshowTransitionKey.self] = newValue }
     }
 
     // Binding values

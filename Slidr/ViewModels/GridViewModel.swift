@@ -5,6 +5,7 @@ import SwiftData
 @Observable
 final class GridViewModel {
     // MARK: - State
+    var browserMode: BrowserViewMode = .grid
     var selectedItems: Set<UUID> = []
     var thumbnailSize: ThumbnailSize = .medium
     var sortOrder: SortOrder = .dateImported

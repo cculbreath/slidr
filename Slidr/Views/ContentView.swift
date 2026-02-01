@@ -29,6 +29,11 @@ struct ContentView: View {
     @State private var gridShowFilenames: Bool = false
     @State private var gridShowCaptions: Bool = true
     @State private var animateGIFs: Bool = false
+    @State private var videoHoverScrub: Bool = true
+    @State private var browserViewMode: BrowserViewMode = .grid
+    @State private var loopSlideshow: Bool = true
+    @State private var shuffleSlideshow: Bool = false
+    @State private var slideshowTransition: TransitionType = .crossfade
     @State private var showSubtitles: Bool = false
     @State private var subtitlePosition: CaptionPosition = .bottom
     @State private var subtitleFontSize: Double = 16.0
@@ -50,6 +55,8 @@ struct ContentView: View {
             let active = slideshowViewModel.activeItems
             guard newIndex >= 0, newIndex < active.count else { return }
             gridViewModel.selectedItems = [active[newIndex].id]
+            // Push current slideshow item to tag palette
+            toolbarCoordinator.updatePaletteSelectedItems([active[newIndex]])
         }
         .progressOverlay(
             isPresented: library.importProgress != nil,
@@ -115,10 +122,16 @@ struct ContentView: View {
                     gridShowFilenames = settings.gridShowFilenames
                     gridShowCaptions = settings.gridShowCaptions
                     animateGIFs = settings.animateGIFsInGrid
+                    videoHoverScrub = settings.gridVideoHoverScrub
+                    browserViewMode = settings.browserViewMode
+                    loopSlideshow = settings.loopSlideshow
+                    shuffleSlideshow = settings.shuffleSlideshow
+                    slideshowTransition = settings.slideshowTransition
                     showSubtitles = settings.showSubtitles
                     subtitlePosition = settings.subtitlePosition
                     subtitleFontSize = settings.subtitleFontSize
                     subtitleOpacity = settings.subtitleOpacity
+                    gridViewModel.browserMode = settings.browserViewMode
                 }
                 refreshItems()
                 let count = settingsQuery.first?.scrubThumbnailCount ?? 100
@@ -143,6 +156,13 @@ struct ContentView: View {
             .focusedSceneValue(\.locateExternalLibrary, { library.locateExternalLibrary() })
             .focusedSceneValue(\.newPlaylist, { sidebarViewModel.createPlaylist() })
             .focusedSceneValue(\.newSmartPlaylist, { sidebarViewModel.createSmartPlaylist() })
+            .focusedSceneValue(\.toggleTagPalette, { toolbarCoordinator.toggleTagPalette() })
+            // Browser & slideshow bindings
+            .focusedSceneValue(\.browserViewMode, $browserViewMode)
+            .focusedSceneValue(\.videoHoverScrub, $videoHoverScrub)
+            .focusedSceneValue(\.loopSlideshow, $loopSlideshow)
+            .focusedSceneValue(\.shuffleSlideshow, $shuffleSlideshow)
+            .focusedSceneValue(\.slideshowTransition, $slideshowTransition)
             .onChange(of: importDestination) { _, newValue in
                 settingsQuery.first?.defaultImportLocation = newValue
             }
@@ -154,6 +174,22 @@ struct ContentView: View {
             }
             .onChange(of: animateGIFs) { _, newValue in
                 settingsQuery.first?.animateGIFsInGrid = newValue
+            }
+            .onChange(of: videoHoverScrub) { _, newValue in
+                settingsQuery.first?.gridVideoHoverScrub = newValue
+            }
+            .onChange(of: browserViewMode) { _, newValue in
+                gridViewModel.browserMode = newValue
+                settingsQuery.first?.browserViewMode = newValue
+            }
+            .onChange(of: loopSlideshow) { _, newValue in
+                settingsQuery.first?.loopSlideshow = newValue
+            }
+            .onChange(of: shuffleSlideshow) { _, newValue in
+                settingsQuery.first?.shuffleSlideshow = newValue
+            }
+            .onChange(of: slideshowTransition) { _, newValue in
+                settingsQuery.first?.slideshowTransition = newValue
             }
     }
 
@@ -357,6 +393,11 @@ struct ContentView: View {
         } else {
             showSlideshow = false
         }
+
+        // Revert palette to grid selection
+        let selectedIDs = gridViewModel.selectedItems
+        let resolved = cachedItems.filter { selectedIDs.contains($0.id) }
+        toolbarCoordinator.updatePaletteSelectedItems(resolved)
     }
 
     private func importFiles() {

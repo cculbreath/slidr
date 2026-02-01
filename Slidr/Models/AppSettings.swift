@@ -66,10 +66,16 @@ final class AppSettings {
     var gridShowCaptionsRaw: Bool?
     var gridVideoHoverScrub: Bool
     var gridMediaTypeFilterRaw: String?
+    var browserViewModeRaw: String?
 
     var gridShowCaptions: Bool {
         get { gridShowCaptionsRaw ?? true }
         set { gridShowCaptionsRaw = newValue }
+    }
+
+    var browserViewMode: BrowserViewMode {
+        get { browserViewModeRaw.flatMap { BrowserViewMode(rawValue: $0) } ?? .grid }
+        set { browserViewModeRaw = newValue.rawValue }
     }
 
     var gridMediaTypeFilter: Set<MediaType> {
@@ -195,6 +201,7 @@ final class AppSettings {
         self.gridShowCaptionsRaw = true
         self.gridVideoHoverScrub = true
         self.gridMediaTypeFilterRaw = nil
+        self.browserViewModeRaw = nil
 
         // Verification defaults
         self.verifyFilesOnLaunch = false

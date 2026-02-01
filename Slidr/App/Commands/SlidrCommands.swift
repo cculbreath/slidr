@@ -66,6 +66,7 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.decreaseThumbnailSize) var decreaseThumbnailSize
     @FocusedValue(\.resetThumbnailSize) var resetThumbnailSize
     @FocusedValue(\.revealInFinder) var revealInFinder
+    @FocusedValue(\.toggleTagPalette) var toggleTagPalette
 
     // MARK: - Filter Action FocusedValues
     @FocusedValue(\.showAdvancedFilter) var showAdvancedFilter
@@ -88,6 +89,11 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.gridShowFilenames) var gridShowFilenames
     @FocusedValue(\.gridShowCaptions) var gridShowCaptions
     @FocusedValue(\.animateGIFs) var animateGIFs
+    @FocusedValue(\.videoHoverScrub) var videoHoverScrub
+    @FocusedValue(\.browserViewMode) var browserViewMode
+    @FocusedValue(\.loopSlideshow) var loopSlideshow
+    @FocusedValue(\.shuffleSlideshow) var shuffleSlideshow
+    @FocusedValue(\.slideshowTransition) var slideshowTransition
     @FocusedValue(\.subtitleShow) var subtitleShow
     @FocusedValue(\.subtitlePosition) var subtitlePosition
     @FocusedValue(\.subtitleFontSize) var subtitleFontSize
@@ -99,7 +105,8 @@ struct SlidrCommands: Commands {
         searchCommands
         fileCommands
         viewCommands
-        filterCommands
+        browserCommands
+        slideshowCommands
         subtitleCommands
     }
 
@@ -215,68 +222,109 @@ struct SlidrCommands: Commands {
         }
     }
 
-    // MARK: - Subtitles Menu
+    // MARK: - View Menu
 
-    private var subtitleCommands: some Commands {
-        CommandMenu("Subtitles") {
-            if let subtitleShow {
-                Toggle("Show Subtitles", isOn: subtitleShow)
-            } else {
-                Toggle("Show Subtitles", isOn: .constant(false))
-                    .disabled(true)
+    private var viewCommands: some Commands {
+        CommandGroup(after: .toolbar) {
+            Button("Toggle Inspector") {
+                toggleInspector?()
+            }
+            .keyboardShortcut("i", modifiers: [.command, .shift])
+
+            Button("Show Tag Palette") {
+                toggleTagPalette?()
+            }
+            .keyboardShortcut("t", modifiers: [.command, .shift])
+
+            Button("Reveal in Finder") {
+                revealInFinder?()
+            }
+            .keyboardShortcut("r", modifiers: [.command, .shift])
+        }
+    }
+
+    // MARK: - Browser Menu
+
+    private var browserCommands: some Commands {
+        CommandMenu("Browser") {
+            // View mode switching
+            Button("As Grid") {
+                browserViewMode?.wrappedValue = .grid
+            }
+            .keyboardShortcut("1", modifiers: .command)
+
+            Button("As List") {
+                browserViewMode?.wrappedValue = .list
+            }
+            .keyboardShortcut("2", modifiers: .command)
+
+            Divider()
+
+            // Show Columns submenu
+            showColumnsMenu
+
+            Divider()
+
+            // Filter submenu (moved from top-level Filter menu)
+            filterMenu
+
+            Divider()
+
+            // Display toggles
+            if let gridShowCaptions {
+                Toggle("Show Captions", isOn: gridShowCaptions)
+            }
+
+            if let gridShowFilenames {
+                Toggle("Show Filenames", isOn: gridShowFilenames)
             }
 
             Divider()
 
-            Menu("Position") {
-                if let subtitlePosition {
-                    ForEach(CaptionPosition.allCases, id: \.self) { pos in
-                        Button {
-                            subtitlePosition.wrappedValue = pos
-                        } label: {
-                            HStack {
-                                Text(pos.menuLabel)
-                                if subtitlePosition.wrappedValue == pos {
-                                    Spacer()
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-                }
+            if let videoHoverScrub {
+                Toggle("Enable Scrubbing", isOn: videoHoverScrub)
             }
 
-            Menu("Font Size") {
-                if let subtitleFontSize {
-                    ForEach(SubtitleFontSizeOption.allCases) { option in
-                        Button {
-                            subtitleFontSize.wrappedValue = option.size
-                        } label: {
-                            HStack {
-                                Text(option.label)
-                                if subtitleFontSize.wrappedValue == option.size {
-                                    Spacer()
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-                }
+            if let animateGIFs {
+                Toggle("Animate GIFs", isOn: animateGIFs)
             }
 
-            Menu("Opacity") {
-                if let subtitleOpacity {
-                    ForEach(SubtitleOpacityOption.allCases) { option in
-                        Button {
-                            subtitleOpacity.wrappedValue = option.value
-                        } label: {
-                            HStack {
-                                Text(option.label)
-                                if subtitleOpacity.wrappedValue == option.value {
-                                    Spacer()
-                                    Image(systemName: "checkmark")
-                                }
-                            }
+            Divider()
+
+            // Thumbnail sizing
+            Button("Larger Thumbnails") {
+                increaseThumbnailSize?()
+            }
+            .keyboardShortcut("+", modifiers: .command)
+
+            Button("Smaller Thumbnails") {
+                decreaseThumbnailSize?()
+            }
+            .keyboardShortcut("-", modifiers: .command)
+
+            Button("Reset Thumbnail Size") {
+                resetThumbnailSize?()
+            }
+            .keyboardShortcut("0", modifiers: .command)
+        }
+    }
+
+    // MARK: - Show Columns Submenu
+
+    @ViewBuilder
+    private var showColumnsMenu: some View {
+        Menu("Show Columns") {
+            ForEach(ListColumnID.allCases.filter({ $0 != .thumbnail })) { column in
+                Button {
+                    // Column visibility is managed by TableColumnCustomization via SceneStorage.
+                    // The menu serves as a reference; toggling is done by right-clicking
+                    // the table header in the list view.
+                } label: {
+                    HStack {
+                        Text(column.displayName)
+                        if column.defaultVisible {
+                            Spacer()
+                            Image(systemName: "checkmark")
                         }
                     }
                 }
@@ -284,10 +332,11 @@ struct SlidrCommands: Commands {
         }
     }
 
-    // MARK: - Filter Menu
+    // MARK: - Filter Submenu
 
-    private var filterCommands: some Commands {
-        CommandMenu("Filter") {
+    @ViewBuilder
+    private var filterMenu: some View {
+        Menu("Filter") {
             Menu("Media Type") {
                 Button {
                     mediaTypeFilterBinding?.wrappedValue = []
@@ -522,57 +571,113 @@ struct SlidrCommands: Commands {
         }
     }
 
-    // MARK: - View Menu
+    // MARK: - Slideshow Menu
 
-    private var viewCommands: some Commands {
-        CommandGroup(after: .toolbar) {
-            Button("Larger Thumbnails") {
-                increaseThumbnailSize?()
-            }
-            .keyboardShortcut("+", modifiers: .command)
-
-            Button("Smaller Thumbnails") {
-                decreaseThumbnailSize?()
-            }
-            .keyboardShortcut("-", modifiers: .command)
-
-            Button("Reset Thumbnail Size") {
-                resetThumbnailSize?()
-            }
-            .keyboardShortcut("0", modifiers: .command)
-
-            Divider()
-
-            if let gridShowFilenames {
-                Toggle("Show Grid Filenames", isOn: gridShowFilenames)
-            }
-
-            if let gridShowCaptions {
-                Toggle("Show Grid Captions", isOn: gridShowCaptions)
-            }
-
-            if let animateGIFs {
-                Toggle("Animate GIFs in Grid", isOn: animateGIFs)
-            }
-
-            Divider()
-
-            Button("Enter Fullscreen Slideshow") {
+    private var slideshowCommands: some Commands {
+        CommandMenu("Slideshow") {
+            Button("Start Slideshow") {
                 startSlideshow?()
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])
 
             Divider()
 
-            Button("Toggle Inspector") {
-                toggleInspector?()
+            if let loopSlideshow {
+                Toggle("Loop", isOn: loopSlideshow)
             }
-            .keyboardShortcut("i", modifiers: [.command, .shift])
 
-            Button("Reveal in Finder") {
-                revealInFinder?()
+            if let shuffleSlideshow {
+                Toggle("Shuffle", isOn: shuffleSlideshow)
             }
-            .keyboardShortcut("r", modifiers: [.command, .shift])
+
+            Divider()
+
+            Menu("Transition") {
+                if let slideshowTransition {
+                    ForEach(TransitionType.allCases, id: \.self) { transition in
+                        Button {
+                            slideshowTransition.wrappedValue = transition
+                        } label: {
+                            HStack {
+                                Text(transition.displayName)
+                                if slideshowTransition.wrappedValue == transition {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Subtitles Menu
+
+    private var subtitleCommands: some Commands {
+        CommandMenu("Subtitles") {
+            if let subtitleShow {
+                Toggle("Show Subtitles", isOn: subtitleShow)
+            } else {
+                Toggle("Show Subtitles", isOn: .constant(false))
+                    .disabled(true)
+            }
+
+            Divider()
+
+            Menu("Position") {
+                if let subtitlePosition {
+                    ForEach(CaptionPosition.allCases, id: \.self) { pos in
+                        Button {
+                            subtitlePosition.wrappedValue = pos
+                        } label: {
+                            HStack {
+                                Text(pos.menuLabel)
+                                if subtitlePosition.wrappedValue == pos {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Menu("Font Size") {
+                if let subtitleFontSize {
+                    ForEach(SubtitleFontSizeOption.allCases) { option in
+                        Button {
+                            subtitleFontSize.wrappedValue = option.size
+                        } label: {
+                            HStack {
+                                Text(option.label)
+                                if subtitleFontSize.wrappedValue == option.size {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Menu("Opacity") {
+                if let subtitleOpacity {
+                    ForEach(SubtitleOpacityOption.allCases) { option in
+                        Button {
+                            subtitleOpacity.wrappedValue = option.value
+                        } label: {
+                            HStack {
+                                Text(option.label)
+                                if subtitleOpacity.wrappedValue == option.value {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

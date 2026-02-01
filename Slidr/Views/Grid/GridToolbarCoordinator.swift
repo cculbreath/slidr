@@ -12,6 +12,7 @@ enum ToolbarID {
     nonisolated static let captionVisibility = NSToolbarItem.Identifier("captionVisibility")
     nonisolated static let hoverScrub = NSToolbarItem.Identifier("hoverScrub")
     nonisolated static let gifAnimation = NSToolbarItem.Identifier("gifAnimation")
+    nonisolated static let playbackOptions = NSToolbarItem.Identifier("playbackOptions")
     nonisolated static let mediaTypeFilter = NSToolbarItem.Identifier("mediaTypeFilter")
     nonisolated static let productionFilter = NSToolbarItem.Identifier("productionFilter")
     nonisolated static let tagFilter = NSToolbarItem.Identifier("tagFilter")
@@ -21,6 +22,7 @@ enum ToolbarID {
     nonisolated static let inspectorToggle = NSToolbarItem.Identifier("inspector")
     nonisolated static let sidebarSeparator = NSToolbarItem.Identifier("sidebarSeparator")
     nonisolated static let inspectorSeparator = NSToolbarItem.Identifier("inspectorSeparator")
+    nonisolated static let tagPalette = NSToolbarItem.Identifier("tagPalette")
 }
 
 // MARK: - GridToolbarCoordinator
@@ -44,6 +46,12 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
     var onToggleInspector: (() -> Void)?
     var onShowAdvancedFilter: (() -> Void)?
 
+    // MARK: - Tag Palette
+    let tagPaletteViewModel = TagPaletteViewModel()
+
+    @ObservationIgnored
+    private(set) lazy var tagPaletteController = TagPaletteWindowController(viewModel: tagPaletteViewModel)
+
     // MARK: - Toolbar
     let toolbar: NSToolbar
 
@@ -62,7 +70,8 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
     // MARK: - Init
 
     override init() {
-        let tb = NSToolbar(identifier: "gridToolbar")
+        // Bump identifier to avoid loading stale SwiftUI toolbar config
+        let tb = NSToolbar(identifier: "gridToolbar.v2")
         tb.allowsUserCustomization = true
         tb.autosavesConfiguration = true
         tb.displayMode = .iconOnly
@@ -116,6 +125,7 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
 
     nonisolated func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
+            .toggleSidebar,
             ToolbarID.sidebarSeparator,
             ToolbarID.slideshow,
             ToolbarID.importFiles,
@@ -136,6 +146,7 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
 
     nonisolated func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
+            .toggleSidebar,
             ToolbarID.sidebarSeparator,
             ToolbarID.slideshow,
             ToolbarID.importFiles,
@@ -143,9 +154,11 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
             ToolbarID.captionVisibility,
             ToolbarID.hoverScrub,
             ToolbarID.gifAnimation,
+            ToolbarID.playbackOptions,
             ToolbarID.mediaTypeFilter,
             ToolbarID.productionFilter,
             ToolbarID.tagFilter,
+            ToolbarID.tagPalette,
             ToolbarID.subtitleFilter,
             ToolbarID.advancedFilter,
             ToolbarID.sortOrder,
@@ -186,12 +199,16 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
             return makeHoverScrubItem()
         case ToolbarID.gifAnimation:
             return makeGIFAnimationItem()
+        case ToolbarID.playbackOptions:
+            return makePlaybackOptionsGroup()
         case ToolbarID.mediaTypeFilter:
             return makeMediaTypeFilterItem()
         case ToolbarID.productionFilter:
             return makeProductionFilterItem()
         case ToolbarID.tagFilter:
             return makeTagFilterItem()
+        case ToolbarID.tagPalette:
+            return makeTagPaletteItem()
         case ToolbarID.subtitleFilter:
             return makeSubtitleFilterItem()
         case ToolbarID.advancedFilter:
@@ -308,6 +325,46 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         return item
     }
 
+    private func makePlaybackOptionsGroup() -> NSToolbarItem {
+        let group = NSToolbarItemGroup(itemIdentifier: ToolbarID.playbackOptions)
+        group.label = "Playback Options"
+        group.paletteLabel = "Playback Options"
+
+        let scrubEnabled = settings?.gridVideoHoverScrub ?? false
+        let gifEnabled = settings?.animateGIFsInGrid ?? false
+
+        let segmented = NSSegmentedControl(
+            images: [
+                NSImage(systemSymbolName: "hand.point.up.braille", accessibilityDescription: "Scrubbing")!,
+                NSImage(systemSymbolName: "waveform.path.ecg.rectangle", accessibilityDescription: "Autoplay GIFs")!,
+            ],
+            trackingMode: .momentary,
+            target: self,
+            action: #selector(playbackOptionsAction(_:))
+        )
+        segmented.segmentStyle = .separated
+        segmented.controlSize = .regular
+
+        // Tint active segments
+        if scrubEnabled {
+            segmented.setImage(
+                NSImage(systemSymbolName: "hand.point.up.braille", accessibilityDescription: "Scrubbing")!
+                    .withSymbolConfiguration(.init(paletteColors: [.controlAccentColor]))!,
+                forSegment: 0
+            )
+        }
+        if gifEnabled {
+            segmented.setImage(
+                NSImage(systemSymbolName: "waveform.path.ecg.rectangle", accessibilityDescription: "Autoplay GIFs")!
+                    .withSymbolConfiguration(.init(paletteColors: [.controlAccentColor]))!,
+                forSegment: 1
+            )
+        }
+
+        group.view = segmented
+        return group
+    }
+
     private func makeSubtitleFilterItem() -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: ToolbarID.subtitleFilter)
         item.label = "Has Transcript"
@@ -389,11 +446,56 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         item.isBordered = true
 
         let hasFilter = !(viewModel?.tagFilter.isEmpty ?? true)
-        let image = NSImage(systemSymbolName: hasFilter ? "tag.fill" : "tag", accessibilityDescription: "Tags")!
-        let button = NSButton(title: "", image: image, target: self, action: #selector(tagFilterAction(_:)))
+        let tint: NSColor = hasFilter ? .controlAccentColor : .labelColor
+
+        let tagImage = NSImage(systemSymbolName: hasFilter ? "tag.fill" : "tag", accessibilityDescription: "Tags")!
+        let tagView = NSImageView(image: tagImage)
+        tagView.contentTintColor = tint
+
+        let chevronConfig = NSImage.SymbolConfiguration(pointSize: 8, weight: .semibold)
+        let chevronImage = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)!
+            .withSymbolConfiguration(chevronConfig)!
+        let chevronView = NSImageView(image: chevronImage)
+        chevronView.contentTintColor = tint
+
+        let stack = NSStackView(views: [tagView, chevronView])
+        stack.orientation = .horizontal
+        stack.spacing = 2
+        stack.alignment = .centerY
+
+        let button = NSButton(frame: .zero)
         button.bezelStyle = .toolbar
-        button.contentTintColor = hasFilter ? .controlAccentColor : nil
-        button.imagePosition = .imageOnly
+        button.isBordered = false
+        button.target = self
+        button.action = #selector(tagFilterAction(_:))
+        button.addSubview(stack)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+        ])
+        button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+
+        item.view = button
+        return item
+    }
+
+    private func makeTagPaletteItem() -> NSToolbarItem {
+        let item = NSToolbarItem(itemIdentifier: ToolbarID.tagPalette)
+        item.label = "Tag Palette"
+        item.paletteLabel = "Tag Palette"
+        item.toolTip = "Toggle floating tag palette"
+        item.isBordered = true
+
+        let visible = tagPaletteController.isVisible
+        let symbolName = visible ? "tag.square.fill" : "tag.square"
+        let button = NSButton(
+            image: NSImage(systemSymbolName: symbolName, accessibilityDescription: "Tag Palette")!,
+            target: self,
+            action: #selector(tagPaletteAction)
+        )
+        button.bezelStyle = .toolbar
+        button.contentTintColor = visible ? .controlAccentColor : nil
         item.view = button
         return item
     }
@@ -466,6 +568,22 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
             button.contentTintColor = enabled ? .controlAccentColor : nil
         }
 
+        // Playback options group
+        if let item = itemCache[ToolbarID.playbackOptions], let seg = item.view as? NSSegmentedControl {
+            let scrubEnabled = settings?.gridVideoHoverScrub ?? false
+            let gifEnabled = settings?.animateGIFsInGrid ?? false
+            seg.setImage(
+                NSImage(systemSymbolName: "hand.point.up.braille", accessibilityDescription: "Scrubbing")!
+                    .withSymbolConfiguration(.init(paletteColors: scrubEnabled ? [.controlAccentColor] : [.labelColor]))!,
+                forSegment: 0
+            )
+            seg.setImage(
+                NSImage(systemSymbolName: "waveform.path.ecg.rectangle", accessibilityDescription: "Autoplay GIFs")!
+                    .withSymbolConfiguration(.init(paletteColors: gifEnabled ? [.controlAccentColor] : [.labelColor]))!,
+                forSegment: 1
+            )
+        }
+
         // Caption visibility
         if let item = itemCache[ToolbarID.captionVisibility] as? NSMenuToolbarItem {
             item.image = captionVisibilityImage()
@@ -489,10 +607,18 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         }
 
         // Tag filter
-        if let item = itemCache[ToolbarID.tagFilter], let button = item.view as? NSButton {
+        if let item = itemCache[ToolbarID.tagFilter],
+           let button = item.view as? NSButton,
+           let stack = button.subviews.first as? NSStackView {
             let hasFilter = !vm.tagFilter.isEmpty
-            button.image = NSImage(systemSymbolName: hasFilter ? "tag.fill" : "tag", accessibilityDescription: "Tags")!
-            button.contentTintColor = hasFilter ? .controlAccentColor : nil
+            let tint: NSColor = hasFilter ? .controlAccentColor : .labelColor
+            if let tagView = stack.arrangedSubviews.first as? NSImageView {
+                tagView.image = NSImage(systemSymbolName: hasFilter ? "tag.fill" : "tag", accessibilityDescription: "Tags")!
+                tagView.contentTintColor = tint
+            }
+            if let chevronView = stack.arrangedSubviews.last as? NSImageView {
+                chevronView.contentTintColor = tint
+            }
         }
 
         // Subtitle filter
@@ -513,6 +639,38 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         if let item = itemCache[ToolbarID.sortOrder] as? NSMenuToolbarItem {
             item.menu = buildSortMenu()
         }
+
+        // Tag palette button highlight
+        if let item = itemCache[ToolbarID.tagPalette], let button = item.view as? NSButton {
+            let visible = tagPaletteController.isVisible
+            let symbolName = visible ? "tag.square.fill" : "tag.square"
+            button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Tag Palette")!
+            button.contentTintColor = visible ? .controlAccentColor : nil
+        }
+    }
+
+    // MARK: - Tag Palette
+
+    func configurePalette() {
+        tagPaletteViewModel.allTags = allTags
+        tagPaletteViewModel.tagFilter = viewModel?.tagFilter ?? []
+        tagPaletteViewModel.onTagFilterChanged = { [weak self] newFilter in
+            self?.viewModel?.tagFilter = newFilter
+            self?.updateItemStates()
+        }
+    }
+
+    func updatePaletteSelectedItems(_ items: [MediaItem]) {
+        tagPaletteViewModel.selectedItems = items
+    }
+
+    func toggleTagPalette() {
+        tagPaletteController.toggle()
+        updateItemStates()
+    }
+
+    func syncPaletteTagFilter() {
+        tagPaletteViewModel.tagFilter = viewModel?.tagFilter ?? []
     }
 
     // MARK: - Image Helpers
@@ -666,6 +824,15 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         updateItemStates()
     }
 
+    @objc private func playbackOptionsAction(_ sender: NSSegmentedControl) {
+        switch sender.selectedSegment {
+        case 0: onToggleHoverScrub?()
+        case 1: onToggleGIFAnimation?()
+        default: break
+        }
+        updateItemStates()
+    }
+
     @objc private func subtitleFilterAction() {
         viewModel?.subtitleFilter.toggle()
         updateItemStates()
@@ -677,6 +844,10 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
 
     @objc private func inspectorAction() {
         onToggleInspector?()
+    }
+
+    @objc private func tagPaletteAction() {
+        toggleTagPalette()
     }
 
     @objc private func tagFilterAction(_ sender: NSButton) {
@@ -760,6 +931,7 @@ struct WindowToolbarAccessor: NSViewRepresentable {
         DispatchQueue.main.async {
             guard let window = view.window else { return }
             window.toolbar = coordinator.toolbar
+            window.titleVisibility = .hidden
 
             // Find the NSSplitView for tracking separators
             if let splitView = findSplitView(in: window.contentView) {

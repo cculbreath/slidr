@@ -121,6 +121,14 @@ struct MediaGridView: View {
         }
         .onChange(of: allTags) { _, tags in
             toolbarCoordinator.allTags = tags
+            toolbarCoordinator.tagPaletteViewModel.allTags = tags
+        }
+        .onChange(of: viewModel.selectedItems) { _, selectedIDs in
+            let resolved = displayedItems.filter { selectedIDs.contains($0.id) }
+            toolbarCoordinator.updatePaletteSelectedItems(resolved)
+        }
+        .onChange(of: viewModel.tagFilter) { _, _ in
+            toolbarCoordinator.syncPaletteTagFilter()
         }
     }
 
@@ -137,6 +145,7 @@ struct MediaGridView: View {
         toolbarCoordinator.onToggleFilenames = toggleGridFilenames
         toolbarCoordinator.onToggleInspector = { [onToggleInspector] in onToggleInspector?() }
         toolbarCoordinator.onShowAdvancedFilter = { self.showAdvancedFilter = true }
+        toolbarCoordinator.configurePalette()
         toolbarCoordinator.startObserving()
     }
 
@@ -257,7 +266,18 @@ struct MediaGridView: View {
                 actionLabel: "Import Files"
             )
         } else {
-            gridScrollView
+            switch viewModel.browserMode {
+            case .grid:
+                gridScrollView
+            case .list:
+                MediaListView(
+                    viewModel: viewModel,
+                    items: items,
+                    onStartSlideshow: onStartSlideshow,
+                    onQuickLook: onQuickLook,
+                    activePlaylist: activePlaylist
+                )
+            }
         }
     }
 
