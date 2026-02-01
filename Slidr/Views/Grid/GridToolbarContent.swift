@@ -25,16 +25,15 @@ struct GridToolbarContent: CustomizableToolbarContent {
     private var hasAdvancedFilter: Bool { viewModel.advancedFilter != nil }
 
     var body: some CustomizableToolbarContent {
-        navigationItems
-        displayItems
-        filterItems
-        sortAndActionItems
+        leadingItems
+        trailingItems
     }
 
     // MARK: - Toolbar Groups
+    // Split into only two blocks to minimize group-boundary reordering issues.
 
     @ToolbarContentBuilder
-    private var navigationItems: some CustomizableToolbarContent {
+    private var leadingItems: some CustomizableToolbarContent {
         ToolbarItem(id: "slideshow", placement: .navigation) {
             Button {
                 onStartSlideshow()
@@ -66,10 +65,7 @@ struct GridToolbarContent: CustomizableToolbarContent {
                 .fixedSize()
             }
         }
-    }
 
-    @ToolbarContentBuilder
-    private var displayItems: some CustomizableToolbarContent {
         ToolbarItem(id: "captionVisibility") {
             showMenu
         }
@@ -93,14 +89,14 @@ struct GridToolbarContent: CustomizableToolbarContent {
             }
             .help("Toggle GIF animation in grid")
         }
-    }
 
-    @ToolbarContentBuilder
-    private var filterItems: some CustomizableToolbarContent {
         ToolbarItem(id: "mediaTypeFilter") {
             filterMenu
         }
+    }
 
+    @ToolbarContentBuilder
+    private var trailingItems: some CustomizableToolbarContent {
         ToolbarItem(id: "productionFilter") {
             productionFilterMenu
         }
@@ -120,10 +116,7 @@ struct GridToolbarContent: CustomizableToolbarContent {
             .help("Show only items with transcripts")
         }
         .defaultCustomization(.hidden)
-    }
 
-    @ToolbarContentBuilder
-    private var sortAndActionItems: some CustomizableToolbarContent {
         ToolbarItem(id: "advancedFilter") {
             Button {
                 onShowAdvancedFilter()
