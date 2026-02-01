@@ -46,6 +46,55 @@ struct MediaGridView: View {
     }
 
     var body: some View {
+        gridWithToolbar
+            // Expose focused values for menu commands
+            .focusedSceneValue(\.selectAll, { viewModel.selectAll(displayedItems) })
+            .focusedSceneValue(\.deselectAll, { viewModel.clearSelection() })
+            .focusedSceneValue(\.deleteSelected, { deleteSelectedItems() })
+            .focusedSceneValue(\.startSlideshow, { startSlideshow() })
+            .focusedSceneValue(\.revealInFinder, { revealSelectedInFinder() })
+            .focusedSceneValue(\.increaseThumbnailSize, { viewModel.increaseThumbnailSize() })
+            .focusedSceneValue(\.decreaseThumbnailSize, { viewModel.decreaseThumbnailSize() })
+            .focusedSceneValue(\.resetThumbnailSize, { viewModel.resetThumbnailSize() })
+            .focusedSceneValue(\.showAdvancedFilter, { showAdvancedFilter = true })
+            .focusedSceneValue(\.clearAllFilters, { viewModel.clearAllFilters() })
+            .sheet(isPresented: $showAdvancedFilter) {
+                AdvancedFilterSheet(viewModel: viewModel)
+            }
+            .alert(
+                "Move to Trash?",
+                isPresented: $showDeleteConfirmation
+            ) {
+                Button("Move to Trash", role: .destructive) {
+                    performDelete(itemsToDelete)
+                    itemsToDelete = []
+                }
+                .keyboardShortcut(.defaultAction)
+                Button("Cancel", role: .cancel) {
+                    itemsToDelete = []
+                }
+            } message: {
+                if itemsToDelete.count == 1 {
+                    Text("\"\(itemsToDelete.first?.originalFilename ?? "")\" will be moved to the Trash.")
+                } else {
+                    Text("\(itemsToDelete.count) items will be moved to the Trash.")
+                }
+            }
+            .alert(
+                "Move All to Trash?",
+                isPresented: $showTrashAllConfirmation
+            ) {
+                Button("Move to Trash", role: .destructive) {
+                    performDelete(items)
+                }
+                .keyboardShortcut(.defaultAction)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("\(items.count) video\(items.count == 1 ? "" : "s") with decode errors will be moved to the Trash.")
+            }
+    }
+
+    private var gridWithToolbar: some View {
         VStack(spacing: 0) {
             externalDriveBanner
             decodeErrorBanner
@@ -55,7 +104,7 @@ struct MediaGridView: View {
                 itemCountBar
             }
         }
-        .toolbar(id: "gridToolbar") {
+        .toolbar {
             GridToolbarContent(
                 viewModel: viewModel,
                 settings: settings,
@@ -80,51 +129,6 @@ struct MediaGridView: View {
                 viewModel.moveSelection(direction: direction, in: displayedItems, columns: columns)
             }
         )
-        // Expose focused values for menu commands
-        .focusedSceneValue(\.selectAll, { viewModel.selectAll(displayedItems) })
-        .focusedSceneValue(\.deselectAll, { viewModel.clearSelection() })
-        .focusedSceneValue(\.deleteSelected, { deleteSelectedItems() })
-        .focusedSceneValue(\.startSlideshow, { startSlideshow() })
-        .focusedSceneValue(\.revealInFinder, { revealSelectedInFinder() })
-        .focusedSceneValue(\.increaseThumbnailSize, { viewModel.increaseThumbnailSize() })
-        .focusedSceneValue(\.decreaseThumbnailSize, { viewModel.decreaseThumbnailSize() })
-        .focusedSceneValue(\.resetThumbnailSize, { viewModel.resetThumbnailSize() })
-        .focusedSceneValue(\.showAdvancedFilter, { showAdvancedFilter = true })
-        .focusedSceneValue(\.clearAllFilters, { viewModel.clearAllFilters() })
-        .sheet(isPresented: $showAdvancedFilter) {
-            AdvancedFilterSheet(viewModel: viewModel)
-        }
-        .alert(
-            "Move to Trash?",
-            isPresented: $showDeleteConfirmation
-        ) {
-            Button("Move to Trash", role: .destructive) {
-                performDelete(itemsToDelete)
-                itemsToDelete = []
-            }
-            .keyboardShortcut(.defaultAction)
-            Button("Cancel", role: .cancel) {
-                itemsToDelete = []
-            }
-        } message: {
-            if itemsToDelete.count == 1 {
-                Text("\"\(itemsToDelete.first?.originalFilename ?? "")\" will be moved to the Trash.")
-            } else {
-                Text("\(itemsToDelete.count) items will be moved to the Trash.")
-            }
-        }
-        .alert(
-            "Move All to Trash?",
-            isPresented: $showTrashAllConfirmation
-        ) {
-            Button("Move to Trash", role: .destructive) {
-                performDelete(items)
-            }
-            .keyboardShortcut(.defaultAction)
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("\(items.count) video\(items.count == 1 ? "" : "s") with decode errors will be moved to the Trash.")
-        }
     }
 
     // MARK: - View Components

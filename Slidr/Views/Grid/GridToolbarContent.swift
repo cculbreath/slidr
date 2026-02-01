@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-struct GridToolbarContent: CustomizableToolbarContent {
+struct GridToolbarContent: ToolbarContent {
     @Bindable var viewModel: GridViewModel
     let settings: AppSettings?
     let itemsEmpty: Bool
@@ -19,13 +19,11 @@ struct GridToolbarContent: CustomizableToolbarContent {
     private var hoverScrubEnabled: Bool { settings?.gridVideoHoverScrub ?? false }
     private var hasMediaTypeFilter: Bool { !viewModel.mediaTypeFilter.isEmpty }
     private var hasProductionTypeFilter: Bool { !viewModel.productionTypeFilter.isEmpty }
-    private var hasRatingFilter: Bool { viewModel.ratingFilterEnabled && !viewModel.ratingFilter.isEmpty }
     private var hasTagFilter: Bool { !viewModel.tagFilter.isEmpty }
     private var hasCaptionsEnabled: Bool { (settings?.gridShowCaptions ?? true) || (settings?.gridShowFilenames ?? false) }
-    private var hasSubtitleFilter: Bool { viewModel.subtitleFilter }
     private var hasAdvancedFilter: Bool { viewModel.advancedFilter != nil }
 
-    var body: some CustomizableToolbarContent {
+    var body: some ToolbarContent {
         navigationItems
         displayItems
         filterItems
@@ -35,8 +33,8 @@ struct GridToolbarContent: CustomizableToolbarContent {
     // MARK: - Toolbar Groups
 
     @ToolbarContentBuilder
-    private var navigationItems: some CustomizableToolbarContent {
-        ToolbarItem(id: "slideshow", placement: .navigation) {
+    private var navigationItems: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
             Button {
                 onStartSlideshow()
             } label: {
@@ -46,7 +44,7 @@ struct GridToolbarContent: CustomizableToolbarContent {
             .help("Start Slideshow")
         }
 
-        ToolbarItem(id: "import", placement: .navigation) {
+        ToolbarItem(placement: .navigation) {
             Button {
                 onImport()
             } label: {
@@ -55,7 +53,7 @@ struct GridToolbarContent: CustomizableToolbarContent {
             .help("Import Files")
         }
 
-        ToolbarItem(id: "thumbnailSize", placement: .secondaryAction) {
+        ToolbarItem(placement: .secondaryAction) {
             LabeledContent("Thumbnail Size") {
                 Picker("Size", selection: $viewModel.thumbnailSize) {
                     Label("Large", systemImage: "square.grid.2x2").tag(ThumbnailSize.large)
@@ -70,12 +68,12 @@ struct GridToolbarContent: CustomizableToolbarContent {
     }
 
     @ToolbarContentBuilder
-    private var displayItems: some CustomizableToolbarContent {
-        ToolbarItem(id: "captionVisibility", placement: .secondaryAction) {
+    private var displayItems: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
             showMenu
         }
 
-        ToolbarItem(id: "hoverScrub", placement: .secondaryAction) {
+        ToolbarItem(placement: .secondaryAction) {
             Button {
                 onToggleHoverScrub()
             } label: {
@@ -85,7 +83,7 @@ struct GridToolbarContent: CustomizableToolbarContent {
             .help("Toggle video scrub on hover")
         }
 
-        ToolbarItem(id: "gifAnimation", placement: .secondaryAction) {
+        ToolbarItem(placement: .secondaryAction) {
             Button {
                 onToggleGIFAnimation()
             } label: {
@@ -97,40 +95,23 @@ struct GridToolbarContent: CustomizableToolbarContent {
     }
 
     @ToolbarContentBuilder
-    private var filterItems: some CustomizableToolbarContent {
-        ToolbarItem(id: "mediaTypeFilter", placement: .secondaryAction) {
+    private var filterItems: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
             filterMenu
         }
 
-        ToolbarItem(id: "productionFilter", placement: .secondaryAction) {
+        ToolbarItem(placement: .secondaryAction) {
             productionFilterMenu
         }
 
-        ToolbarItem(id: "tagFilter", placement: .secondaryAction) {
+        ToolbarItem(placement: .secondaryAction) {
             tagFilterMenu
         }
-
-        ToolbarItem(id: "subtitleFilter", placement: .secondaryAction) {
-            Button {
-                viewModel.subtitleFilter.toggle()
-            } label: {
-                Label("Has Subtitle", systemImage: "captions.bubble")
-                    .symbolVariant(hasSubtitleFilter ? .fill : .none)
-                    .foregroundStyle(hasSubtitleFilter ? Color.accentColor : .primary)
-            }
-            .help("Show only items with subtitles")
-        }
-        .defaultCustomization(.hidden)
-
-        ToolbarItem(id: "ratingFilter", placement: .secondaryAction) {
-            ratingFilterMenu
-        }
-        .defaultCustomization(.hidden)
     }
 
     @ToolbarContentBuilder
-    private var sortAndActionItems: some CustomizableToolbarContent {
-        ToolbarItem(id: "advancedFilter", placement: .secondaryAction) {
+    private var sortAndActionItems: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
             Button {
                 onShowAdvancedFilter()
             } label: {
@@ -141,11 +122,11 @@ struct GridToolbarContent: CustomizableToolbarContent {
             .help("Open advanced filter")
         }
 
-        ToolbarItem(id: "sortOrder", placement: .secondaryAction) {
+        ToolbarItem(placement: .secondaryAction) {
             sortMenu
         }
 
-        ToolbarItem(id: "inspector", placement: .primaryAction) {
+        ToolbarItem(placement: .primaryAction) {
             Button {
                 onToggleInspector()
             } label: {
@@ -244,7 +225,6 @@ struct GridToolbarContent: CustomizableToolbarContent {
             }
         } label: {
             Label("Production", systemImage: "film")
-                .symbolVariant(hasProductionTypeFilter ? .fill : .none)
                 .foregroundStyle(hasProductionTypeFilter ? Color.accentColor : .primary)
         }
     }
@@ -255,82 +235,6 @@ struct GridToolbarContent: CustomizableToolbarContent {
             tagFilter: $viewModel.tagFilter,
             hasTagFilter: hasTagFilter
         )
-    }
-
-    private var ratingFilterMenu: some View {
-        Menu {
-            // Star ratings 1-5
-            ForEach(1...5, id: \.self) { stars in
-                Button {
-                    toggleRating(stars)
-                } label: {
-                    HStack {
-                        Text(String(repeating: "\u{2605}", count: stars))
-                        Spacer()
-                        if viewModel.ratingFilter.contains(stars) {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
-
-            // No rating option
-            Button {
-                toggleRating(0)
-            } label: {
-                HStack {
-                    Text("No Rating")
-                    Spacer()
-                    if viewModel.ratingFilter.contains(0) {
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-
-            Divider()
-
-            // Enable/Disable filter (radio)
-            Button {
-                viewModel.ratingFilterEnabled = true
-            } label: {
-                HStack {
-                    Text("Filter Enabled")
-                    Spacer()
-                    if viewModel.ratingFilterEnabled {
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-
-            Button {
-                viewModel.ratingFilterEnabled = false
-            } label: {
-                HStack {
-                    Text("Filter Disabled")
-                    Spacer()
-                    if !viewModel.ratingFilterEnabled {
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-        } label: {
-            // Static icon structure
-            Label("Rating", systemImage: "star")
-                .symbolVariant(hasRatingFilter ? .fill : .none)
-                .foregroundStyle(hasRatingFilter ? Color.accentColor : .primary)
-        }
-    }
-
-    private func toggleRating(_ rating: Int) {
-        if viewModel.ratingFilter.contains(rating) {
-            viewModel.ratingFilter.remove(rating)
-        } else {
-            viewModel.ratingFilter.insert(rating)
-        }
-        // Auto-enable filter when selecting ratings
-        if !viewModel.ratingFilter.isEmpty {
-            viewModel.ratingFilterEnabled = true
-        }
     }
 
     private var sortMenu: some View {
