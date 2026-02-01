@@ -1,6 +1,34 @@
 import AppKit
 import SwiftUI
 
+// MARK: - ResilientToolbar
+
+/// NSToolbar subclass that catches unbalanced KVO observer removal.
+/// SwiftUI's BarAppearanceBridge may try to remove a "displayMode" observer
+/// it never registered, causing an NSRangeException. This subclass silently
+/// absorbs that failure.
+class ResilientToolbar: NSToolbar {
+    override func removeObserver(_ observer: NSObject, forKeyPath keyPath: String) {
+        do {
+            try ObjCExceptionCatcher.catchException {
+                super.removeObserver(observer, forKeyPath: keyPath)
+            }
+        } catch {
+            // Silently absorb unbalanced KVO removal
+        }
+    }
+
+    override func removeObserver(_ observer: NSObject, forKeyPath keyPath: String, context: UnsafeMutableRawPointer?) {
+        do {
+            try ObjCExceptionCatcher.catchException {
+                super.removeObserver(observer, forKeyPath: keyPath, context: context)
+            }
+        } catch {
+            // Silently absorb unbalanced KVO removal
+        }
+    }
+}
+
 // MARK: - Toolbar Item Identifiers
 
 /// Toolbar identifiers in a nonisolated enum to avoid MainActor isolation issues with NSToolbarDelegate.
@@ -23,6 +51,7 @@ enum ToolbarID {
     nonisolated static let sidebarSeparator = NSToolbarItem.Identifier("sidebarSeparator")
     nonisolated static let inspectorSeparator = NSToolbarItem.Identifier("inspectorSeparator")
     nonisolated static let tagPalette = NSToolbarItem.Identifier("tagPalette")
+    nonisolated static let viewMode = NSToolbarItem.Identifier("viewMode")
 }
 
 // MARK: - GridToolbarCoordinator
@@ -45,6 +74,7 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
     var onToggleFilenames: (() -> Void)?
     var onToggleInspector: (() -> Void)?
     var onShowAdvancedFilter: (() -> Void)?
+    var onViewModeChanged: ((BrowserViewMode) -> Void)?
 
     // MARK: - Tag Palette
     let tagPaletteViewModel = TagPaletteViewModel()
@@ -71,7 +101,7 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
 
     override init() {
         // Bump identifier to avoid loading stale SwiftUI toolbar config
-        let tb = NSToolbar(identifier: "gridToolbar.v2")
+        let tb = ResilientToolbar(identifier: "gridToolbar.v2")
         tb.allowsUserCustomization = true
         tb.autosavesConfiguration = true
         tb.displayMode = .iconOnly
@@ -118,6 +148,7 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         _ = settings?.gridVideoHoverScrub
         _ = settings?.gridShowCaptions
         _ = settings?.gridShowFilenames
+        _ = vm.browserMode
         _ = itemsEmpty
     }
 
@@ -127,6 +158,7 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         [
             .toggleSidebar,
             ToolbarID.sidebarSeparator,
+            ToolbarID.viewMode,
             ToolbarID.slideshow,
             ToolbarID.importFiles,
             ToolbarID.thumbnailSize,
@@ -148,6 +180,7 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         [
             .toggleSidebar,
             ToolbarID.sidebarSeparator,
+            ToolbarID.viewMode,
             ToolbarID.slideshow,
             ToolbarID.importFiles,
             ToolbarID.thumbnailSize,
@@ -187,6 +220,8 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
 
     private func makeItem(for identifier: NSToolbarItem.Identifier) -> NSToolbarItem? {
         switch identifier {
+        case ToolbarID.viewMode:
+            return makeViewModeItem()
         case ToolbarID.slideshow:
             return makeSlideshowItem()
         case ToolbarID.importFiles:
@@ -224,6 +259,32 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         default:
             return nil
         }
+    }
+
+    // MARK: - View Mode
+
+    private func makeViewModeItem() -> NSToolbarItem {
+        let item = NSToolbarItem(itemIdentifier: ToolbarID.viewMode)
+        item.label = "View"
+        item.paletteLabel = "View Mode"
+        item.toolTip = "Switch between grid and list view"
+
+        let seg = NSSegmentedControl(
+            images: [
+                NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: "Grid")!,
+                NSImage(systemSymbolName: "list.bullet", accessibilityDescription: "List")!,
+            ],
+            trackingMode: .selectOne,
+            target: self,
+            action: #selector(viewModeAction(_:))
+        )
+        seg.segmentStyle = .separated
+        let mode = viewModel?.browserMode ?? .grid
+        seg.selectedSegment = mode == .grid ? 0 : 1
+        seg.setWidth(36, forSegment: 0)
+        seg.setWidth(36, forSegment: 1)
+        item.view = seg
+        return item
     }
 
     // MARK: - Button Items
@@ -443,41 +504,44 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         item.label = "Tags"
         item.paletteLabel = "Tags"
         item.toolTip = "Filter by tags"
-        item.isBordered = true
 
         let hasFilter = !(viewModel?.tagFilter.isEmpty ?? true)
-        let tint: NSColor = hasFilter ? .controlAccentColor : .labelColor
+        let image = tagFilterComposedImage(hasFilter: hasFilter)
 
-        let tagImage = NSImage(systemSymbolName: hasFilter ? "tag.fill" : "tag", accessibilityDescription: "Tags")!
-        let tagView = NSImageView(image: tagImage)
-        tagView.contentTintColor = tint
-
-        let chevronConfig = NSImage.SymbolConfiguration(pointSize: 8, weight: .semibold)
-        let chevronImage = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)!
-            .withSymbolConfiguration(chevronConfig)!
-        let chevronView = NSImageView(image: chevronImage)
-        chevronView.contentTintColor = tint
-
-        let stack = NSStackView(views: [tagView, chevronView])
-        stack.orientation = .horizontal
-        stack.spacing = 2
-        stack.alignment = .centerY
-
-        let button = NSButton(frame: .zero)
+        let button = NSButton(image: image, target: self, action: #selector(tagFilterAction(_:)))
         button.bezelStyle = .toolbar
-        button.isBordered = false
-        button.target = self
-        button.action = #selector(tagFilterAction(_:))
-        button.addSubview(stack)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: button.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-        ])
-        button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-
+        button.isBordered = true
         item.view = button
         return item
+    }
+
+    private func tagFilterComposedImage(hasFilter: Bool) -> NSImage {
+        let tint: NSColor = hasFilter ? .controlAccentColor : .labelColor
+        let tagSymbol = hasFilter ? "tag.fill" : "tag"
+        let tagImage = NSImage(systemSymbolName: tagSymbol, accessibilityDescription: "Tags")!
+            .withSymbolConfiguration(.init(paletteColors: [tint]))!
+
+        let chevronConfig = NSImage.SymbolConfiguration(pointSize: 6, weight: .bold)
+        let chevronImage = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)!
+            .withSymbolConfiguration(chevronConfig.applying(.init(paletteColors: [tint])))!
+
+        let tagSize = tagImage.size
+        let chevronSize = chevronImage.size
+        let spacing: CGFloat = 2
+        let totalWidth = tagSize.width + spacing + chevronSize.width
+        let totalHeight = max(tagSize.height, chevronSize.height)
+
+        let composed = NSImage(size: NSSize(width: totalWidth, height: totalHeight), flipped: false) { rect in
+            let tagY = (rect.height - tagSize.height) / 2
+            tagImage.draw(in: NSRect(x: 0, y: tagY, width: tagSize.width, height: tagSize.height))
+
+            let chevronX = tagSize.width + spacing
+            let chevronY = (rect.height - chevronSize.height) / 2
+            chevronImage.draw(in: NSRect(x: chevronX, y: chevronY, width: chevronSize.width, height: chevronSize.height))
+            return true
+        }
+        composed.isTemplate = false
+        return composed
     }
 
     private func makeTagPaletteItem() -> NSToolbarItem {
@@ -485,7 +549,6 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         item.label = "Tag Palette"
         item.paletteLabel = "Tag Palette"
         item.toolTip = "Toggle floating tag palette"
-        item.isBordered = true
 
         let visible = tagPaletteController.isVisible
         let symbolName = visible ? "tag.square.fill" : "tag.square"
@@ -536,6 +599,11 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
 
     func updateItemStates() {
         guard let vm = viewModel else { return }
+
+        // View mode
+        if let item = itemCache[ToolbarID.viewMode], let seg = item.view as? NSSegmentedControl {
+            seg.selectedSegment = vm.browserMode == .grid ? 0 : 1
+        }
 
         // Slideshow enabled state
         if let item = itemCache[ToolbarID.slideshow] {
@@ -607,18 +675,9 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         }
 
         // Tag filter
-        if let item = itemCache[ToolbarID.tagFilter],
-           let button = item.view as? NSButton,
-           let stack = button.subviews.first as? NSStackView {
+        if let item = itemCache[ToolbarID.tagFilter], let button = item.view as? NSButton {
             let hasFilter = !vm.tagFilter.isEmpty
-            let tint: NSColor = hasFilter ? .controlAccentColor : .labelColor
-            if let tagView = stack.arrangedSubviews.first as? NSImageView {
-                tagView.image = NSImage(systemSymbolName: hasFilter ? "tag.fill" : "tag", accessibilityDescription: "Tags")!
-                tagView.contentTintColor = tint
-            }
-            if let chevronView = stack.arrangedSubviews.last as? NSImageView {
-                chevronView.contentTintColor = tint
-            }
+            button.image = tagFilterComposedImage(hasFilter: hasFilter)
         }
 
         // Subtitle filter
@@ -658,6 +717,13 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
             self?.viewModel?.tagFilter = newFilter
             self?.updateItemStates()
         }
+        tagPaletteViewModel.onShowAdvancedFilter = { [weak self] in
+            self?.onShowAdvancedFilter?()
+        }
+    }
+
+    func updatePaletteTagCounts(_ counts: [String: Int]) {
+        tagPaletteViewModel.tagCounts = counts
     }
 
     func updatePaletteSelectedItems(_ items: [MediaItem]) {
@@ -786,6 +852,12 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
 
     // MARK: - Actions
 
+    @objc private func viewModeAction(_ sender: NSSegmentedControl) {
+        let mode: BrowserViewMode = sender.selectedSegment == 0 ? .grid : .list
+        viewModel?.browserMode = mode
+        onViewModeChanged?(mode)
+    }
+
     @objc private func slideshowAction() {
         onStartSlideshow?()
     }
@@ -861,7 +933,7 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
             set: { vm.tagFilter = $0 }
         )
         let hasFilter = !vm.tagFilter.isEmpty
-        let content = TagFilterPopover(allTags: allTags, tagFilter: tagBinding, hasTagFilter: hasFilter)
+        let content = TagFilterPopover(allTags: allTags, tagFilter: tagBinding, hasTagFilter: hasFilter, tagCounts: tagPaletteViewModel.tagCounts)
         popover.contentViewController = NSHostingController(rootView: content)
         popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
     }

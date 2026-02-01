@@ -17,9 +17,7 @@ struct MediaListView: View {
         Table(displayedItems, selection: $viewModel.selectedItems, columnCustomization: $columnCustomization) {
             Group {
                 TableColumn("") { (item: MediaItem) in
-                    AsyncThumbnailImage(item: item, size: .small)
-                        .frame(width: 32, height: 32)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    ListThumbnail(item: item, library: library)
                 }
                 .width(40)
                 .customizationID(ListColumnID.thumbnail.rawValue)
@@ -186,6 +184,7 @@ struct MediaListView: View {
                   let index = displayedItems.firstIndex(where: { $0.id == firstID }) else { return }
             onStartSlideshow(displayedItems, index)
         }
+        .focusedSceneValue(\.listColumnCustomization, $columnCustomization)
     }
 
     // MARK: - Context Menu
@@ -237,5 +236,33 @@ struct MediaListView: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
+    }
+}
+
+// MARK: - List Thumbnail
+
+/// Lightweight thumbnail for table rows that takes library explicitly
+/// instead of using @Environment, which crashes during Table column resize.
+private struct ListThumbnail: View {
+    let item: MediaItem
+    let library: MediaLibrary
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Image(systemName: "photo")
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(width: 32, height: 32)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .task(id: item.id) {
+            image = try? await library.thumbnail(for: item, size: .small)
+        }
     }
 }

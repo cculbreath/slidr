@@ -20,7 +20,9 @@ struct WindowToolbarAccessor: NSViewRepresentable {
         let view = NSView()
         DispatchQueue.main.async {
             guard let window = view.window else { return }
-            window.toolbar = coordinator.toolbar
+            if window.toolbar !== coordinator.toolbar {
+                window.toolbar = coordinator.toolbar
+            }
             window.titleVisibility = .hidden
 
             // Find the NSSplitView for tracking separators
@@ -31,7 +33,13 @@ struct WindowToolbarAccessor: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        // Re-check on updates in case the window changed
+        guard let window = nsView.window else { return }
+        if window.toolbar !== coordinator.toolbar {
+            window.toolbar = coordinator.toolbar
+        }
+    }
 
     private func findSplitView(in view: NSView?) -> NSSplitView? {
         guard let view else { return nil }

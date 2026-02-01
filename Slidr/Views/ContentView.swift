@@ -186,6 +186,9 @@ struct ContentView: View {
                 gridViewModel.browserMode = newValue
                 settingsQuery.first?.browserViewMode = newValue
             }
+            .onChange(of: gridViewModel.browserMode) { _, newValue in
+                browserViewMode = newValue
+            }
             .onChange(of: loopSlideshow) { _, newValue in
                 settingsQuery.first?.loopSlideshow = newValue
             }
@@ -245,6 +248,7 @@ struct ContentView: View {
         }
         .animation(.easeInOut(duration: 0.25), value: previewItem != nil)
         .environment(\.transcriptSeekAction, transcriptSeekAction)
+        .modifier(WindowToolbarModifier(coordinator: toolbarCoordinator))
         .inspector(isPresented: $showInspector) {
             inspectorContent
         }

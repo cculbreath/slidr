@@ -142,6 +142,10 @@ struct SlideshowTransitionKey: FocusedValueKey {
     typealias Value = Binding<TransitionType>
 }
 
+struct ListColumnCustomizationKey: FocusedValueKey {
+    typealias Value = Binding<TableColumnCustomization<MediaItem>>
+}
+
 // MARK: - Binding Keys (moved from AppDelegate)
 
 struct ImportDestinationKey: FocusedValueKey {
@@ -350,6 +354,11 @@ extension FocusedValues {
     var slideshowTransition: Binding<TransitionType>? {
         get { self[SlideshowTransitionKey.self] }
         set { self[SlideshowTransitionKey.self] = newValue }
+    }
+
+    var listColumnCustomization: Binding<TableColumnCustomization<MediaItem>>? {
+        get { self[ListColumnCustomizationKey.self] }
+        set { self[ListColumnCustomizationKey.self] = newValue }
     }
 
     // Binding values

@@ -8,20 +8,33 @@ final class TagPaletteViewModel {
         case editTags = "Edit Tags"
     }
 
+    enum TagSort: String, CaseIterable {
+        case alphabetical
+        case byCount
+    }
+
     var mode: Mode = .filter
     var searchText: String = ""
+    var tagSort: TagSort = .alphabetical
 
     // External state (set by coordinator)
     var allTags: [String] = []
     var tagFilter: Set<String> = []
     var selectedItems: [MediaItem] = []
+    var tagCounts: [String: Int] = [:]
 
-    // Callback to push filter changes back to GridViewModel
+    // Callbacks
     var onTagFilterChanged: ((Set<String>) -> Void)?
+    var onShowAdvancedFilter: (() -> Void)?
 
     var filteredTags: [String] {
-        if searchText.isEmpty { return allTags }
-        return allTags.filter { $0.localizedCaseInsensitiveContains(searchText) }
+        let base = searchText.isEmpty ? allTags : allTags.filter { $0.localizedCaseInsensitiveContains(searchText) }
+        switch tagSort {
+        case .alphabetical:
+            return base
+        case .byCount:
+            return base.sorted { (tagCounts[$0] ?? 0) > (tagCounts[$1] ?? 0) }
+        }
     }
 
     // Tags common to ALL selected items (solid display)

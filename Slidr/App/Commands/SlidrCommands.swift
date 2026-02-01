@@ -94,6 +94,7 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.loopSlideshow) var loopSlideshow
     @FocusedValue(\.shuffleSlideshow) var shuffleSlideshow
     @FocusedValue(\.slideshowTransition) var slideshowTransition
+    @FocusedValue(\.listColumnCustomization) var listColumnCustomization
     @FocusedValue(\.subtitleShow) var subtitleShow
     @FocusedValue(\.subtitlePosition) var subtitlePosition
     @FocusedValue(\.subtitleFontSize) var subtitleFontSize
@@ -314,19 +315,34 @@ struct SlidrCommands: Commands {
     @ViewBuilder
     private var showColumnsMenu: some View {
         Menu("Show Columns") {
-            ForEach(ListColumnID.allCases.filter({ $0 != .thumbnail })) { column in
-                Button {
-                    // Column visibility is managed by TableColumnCustomization via SceneStorage.
-                    // The menu serves as a reference; toggling is done by right-clicking
-                    // the table header in the list view.
-                } label: {
-                    HStack {
-                        Text(column.displayName)
-                        if column.defaultVisible {
-                            Spacer()
-                            Image(systemName: "checkmark")
+            if let listColumnCustomization {
+                ForEach(ListColumnID.allCases.filter({ $0 != .thumbnail })) { column in
+                    let isVisible = listColumnCustomization.wrappedValue[visibility: column.rawValue] != .hidden
+                    Button {
+                        listColumnCustomization.wrappedValue[visibility: column.rawValue] = isVisible ? .hidden : .visible
+                    } label: {
+                        HStack {
+                            Text(column.displayName)
+                            if isVisible {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
                         }
                     }
+                }
+            } else {
+                ForEach(ListColumnID.allCases.filter({ $0 != .thumbnail })) { column in
+                    Button {
+                    } label: {
+                        HStack {
+                            Text(column.displayName)
+                            if column.defaultVisible {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .disabled(true)
                 }
             }
         }

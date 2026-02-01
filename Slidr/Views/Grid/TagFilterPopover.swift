@@ -4,6 +4,7 @@ struct TagFilterPopover: View {
     let allTags: [String]
     @Binding var tagFilter: Set<String>
     let hasTagFilter: Bool
+    var tagCounts: [String: Int] = [:]
 
     @State private var searchText = ""
 
@@ -78,13 +79,20 @@ struct TagFilterPopover: View {
                 tagFilter.insert(tag)
             }
         } label: {
-            HStack {
+            HStack(spacing: 0) {
+                Image(systemName: "checkmark")
+                    .font(.caption)
+                    .foregroundStyle(Color.accentColor)
+                    .opacity(tagFilter.contains(tag) ? 1 : 0)
+                    .frame(width: 24, alignment: .center)
                 Text(tag)
                     .lineLimit(1)
                 Spacer()
-                if tagFilter.contains(tag) {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(Color.accentColor)
+                if let count = tagCounts[tag] {
+                    Text("\(count)")
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
+                        .monospacedDigit()
                 }
             }
             .contentShape(Rectangle())

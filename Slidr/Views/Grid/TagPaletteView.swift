@@ -3,12 +3,20 @@ import SwiftUI
 struct TagPaletteView: View {
     @Bindable var viewModel: TagPaletteViewModel
 
+    @State private var newTagText: String = ""
+
     var body: some View {
         VStack(spacing: 0) {
             modePicker
+            Divider()
+            appliedTagsSection
+            Divider()
             searchField
             Divider()
-            contentArea
+            sortToggle
+            tagChecklist
+            Divider()
+            bottomBar
         }
         .frame(minWidth: 220, minHeight: 250)
     }
@@ -24,6 +32,129 @@ struct TagPaletteView: View {
         .pickerStyle(.segmented)
         .labelsHidden()
         .padding(8)
+    }
+
+    // MARK: - Applied Tags Section
+
+    @ViewBuilder
+    private var appliedTagsSection: some View {
+        switch viewModel.mode {
+        case .filter:
+            filterChipsSection
+        case .editTags:
+            editChipsSection
+        }
+    }
+
+    @ViewBuilder
+    private var filterChipsSection: some View {
+        if !viewModel.tagFilter.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Applied Tags")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                FlowLayout(spacing: 4) {
+                    ForEach(Array(viewModel.tagFilter).sorted(), id: \.self) { tag in
+                        chipView(tag: tag, dimmed: false) {
+                            viewModel.toggleFilterTag(tag)
+                        }
+                    }
+                }
+            }
+            .padding(8)
+        }
+    }
+
+    @ViewBuilder
+    private var editChipsSection: some View {
+        if !viewModel.hasSelection {
+            VStack(spacing: 8) {
+                Image(systemName: "square.dashed")
+                    .font(.title2)
+                    .foregroundStyle(.tertiary)
+                Text("Select items to edit tags")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                editTagsHeader
+
+                if !viewModel.partialTags.isEmpty {
+                    FlowLayout(spacing: 4) {
+                        ForEach(Array(viewModel.partialTags).sorted(), id: \.self) { tag in
+                            let isCommon = viewModel.commonTags.contains(tag)
+                            chipView(tag: tag, dimmed: !isCommon) {
+                                viewModel.removeTagFromSelected(tag)
+                            }
+                        }
+                    }
+                }
+
+                addTagField
+            }
+            .padding(8)
+        }
+    }
+
+    private var editTagsHeader: some View {
+        Group {
+            if viewModel.selectedItems.count == 1,
+               let item = viewModel.selectedItems.first {
+                Text(item.originalFilename)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            } else {
+                Text("Editing \(viewModel.selectedItems.count) items")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+
+    private func chipView(tag: String, dimmed: Bool, onRemove: @escaping () -> Void) -> some View {
+        HStack(spacing: 4) {
+            Text(tag)
+                .font(.callout)
+                .lineLimit(1)
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(dimmed ? Color.secondary.opacity(0.1) : Color.accentColor.opacity(0.15))
+        .clipShape(Capsule())
+        .opacity(dimmed ? 0.7 : 1.0)
+    }
+
+    private var addTagField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "plus.circle")
+                .foregroundStyle(.secondary)
+            TextField("Add tag\u{2026}", text: $newTagText)
+                .textFieldStyle(.plain)
+                .onSubmit {
+                    viewModel.addTagToSelected(newTagText)
+                    newTagText = ""
+                }
+            if !newTagText.isEmpty {
+                Button {
+                    viewModel.addTagToSelected(newTagText)
+                    newTagText = ""
+                } label: {
+                    Image(systemName: "return")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     // MARK: - Search Field
@@ -48,69 +179,73 @@ struct TagPaletteView: View {
         .padding(.vertical, 6)
     }
 
-    // MARK: - Content Area
+    // MARK: - Sort Toggle
 
-    @ViewBuilder
-    private var contentArea: some View {
-        switch viewModel.mode {
-        case .filter:
-            filterContent
-        case .editTags:
-            editTagsContent
+    private var sortToggle: some View {
+        HStack {
+            Spacer()
+            Button {
+                viewModel.tagSort = viewModel.tagSort == .alphabetical ? .byCount : .alphabetical
+            } label: {
+                Image(systemName: viewModel.tagSort == .alphabetical ? "textformat.abc" : "number")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help(viewModel.tagSort == .alphabetical ? "Sort by count" : "Sort alphabetically")
+            }
+            .buttonStyle(.plain)
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
     }
 
-    // MARK: - Filter Mode
+    // MARK: - Tag Checklist
 
-    private var filterContent: some View {
-        VStack(spacing: 0) {
-            if !viewModel.tagFilter.isEmpty {
-                Button {
-                    viewModel.clearFilter()
-                } label: {
-                    Label("Clear Tag Filter", systemImage: "xmark.circle")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-
-                Divider()
-            }
-
-            if viewModel.allTags.isEmpty {
-                Spacer()
-                Text("No tags in library")
-                    .foregroundStyle(.secondary)
-                Spacer()
-            } else if viewModel.filteredTags.isEmpty {
-                Spacer()
-                Text("No matching tags")
-                    .foregroundStyle(.secondary)
-                Spacer()
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(viewModel.filteredTags, id: \.self) { tag in
-                            filterTagRow(tag)
-                        }
+    @ViewBuilder
+    private var tagChecklist: some View {
+        if viewModel.allTags.isEmpty {
+            Spacer()
+            Text("No tags in library")
+                .foregroundStyle(.secondary)
+            Spacer()
+        } else if viewModel.filteredTags.isEmpty {
+            Spacer()
+            Text("No matching tags")
+                .foregroundStyle(.secondary)
+            Spacer()
+        } else {
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(viewModel.filteredTags, id: \.self) { tag in
+                        checklistRow(tag)
                     }
                 }
             }
         }
     }
 
-    private func filterTagRow(_ tag: String) -> some View {
+    private func checklistRow(_ tag: String) -> some View {
         Button {
-            viewModel.toggleFilterTag(tag)
+            switch viewModel.mode {
+            case .filter:
+                viewModel.toggleFilterTag(tag)
+            case .editTags:
+                toggleEditTag(tag)
+            }
         } label: {
-            HStack {
+            HStack(spacing: 0) {
+                checkmarkIndicator(for: tag)
+                    .frame(width: 24, alignment: .center)
+
                 Text(tag)
                     .lineLimit(1)
+
                 Spacer()
-                if viewModel.tagFilter.contains(tag) {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(Color.accentColor)
+
+                if let count = viewModel.tagCounts[tag] {
+                    Text("\(count)")
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
+                        .monospacedDigit()
                 }
             }
             .contentShape(Rectangle())
@@ -120,103 +255,52 @@ struct TagPaletteView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Edit Tags Mode
-
-    private var editTagsContent: some View {
-        VStack(spacing: 0) {
-            if !viewModel.hasSelection {
-                Spacer()
-                VStack(spacing: 8) {
-                    Image(systemName: "square.dashed")
-                        .font(.title2)
-                        .foregroundStyle(.tertiary)
-                    Text("Select media items to edit tags")
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
+    private func checkmarkIndicator(for tag: String) -> some View {
+        let (symbol, color, visible): (String, Color, Bool) = {
+            switch viewModel.mode {
+            case .filter:
+                return ("checkmark", .accentColor, viewModel.tagFilter.contains(tag))
+            case .editTags:
+                if viewModel.commonTags.contains(tag) {
+                    return ("checkmark", .accentColor, true)
+                } else if viewModel.partialTags.contains(tag) {
+                    return ("minus", .secondary, true)
                 }
-                .padding()
-                Spacer()
-            } else {
-                editTagsHeader
-                Divider()
-                tagChips
-                Divider()
-                addTagField
+                return ("checkmark", .accentColor, false)
             }
-        }
-    }
+        }()
 
-    private var editTagsHeader: some View {
-        Text("Editing \(viewModel.selectedItems.count) item\(viewModel.selectedItems.count == 1 ? "" : "s")")
+        return Image(systemName: symbol)
             .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .foregroundStyle(color)
+            .opacity(visible ? 1 : 0)
     }
 
-    private var tagChips: some View {
-        ScrollView {
-            FlowLayout(spacing: 4) {
-                ForEach(Array(viewModel.partialTags).sorted(), id: \.self) { tag in
-                    let isCommon = viewModel.commonTags.contains(tag)
-                    tagChip(tag, isCommon: isCommon)
-                }
-            }
-            .padding(8)
+    private func toggleEditTag(_ tag: String) {
+        if viewModel.commonTags.contains(tag) {
+            viewModel.removeTagFromSelected(tag)
+        } else {
+            viewModel.addTagToSelected(tag)
         }
     }
 
-    private func tagChip(_ tag: String, isCommon: Bool) -> some View {
-        HStack(spacing: 4) {
-            Text(tag)
-                .font(.callout)
-                .lineLimit(1)
-            if !isCommon {
-                Text("mixed")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-            Button {
-                viewModel.removeTagFromSelected(tag)
-            } label: {
-                Image(systemName: "xmark.circle.fill")
+    // MARK: - Bottom Bar
+
+    private var bottomBar: some View {
+        Button {
+            viewModel.onShowAdvancedFilter?()
+        } label: {
+            HStack {
+                Text("Advanced Filter\u{2026}")
+                Spacer()
+                Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(isCommon ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.1))
-        .clipShape(Capsule())
-        .opacity(isCommon ? 1.0 : 0.7)
-    }
-
-    @State private var newTagText: String = ""
-
-    private var addTagField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "plus.circle")
-                .foregroundStyle(.secondary)
-            TextField("Add tag\u{2026}", text: $newTagText)
-                .textFieldStyle(.plain)
-                .onSubmit {
-                    viewModel.addTagToSelected(newTagText)
-                    newTagText = ""
-                }
-            if !newTagText.isEmpty {
-                Button {
-                    viewModel.addTagToSelected(newTagText)
-                    newTagText = ""
-                } label: {
-                    Image(systemName: "return")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .buttonStyle(.plain)
     }
 }

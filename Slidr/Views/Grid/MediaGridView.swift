@@ -36,6 +36,16 @@ struct MediaGridView: View {
     private var allTags: [String] {
         Array(Set(items.flatMap(\.tags))).sorted()
     }
+
+    private func computeTagCounts() -> [String: Int] {
+        var counts: [String: Int] = [:]
+        for item in items {
+            for tag in item.tags {
+                counts[tag, default: 0] += 1
+            }
+        }
+        return counts
+    }
     private var hasActiveFilters: Bool {
         !viewModel.searchText.isEmpty
         || !viewModel.mediaTypeFilter.isEmpty
@@ -106,7 +116,6 @@ struct MediaGridView: View {
                 itemCountBar
             }
         }
-        .modifier(WindowToolbarModifier(coordinator: toolbarCoordinator))
         .gridKeyboardHandling(
             onDelete: deleteSelectedItems,
             onQuickLook: quickLookSelected,
@@ -122,6 +131,7 @@ struct MediaGridView: View {
         .onChange(of: allTags) { _, tags in
             toolbarCoordinator.allTags = tags
             toolbarCoordinator.tagPaletteViewModel.allTags = tags
+            toolbarCoordinator.updatePaletteTagCounts(computeTagCounts())
         }
         .onChange(of: viewModel.selectedItems) { _, selectedIDs in
             let resolved = displayedItems.filter { selectedIDs.contains($0.id) }
@@ -146,6 +156,7 @@ struct MediaGridView: View {
         toolbarCoordinator.onToggleInspector = { [onToggleInspector] in onToggleInspector?() }
         toolbarCoordinator.onShowAdvancedFilter = { self.showAdvancedFilter = true }
         toolbarCoordinator.configurePalette()
+        toolbarCoordinator.updatePaletteTagCounts(computeTagCounts())
         toolbarCoordinator.startObserving()
     }
 
