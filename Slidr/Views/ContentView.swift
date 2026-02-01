@@ -147,7 +147,7 @@ struct ContentView: View {
     }
 
     private var navigationViewWithFocusedValues: some View {
-        navigationViewWithSubtitleBindings
+        navigationViewWithBrowserBindings
             // Action-based focused values for menu commands
             .focusedSceneValue(\.toggleInspector, { showInspector.toggle() })
             .focusedSceneValue(\.importFilesAction, { importFiles() })
@@ -157,12 +157,6 @@ struct ContentView: View {
             .focusedSceneValue(\.newPlaylist, { sidebarViewModel.createPlaylist() })
             .focusedSceneValue(\.newSmartPlaylist, { sidebarViewModel.createSmartPlaylist() })
             .focusedSceneValue(\.toggleTagPalette, { toolbarCoordinator.toggleTagPalette() })
-            // Browser & slideshow bindings
-            .focusedSceneValue(\.browserViewMode, $browserViewMode)
-            .focusedSceneValue(\.videoHoverScrub, $videoHoverScrub)
-            .focusedSceneValue(\.loopSlideshow, $loopSlideshow)
-            .focusedSceneValue(\.shuffleSlideshow, $shuffleSlideshow)
-            .focusedSceneValue(\.slideshowTransition, $slideshowTransition)
             .onChange(of: importDestination) { _, newValue in
                 settingsQuery.first?.defaultImportLocation = newValue
             }
@@ -175,6 +169,16 @@ struct ContentView: View {
             .onChange(of: animateGIFs) { _, newValue in
                 settingsQuery.first?.animateGIFsInGrid = newValue
             }
+    }
+
+    private var navigationViewWithBrowserBindings: some View {
+        navigationViewWithSubtitleBindings
+            // Browser & slideshow bindings
+            .focusedSceneValue(\.browserViewMode, $browserViewMode)
+            .focusedSceneValue(\.videoHoverScrub, $videoHoverScrub)
+            .focusedSceneValue(\.loopSlideshow, $loopSlideshow)
+            .focusedSceneValue(\.shuffleSlideshow, $shuffleSlideshow)
+            .focusedSceneValue(\.slideshowTransition, $slideshowTransition)
             .onChange(of: videoHoverScrub) { _, newValue in
                 settingsQuery.first?.gridVideoHoverScrub = newValue
             }
