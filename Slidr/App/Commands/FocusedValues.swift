@@ -184,6 +184,22 @@ struct SubtitleOpacityKey: FocusedValueKey {
     typealias Value = Binding<Double>
 }
 
+struct CaptionPositionMenuKey: FocusedValueKey {
+    typealias Value = Binding<CaptionPosition>
+}
+
+struct CaptionFontSizeMenuKey: FocusedValueKey {
+    typealias Value = Binding<Double>
+}
+
+struct CaptionOpacityMenuKey: FocusedValueKey {
+    typealias Value = Binding<Double>
+}
+
+struct CaptionDisplayModeMenuKey: FocusedValueKey {
+    typealias Value = Binding<CaptionDisplayMode>
+}
+
 // MARK: - Slideshow Settings Binding Keys
 
 struct SlideDurationKey: FocusedValueKey {
@@ -204,6 +220,12 @@ struct ShowTimerBarKey: FocusedValueKey {
 
 struct ShowSlideshowCaptionsKey: FocusedValueKey {
     typealias Value = Binding<Bool>
+}
+
+// MARK: - Slideshow Controls Mode Key
+
+struct SlideshowControlsModeKey: FocusedValueKey {
+    typealias Value = Binding<SlideshowControlsMode>
 }
 
 // MARK: - AI Binding Keys
@@ -477,6 +499,26 @@ extension FocusedValues {
         set { self[SubtitleOpacityKey.self] = newValue }
     }
 
+    var captionPositionMenu: Binding<CaptionPosition>? {
+        get { self[CaptionPositionMenuKey.self] }
+        set { self[CaptionPositionMenuKey.self] = newValue }
+    }
+
+    var captionFontSizeMenu: Binding<Double>? {
+        get { self[CaptionFontSizeMenuKey.self] }
+        set { self[CaptionFontSizeMenuKey.self] = newValue }
+    }
+
+    var captionOpacityMenu: Binding<Double>? {
+        get { self[CaptionOpacityMenuKey.self] }
+        set { self[CaptionOpacityMenuKey.self] = newValue }
+    }
+
+    var captionDisplayModeMenu: Binding<CaptionDisplayMode>? {
+        get { self[CaptionDisplayModeMenuKey.self] }
+        set { self[CaptionDisplayModeMenuKey.self] = newValue }
+    }
+
     // Slideshow settings bindings
     var slideDuration: Binding<Double>? {
         get { self[SlideDurationKey.self] }
@@ -501,6 +543,12 @@ extension FocusedValues {
     var showSlideshowCaptions: Binding<Bool>? {
         get { self[ShowSlideshowCaptionsKey.self] }
         set { self[ShowSlideshowCaptionsKey.self] = newValue }
+    }
+
+    // Slideshow controls mode
+    var slideshowControlsMode: Binding<SlideshowControlsMode>? {
+        get { self[SlideshowControlsModeKey.self] }
+        set { self[SlideshowControlsModeKey.self] = newValue }
     }
 
     // AI bindings

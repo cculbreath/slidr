@@ -67,8 +67,30 @@ final class MenuSettingsCoordinator {
         didSet { settings?.showTimerBar = showTimerBar }
     }
 
+    var slideshowControlsMode: SlideshowControlsMode = .overlay {
+        didSet { settings?.slideshowControlsMode = slideshowControlsMode }
+    }
+
     var showSlideshowCaptions: Bool = false {
         didSet { settings?.showCaptions = showSlideshowCaptions }
+    }
+
+    // MARK: - Captions
+
+    var captionPosition: CaptionPosition = .bottom {
+        didSet { settings?.captionPosition = captionPosition }
+    }
+
+    var captionFontSize: Double = 16.0 {
+        didSet { settings?.captionFontSize = captionFontSize }
+    }
+
+    var captionOpacity: Double = 0.6 {
+        didSet { settings?.captionBackgroundOpacity = captionOpacity }
+    }
+
+    var captionDisplayMode: CaptionDisplayMode = .overlay {
+        didSet { settings?.captionDisplayMode = captionDisplayMode }
     }
 
     // MARK: - Subtitles
@@ -127,7 +149,12 @@ final class MenuSettingsCoordinator {
         playFullGIF = settings.playFullGIF
         videoPlayDuration = settings.videoPlayDuration
         showTimerBar = settings.showTimerBar
+        slideshowControlsMode = settings.slideshowControlsMode
         showSlideshowCaptions = settings.showCaptions
+        captionPosition = settings.captionPosition
+        captionFontSize = settings.captionFontSize
+        captionOpacity = settings.captionBackgroundOpacity
+        captionDisplayMode = settings.captionDisplayMode
         aiAutoProcess = settings.aiAutoProcessOnImport
         aiAutoTranscribe = settings.aiAutoTranscribeOnImport
         aiTagMode = settings.aiTagMode

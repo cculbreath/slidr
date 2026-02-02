@@ -1,31 +1,20 @@
 import SwiftUI
 import AppKit
 
-private enum SubtitleFontSizeOption: CaseIterable, Identifiable {
-    case small, medium, large, extraLarge
-
+private struct FontSizeOption: Identifiable {
+    let size: Double
     var id: Double { size }
 
-    var size: Double {
-        switch self {
-        case .small: return 12
-        case .medium: return 16
-        case .large: return 20
-        case .extraLarge: return 24
-        }
-    }
+    var label: String { "\(Int(size))pt" }
 
-    var label: String {
-        switch self {
-        case .small: return "Small (12pt)"
-        case .medium: return "Medium (16pt)"
-        case .large: return "Large (20pt)"
-        case .extraLarge: return "Extra Large (24pt)"
-        }
-    }
+    static let allCases: [FontSizeOption] = [
+        10, 12, 14, 16, 18, 20, 22, 24,
+        28, 32, 36, 40,
+        48, 56, 64, 72, 80
+    ].map { FontSizeOption(size: $0) }
 }
 
-private enum SubtitleOpacityOption: CaseIterable, Identifiable {
+private enum OpacityOption: CaseIterable, Identifiable {
     case quarter, half, threeQuarter, full
 
     var id: Double { value }
@@ -101,10 +90,15 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.videoPlayDuration) var videoPlayDuration
     @FocusedValue(\.showTimerBar) var showTimerBar
     @FocusedValue(\.showSlideshowCaptions) var showSlideshowCaptions
+    @FocusedValue(\.captionPositionMenu) var captionPosition
+    @FocusedValue(\.captionFontSizeMenu) var captionFontSize
+    @FocusedValue(\.captionOpacityMenu) var captionOpacity
+    @FocusedValue(\.captionDisplayModeMenu) var captionDisplayMode
     @FocusedValue(\.subtitleShow) var subtitleShow
     @FocusedValue(\.subtitlePosition) var subtitlePosition
     @FocusedValue(\.subtitleFontSize) var subtitleFontSize
     @FocusedValue(\.subtitleOpacity) var subtitleOpacity
+    @FocusedValue(\.slideshowControlsMode) var slideshowControlsMode
 
     // MARK: - AI FocusedValues
     @FocusedValue(\.aiAutoProcess) var aiAutoProcess
@@ -648,10 +642,6 @@ struct SlidrCommands: Commands {
                 Toggle("Show Timer Bar", isOn: showTimerBar)
             }
 
-            if let showSlideshowCaptions {
-                Toggle("Show Caption", isOn: showSlideshowCaptions)
-            }
-
             Divider()
 
             Menu("Transition") {
@@ -674,7 +664,36 @@ struct SlidrCommands: Commands {
 
             Divider()
 
+            controlsModeMenu
+
+            Divider()
+
+            captionsMenu
+
             subtitlesMenu
+        }
+    }
+
+    // MARK: - Controls Mode Submenu
+
+    @ViewBuilder
+    private var controlsModeMenu: some View {
+        Menu("Controls") {
+            if let slideshowControlsMode {
+                ForEach(SlideshowControlsMode.allCases, id: \.self) { mode in
+                    Button {
+                        slideshowControlsMode.wrappedValue = mode
+                    } label: {
+                        HStack {
+                            Text(mode.rawValue.capitalized)
+                            if slideshowControlsMode.wrappedValue == mode {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -754,6 +773,94 @@ struct SlidrCommands: Commands {
         }
     }
 
+    // MARK: - Captions Submenu
+
+    @ViewBuilder
+    private var captionsMenu: some View {
+        Menu("Captions") {
+            if let showSlideshowCaptions {
+                Toggle("Show Captions", isOn: showSlideshowCaptions)
+            } else {
+                Toggle("Show Captions", isOn: .constant(false))
+                    .disabled(true)
+            }
+
+            Divider()
+
+            Menu("Display Mode") {
+                if let captionDisplayMode {
+                    ForEach(CaptionDisplayMode.allCases, id: \.self) { mode in
+                        Button {
+                            captionDisplayMode.wrappedValue = mode
+                        } label: {
+                            HStack {
+                                Text(mode.displayName)
+                                if captionDisplayMode.wrappedValue == mode {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Menu("Position") {
+                if let captionPosition {
+                    ForEach(CaptionPosition.allCases, id: \.self) { pos in
+                        Button {
+                            captionPosition.wrappedValue = pos
+                        } label: {
+                            HStack {
+                                Text(pos.menuLabel)
+                                if captionPosition.wrappedValue == pos {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Menu("Font Size") {
+                if let captionFontSize {
+                    ForEach(FontSizeOption.allCases) { option in
+                        Button {
+                            captionFontSize.wrappedValue = option.size
+                        } label: {
+                            HStack {
+                                Text(option.label)
+                                if captionFontSize.wrappedValue == option.size {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Menu("Background Opacity") {
+                if let captionOpacity {
+                    ForEach(OpacityOption.allCases) { option in
+                        Button {
+                            captionOpacity.wrappedValue = option.value
+                        } label: {
+                            HStack {
+                                Text(option.label)
+                                if captionOpacity.wrappedValue == option.value {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Subtitles Submenu
 
     @ViewBuilder
@@ -788,7 +895,7 @@ struct SlidrCommands: Commands {
 
             Menu("Font Size") {
                 if let subtitleFontSize {
-                    ForEach(SubtitleFontSizeOption.allCases) { option in
+                    ForEach(FontSizeOption.allCases) { option in
                         Button {
                             subtitleFontSize.wrappedValue = option.size
                         } label: {
@@ -806,7 +913,7 @@ struct SlidrCommands: Commands {
 
             Menu("Opacity") {
                 if let subtitleOpacity {
-                    ForEach(SubtitleOpacityOption.allCases) { option in
+                    ForEach(OpacityOption.allCases) { option in
                         Button {
                             subtitleOpacity.wrappedValue = option.value
                         } label: {

@@ -1,6 +1,11 @@
 import SwiftData
 import SwiftUI
 
+enum SlideshowControlsMode: String, Codable, CaseIterable {
+    case overlay
+    case floating
+}
+
 @Model
 final class AppSettings {
     // MARK: - Identity
@@ -55,6 +60,7 @@ final class AppSettings {
     var subtitlePositionRaw: String?
     var subtitleFontSizeRaw: Double?
     var subtitleOpacityRaw: Double?
+    var slideshowControlsModeRaw: String?
 
     // MARK: - Multi-Monitor
     var useAllMonitors: Bool
@@ -126,6 +132,11 @@ final class AppSettings {
     var subtitleOpacity: Double {
         get { subtitleOpacityRaw ?? 0.7 }
         set { subtitleOpacityRaw = newValue }
+    }
+
+    var slideshowControlsMode: SlideshowControlsMode {
+        get { slideshowControlsModeRaw.flatMap { SlideshowControlsMode(rawValue: $0) } ?? .overlay }
+        set { slideshowControlsModeRaw = newValue.rawValue }
     }
 
     // MARK: - AI Computed Properties

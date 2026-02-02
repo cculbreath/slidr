@@ -12,8 +12,10 @@ struct SlideshowView: View {
     @State private var uiState = SlideshowUIState()
     @State private var navigationDirection: NavigationDirection = .forward
     @State private var transcriptCues: [TranscriptCue] = []
+    @State private var floatingControlsWindow: SlideshowControlsWindowController?
 
     private var settings: AppSettings? { settingsQuery.first }
+    private var controlsMode: SlideshowControlsMode { settings?.slideshowControlsMode ?? .overlay }
 
     private enum NavigationDirection {
         case forward, backward
@@ -49,50 +51,9 @@ struct SlideshowView: View {
             .modifier(CaptionKeys(viewModel: viewModel))
             .modifier(RatingKeys(viewModel: viewModel, uiState: uiState))
             .modifier(ExtraNavigationKeys(viewModel: viewModel, uiState: uiState))
-            .onAppear {
-                if let settings {
-                    viewModel.configure(settings: settings)
-                }
-                loadTranscriptCues()
-                DispatchQueue.main.async {
-                    isFocused = true
-                }
-            }
-            .onChange(of: viewModel.slideDuration) { _, _ in viewModel.persistToSettings() }
-            .onChange(of: viewModel.videoPlayDuration) { _, _ in viewModel.persistToSettings() }
-            .onChange(of: viewModel.randomizeClipLocation) { _, _ in viewModel.persistToSettings() }
-            .onChange(of: viewModel.playFullGIF) { _, _ in viewModel.persistToSettings() }
-            .onChange(of: viewModel.loop) { _, _ in viewModel.persistToSettings() }
-            .onChange(of: viewModel.volume) { _, _ in viewModel.persistToSettings() }
-            .onChange(of: viewModel.isMuted) { _, _ in viewModel.persistToSettings() }
-            .onChange(of: viewModel.isRandomMode) { _, _ in viewModel.persistToSettings() }
-            .onChange(of: viewModel.showTimerBar) { _, _ in viewModel.persistToSettings() }
-            .onChange(of: viewModel.currentIndex) { _, _ in
-                startVideoCaptionTimer()
-                loadTranscriptCues()
-            }
-            .onChange(of: viewModel.showSubtitles) { _, _ in viewModel.persistToSettings() }
-            .onChange(of: viewModel.showCaptions) { _, newValue in
-                viewModel.persistToSettings()
-                if newValue {
-                    startVideoCaptionTimer()
-                } else {
-                    uiState.videoCaptionTask?.cancel()
-                    uiState.showVideoCaptions = false
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
-                uiState.isFullscreen = true
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in
-                uiState.isFullscreen = false
-            }
-            .onChange(of: uiState.showTimerPopover) { _, isOpen in
-                if !isOpen { uiState.showControlsTemporarily() }
-            }
-            .onChange(of: uiState.showVideoPopover) { _, isOpen in
-                if !isOpen { uiState.showControlsTemporarily() }
-            }
+            .modifier(SlideshowPersistenceModifier(viewModel: viewModel, uiState: uiState, settings: settings, startVideoCaptionTimer: startVideoCaptionTimer, loadTranscriptCues: loadTranscriptCues, setFocused: { isFocused = true }))
+            .modifier(SlideshowMenuSyncModifier(viewModel: viewModel, settings: settings))
+            .modifier(SlideshowUIObserverModifier(uiState: uiState))
     }
 
     // MARK: - Slideshow Content
@@ -147,8 +108,8 @@ struct SlideshowView: View {
                 .allowsHitTesting(false)
             }
 
-            // Controls overlay
-            if uiState.showControls {
+            // Controls overlay (hidden when using floating controls)
+            if uiState.showControls && controlsMode == .overlay {
                 SlideshowControlsOverlay(
                     viewModel: viewModel,
                     uiState: uiState,
@@ -211,9 +172,15 @@ struct SlideshowView: View {
         .onAppear {
             uiState.showControlsTemporarily()
             setupOptionKeyMonitor()
+            updateFloatingControls()
         }
         .onDisappear {
             removeOptionKeyMonitor()
+            floatingControlsWindow?.close()
+            floatingControlsWindow = nil
+        }
+        .onChange(of: settings?.slideshowControlsMode) { _, _ in
+            updateFloatingControls()
         }
         .onContinuousHover { phase in
             switch phase {
@@ -301,6 +268,26 @@ struct SlideshowView: View {
     private func goPrevious() {
         navigationDirection = .backward
         viewModel.previous()
+    }
+
+    // MARK: - Floating Controls
+
+    private func updateFloatingControls() {
+        if controlsMode == .floating {
+            if floatingControlsWindow == nil {
+                floatingControlsWindow = SlideshowControlsWindowController(
+                    viewModel: viewModel,
+                    uiState: uiState,
+                    goNext: goNext,
+                    goPrevious: goPrevious,
+                    onDismiss: onDismiss
+                )
+            }
+            floatingControlsWindow?.show()
+        } else {
+            floatingControlsWindow?.close()
+            floatingControlsWindow = nil
+        }
     }
 
     // MARK: - Transcript Cues
@@ -422,5 +409,119 @@ struct SlideshowView: View {
         if uiState.wasPlayingBeforeScrub && !viewModel.isPlaying {
             viewModel.togglePlayback()
         }
+    }
+}
+
+// MARK: - Extracted Modifiers (split to aid Swift type-checker)
+
+private struct SlideshowPersistenceModifier: ViewModifier {
+    @Bindable var viewModel: SlideshowViewModel
+    let uiState: SlideshowUIState
+    let settings: AppSettings?
+    let startVideoCaptionTimer: () -> Void
+    let loadTranscriptCues: () -> Void
+    let setFocused: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                if let settings {
+                    viewModel.configure(settings: settings)
+                }
+                loadTranscriptCues()
+                DispatchQueue.main.async { setFocused() }
+            }
+            .onChange(of: viewModel.slideDuration) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.videoPlayDuration) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.randomizeClipLocation) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.playFullGIF) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.loop) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.volume) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.isMuted) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.isRandomMode) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.showTimerBar) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.currentIndex) { _, _ in
+                startVideoCaptionTimer()
+                loadTranscriptCues()
+            }
+            .onChange(of: viewModel.showSubtitles) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.showCaptions) { _, newValue in
+                viewModel.persistToSettings()
+                if newValue {
+                    startVideoCaptionTimer()
+                } else {
+                    uiState.videoCaptionTask?.cancel()
+                    uiState.showVideoCaptions = false
+                }
+            }
+    }
+}
+
+private struct SlideshowMenuSyncModifier: ViewModifier {
+    let viewModel: SlideshowViewModel
+    let settings: AppSettings?
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: settings?.showCaptions) { _, newValue in
+                if let newValue, newValue != viewModel.showCaptions {
+                    viewModel.showCaptions = newValue
+                }
+            }
+            .onChange(of: settings?.showSubtitles) { _, newValue in
+                if let newValue, newValue != viewModel.showSubtitles {
+                    viewModel.showSubtitles = newValue
+                }
+            }
+            .onChange(of: settings?.videoPlayDuration) { _, newValue in
+                if let newValue, newValue != viewModel.videoPlayDuration {
+                    viewModel.videoPlayDuration = newValue
+                }
+            }
+            .onChange(of: settings?.loopSlideshow) { _, newValue in
+                if let newValue, newValue != viewModel.loop {
+                    viewModel.loop = newValue
+                }
+            }
+            .onChange(of: settings?.shuffleSlideshow) { _, newValue in
+                if let newValue, newValue != viewModel.isRandomMode {
+                    viewModel.isRandomMode = newValue
+                }
+            }
+            .onChange(of: settings?.showTimerBar) { _, newValue in
+                if let newValue, newValue != viewModel.showTimerBar {
+                    viewModel.showTimerBar = newValue
+                }
+            }
+            .onChange(of: settings?.playFullGIF) { _, newValue in
+                if let newValue, newValue != viewModel.playFullGIF {
+                    viewModel.playFullGIF = newValue
+                }
+            }
+            .onChange(of: settings?.defaultImageDuration) { _, newValue in
+                if let newValue, newValue != viewModel.slideDuration {
+                    viewModel.slideDuration = newValue
+                }
+            }
+    }
+}
+
+private struct SlideshowUIObserverModifier: ViewModifier {
+    let uiState: SlideshowUIState
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
+                uiState.isFullscreen = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in
+                uiState.isFullscreen = false
+            }
+            .onChange(of: uiState.showTimerPopover) { _, isOpen in
+                if !isOpen { uiState.showControlsTemporarily() }
+            }
+            .onChange(of: uiState.showVideoPopover) { _, isOpen in
+                if !isOpen { uiState.showControlsTemporarily() }
+            }
     }
 }
