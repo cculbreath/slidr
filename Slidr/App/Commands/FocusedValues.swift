@@ -78,6 +78,10 @@ struct ToggleTagPaletteKey: FocusedValueKey {
     typealias Value = () -> Void
 }
 
+struct ExportSelectedKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
 // MARK: - Filter Binding Keys
 
 struct MediaTypeFilterBindingKey: FocusedValueKey {
@@ -277,6 +281,11 @@ extension FocusedValues {
     var toggleTagPalette: (() -> Void)? {
         get { self[ToggleTagPaletteKey.self] }
         set { self[ToggleTagPaletteKey.self] = newValue }
+    }
+
+    var exportSelected: (() -> Void)? {
+        get { self[ExportSelectedKey.self] }
+        set { self[ExportSelectedKey.self] = newValue }
     }
 
     // Filter binding values

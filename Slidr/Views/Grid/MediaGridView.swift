@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
+import AppKit
 import OSLog
 
 struct MediaGridView: View {
@@ -33,6 +34,9 @@ struct MediaGridView: View {
 
     private var settings: AppSettings? { settingsQuery.first }
     private var displayedItems: [MediaItem] { viewModel.filteredItems(items) }
+    private var exportAction: (() -> Void)? {
+        viewModel.selectedItems.isEmpty ? nil : { exportSelectedItems() }
+    }
     private var allTags: [String] {
         Array(Set(items.flatMap(\.tags))).sorted()
     }
@@ -58,18 +62,7 @@ struct MediaGridView: View {
     }
 
     var body: some View {
-        gridWithToolbar
-            // Expose focused values for menu commands
-            .focusedSceneValue(\.selectAll, { viewModel.selectAll(displayedItems) })
-            .focusedSceneValue(\.deselectAll, { viewModel.clearSelection() })
-            .focusedSceneValue(\.deleteSelected, { deleteSelectedItems() })
-            .focusedSceneValue(\.startSlideshow, { startSlideshow() })
-            .focusedSceneValue(\.revealInFinder, { revealSelectedInFinder() })
-            .focusedSceneValue(\.increaseThumbnailSize, { viewModel.increaseThumbnailSize() })
-            .focusedSceneValue(\.decreaseThumbnailSize, { viewModel.decreaseThumbnailSize() })
-            .focusedSceneValue(\.resetThumbnailSize, { viewModel.resetThumbnailSize() })
-            .focusedSceneValue(\.showAdvancedFilter, { showAdvancedFilter = true })
-            .focusedSceneValue(\.clearAllFilters, { viewModel.clearAllFilters() })
+        gridWithFocusedValues
             .sheet(isPresented: $showAdvancedFilter) {
                 AdvancedFilterSheet(viewModel: viewModel)
             }
@@ -104,6 +97,21 @@ struct MediaGridView: View {
             } message: {
                 Text("\(items.count) video\(items.count == 1 ? "" : "s") with decode errors will be moved to the Trash.")
             }
+    }
+
+    private var gridWithFocusedValues: some View {
+        gridWithToolbar
+            .focusedSceneValue(\.selectAll, { viewModel.selectAll(displayedItems) })
+            .focusedSceneValue(\.deselectAll, { viewModel.clearSelection() })
+            .focusedSceneValue(\.deleteSelected, { deleteSelectedItems() })
+            .focusedSceneValue(\.startSlideshow, { startSlideshow() })
+            .focusedSceneValue(\.revealInFinder, { revealSelectedInFinder() })
+            .focusedSceneValue(\.increaseThumbnailSize, { viewModel.increaseThumbnailSize() })
+            .focusedSceneValue(\.decreaseThumbnailSize, { viewModel.decreaseThumbnailSize() })
+            .focusedSceneValue(\.resetThumbnailSize, { viewModel.resetThumbnailSize() })
+            .focusedSceneValue(\.showAdvancedFilter, { showAdvancedFilter = true })
+            .focusedSceneValue(\.clearAllFilters, { viewModel.clearAllFilters() })
+            .focusedSceneValue(\.exportSelected, exportAction)
     }
 
     private var gridWithToolbar: some View {
@@ -492,6 +500,74 @@ struct MediaGridView: View {
         guard let selectedID = viewModel.selectedItems.first,
               let item = displayedItems.first(where: { $0.id == selectedID }) else { return }
         showInFinder(item)
+    }
+
+    // MARK: - Export
+
+    private func exportSelectedItems() {
+        let selectedItems = displayedItems.filter { viewModel.selectedItems.contains($0.id) }
+        guard !selectedItems.isEmpty else { return }
+
+        if selectedItems.count == 1 {
+            exportSingleItem(selectedItems[0])
+        } else {
+            exportMultipleItems(selectedItems)
+        }
+    }
+
+    private func exportSingleItem(_ item: MediaItem) {
+        let ext = URL(fileURLWithPath: item.originalFilename).pathExtension
+        let suggestedName = ext.isEmpty ? item.displayName : "\(item.displayName).\(ext)"
+
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = suggestedName
+        panel.canCreateDirectories = true
+
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+
+        let source = library.absoluteURL(for: item)
+        do {
+            try FileManager.default.copyItem(at: source, to: destination)
+        } catch {
+            Logger.library.error("Export failed for \(item.originalFilename): \(error.localizedDescription)")
+        }
+    }
+
+    private func exportMultipleItems(_ items: [MediaItem]) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.prompt = "Export"
+
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+
+        var usedNames: [String: Int] = [:]
+
+        for item in items {
+            let ext = URL(fileURLWithPath: item.originalFilename).pathExtension
+            let baseName = item.displayName
+            let key = ext.isEmpty ? baseName.lowercased() : "\(baseName).\(ext)".lowercased()
+
+            let count = usedNames[key, default: 0] + 1
+            usedNames[key] = count
+
+            let fileName: String
+            if count == 1 {
+                fileName = ext.isEmpty ? baseName : "\(baseName).\(ext)"
+            } else {
+                fileName = ext.isEmpty ? "\(baseName) \(count)" : "\(baseName) \(count).\(ext)"
+            }
+
+            let source = library.absoluteURL(for: item)
+            let destination = folder.appendingPathComponent(fileName)
+
+            do {
+                try FileManager.default.copyItem(at: source, to: destination)
+            } catch {
+                Logger.library.error("Export failed for \(item.originalFilename): \(error.localizedDescription)")
+            }
+        }
     }
 
     private func showInFinder(_ item: MediaItem) {

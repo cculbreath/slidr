@@ -67,6 +67,7 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.resetThumbnailSize) var resetThumbnailSize
     @FocusedValue(\.revealInFinder) var revealInFinder
     @FocusedValue(\.toggleTagPalette) var toggleTagPalette
+    @FocusedValue(\.exportSelected) var exportSelected
 
     // MARK: - Filter Action FocusedValues
     @FocusedValue(\.showAdvancedFilter) var showAdvancedFilter
@@ -220,6 +221,14 @@ struct SlidrCommands: Commands {
                 deleteSelected?()
             }
             .keyboardShortcut(.delete, modifiers: [])
+
+            Divider()
+
+            Button("Export\u{2026}") {
+                exportSelected?()
+            }
+            .keyboardShortcut("e", modifiers: .command)
+            .disabled(exportSelected == nil)
         }
     }
 
