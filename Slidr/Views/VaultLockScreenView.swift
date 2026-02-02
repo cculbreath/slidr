@@ -56,8 +56,7 @@ struct VaultLockScreenView: View {
                     } label: {
                         HStack(spacing: 8) {
                             if isUnlocking {
-                                ProgressView()
-                                    .controlSize(.small)
+                                SpinnerView()
                             }
                             Text(isUnlocking ? "Unlocking..." : "Unlock")
                         }

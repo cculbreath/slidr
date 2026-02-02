@@ -33,7 +33,7 @@ actor FolderWatcher {
         let latency: CFTimeInterval = 1.0
 
         // Context to pass handler into the C callback
-        let handlerBox = Unmanaged.passRetained(HandlerBox(handler: handler))
+        let handlerBox = Unmanaged.passRetained(HandlerBox(handler: handler, watchedPath: path, includeSubfolders: includeSubfolders))
         var context = FSEventStreamContext(
             version: 0,
             info: handlerBox.toOpaque(),
@@ -42,13 +42,9 @@ actor FolderWatcher {
             copyDescription: nil
         )
 
-        var flags: FSEventStreamCreateFlags = UInt32(kFSEventStreamCreateFlagFileEvents)
+        let flags: FSEventStreamCreateFlags = UInt32(kFSEventStreamCreateFlagFileEvents)
             | UInt32(kFSEventStreamCreateFlagUseCFTypes)
             | UInt32(kFSEventStreamCreateFlagNoDefer)
-
-        if !includeSubfolders {
-            flags |= UInt32(kFSEventStreamCreateFlagWatchRoot)
-        }
 
         let callback: FSEventStreamCallback = { _, info, numEvents, eventPaths, eventFlags, _ in
             guard let info = info else { return }
@@ -60,6 +56,13 @@ actor FolderWatcher {
 
             for i in 0..<numEvents {
                 let eventPath = paths[i]
+
+                // When not watching subfolders, only report events for direct children
+                if !box.includeSubfolders {
+                    let eventParent = (eventPath as NSString).deletingLastPathComponent
+                    guard eventParent == box.watchedPath else { continue }
+                }
+
                 let eventFlag = flagsBuf[i]
                 let eventURL = URL(fileURLWithPath: eventPath)
                 let eventType = FolderWatcher.eventType(from: eventFlag)
@@ -129,8 +132,12 @@ actor FolderWatcher {
 
 private final class HandlerBox: @unchecked Sendable {
     let handler: FolderWatcher.EventHandler
+    let watchedPath: String
+    let includeSubfolders: Bool
 
-    nonisolated init(handler: @escaping FolderWatcher.EventHandler) {
+    nonisolated init(handler: @escaping FolderWatcher.EventHandler, watchedPath: String, includeSubfolders: Bool) {
         self.handler = handler
+        self.watchedPath = watchedPath
+        self.includeSubfolders = includeSubfolders
     }
 }

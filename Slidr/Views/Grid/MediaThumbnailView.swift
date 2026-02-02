@@ -138,8 +138,25 @@ struct MediaThumbnailView: View {
             guard hoverEnabled else { return }
             switch phase {
             case .active(let location):
+                // Require the cursor to be within the inner portion of the
+                // thumbnail so that casually passing over doesn't trigger
+                // scrubbing/hover effects.
+                let inset = size.pixelSize * 0.1
+                let activeRect = CGRect(
+                    x: inset, y: inset,
+                    width: size.pixelSize - inset * 2,
+                    height: size.pixelSize - inset * 2
+                )
+                guard activeRect.contains(location) else {
+                    if item.isVideo {
+                        hoverState = .idle
+                    } else if hoveredItemID == item.id {
+                        hoveredItemID = nil
+                    }
+                    return
+                }
                 if item.isVideo {
-                    let position = max(0, min(1, location.x / size.pixelSize))
+                    let position = max(0, min(1, (location.x - inset) / activeRect.width))
                     hoverState = .scrubbing(position: position)
                 } else {
                     hoveredItemID = item.id

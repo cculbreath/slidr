@@ -171,8 +171,7 @@ struct AISettingsView: View {
             EmptyView()
         case .testing:
             HStack(spacing: 4) {
-                ProgressView()
-                    .controlSize(.small)
+                SpinnerView()
                 Text("Testing...")
                     .font(.caption)
                     .foregroundStyle(.secondary)

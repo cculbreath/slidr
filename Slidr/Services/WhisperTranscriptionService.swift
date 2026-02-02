@@ -25,8 +25,10 @@ actor WhisperTranscriptionService {
         let filename = audioURL.lastPathComponent
 
         if fileData.count > Self.maxFileSize {
-            Self.logger.warning("Audio file \(filename) is \(fileData.count / 1_048_576)MB, exceeds Groq 25MB limit")
-            throw TranscriptionError.fileTooLarge(sizeMB: fileData.count / 1_048_576)
+            let fileSizeMB = fileData.count / 1_048_576
+            let limitMB = Self.maxFileSize / 1_048_576
+            Self.logger.warning("Audio file \(filename) is \(fileSizeMB)MB, exceeds Groq \(limitMB)MB limit")
+            throw TranscriptionError.fileTooLarge(sizeMB: fileSizeMB, limitMB: limitMB)
         }
 
         let boundary = UUID().uuidString
@@ -176,7 +178,7 @@ enum TranscriptionError: LocalizedError {
     case exportFailed(Error)
     case invalidResponse
     case apiError(statusCode: Int, body: String)
-    case fileTooLarge(sizeMB: Int)
+    case fileTooLarge(sizeMB: Int, limitMB: Int)
 
     var errorDescription: String? {
         switch self {
@@ -190,8 +192,8 @@ enum TranscriptionError: LocalizedError {
             return "Invalid response from transcription API"
         case .apiError(let statusCode, let body):
             return "Transcription API error (\(statusCode)): \(body)"
-        case .fileTooLarge(let sizeMB):
-            return "Audio file too large (\(sizeMB)MB). Groq limit is 25MB."
+        case .fileTooLarge(let sizeMB, let limitMB):
+            return "Audio file too large (\(sizeMB)MB). Groq limit is \(limitMB)MB."
         }
     }
 }

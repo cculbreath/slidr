@@ -1,6 +1,26 @@
 import SwiftUI
 import SwiftData
-import AVKit
+import AVFoundation
+
+/// Renders an AVPlayer via AVPlayerLayer with no control chrome.
+private struct AVPlayerLayerView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.wantsLayer = true
+        let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.videoGravity = .resizeAspectFill
+        view.layer = playerLayer
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if let playerLayer = nsView.layer as? AVPlayerLayer {
+            playerLayer.player = player
+        }
+    }
+}
 
 struct VideoHoverView: View {
     let item: MediaItem
@@ -21,8 +41,7 @@ struct VideoHoverView: View {
     var body: some View {
         ZStack {
             if hoverState.isPlaying, let player = hoverPlayer.avPlayer {
-                VideoPlayer(player: player)
-                    .disabled(true)
+                AVPlayerLayerView(player: player)
             } else if !scrubThumbnails.isEmpty {
                 let index = scrubIndex(for: hoverState.position)
                 Image(nsImage: scrubThumbnails[index])
@@ -31,8 +50,7 @@ struct VideoHoverView: View {
             } else if isLoading {
                 AsyncThumbnailImage(item: item, size: size)
                     .overlay {
-                        ProgressView()
-                            .controlSize(.small)
+                        SpinnerView()
                     }
             }
 

@@ -26,8 +26,7 @@ struct AIStatusView: View {
     private var headerSection: some View {
         HStack {
             if coordinator.isProcessing {
-                ProgressView()
-                    .controlSize(.small)
+                SpinnerView()
                 Text(statusTitle)
                     .font(.headline)
             } else if hasErrors {

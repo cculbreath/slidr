@@ -139,8 +139,7 @@ struct TranscriptSection: View {
             importTranscript()
         } label: {
             if isImporting {
-                ProgressView()
-                    .controlSize(.small)
+                SpinnerView()
             } else {
                 Label("Import SRT/VTT...", systemImage: "captions.bubble")
                     .frame(maxWidth: .infinity)

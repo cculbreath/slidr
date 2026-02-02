@@ -162,16 +162,24 @@ actor VaultService {
         process.standardInput = inputPipe
         process.standardError = errorPipe
 
-        try process.run()
-
-        // hdiutil chpass reads old password then new password from stdin
-        let input = "\(oldPassword)\n\(newPassword)\n\(newPassword)\n"
-        if let data = input.data(using: .utf8) {
-            inputPipe.fileHandleForWriting.write(data)
-            try inputPipe.fileHandleForWriting.close()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            process.terminationHandler = { _ in
+                continuation.resume()
+            }
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                continuation.resume(throwing: error)
+                return
+            }
+            // hdiutil chpass reads old password then new password from stdin
+            let input = "\(oldPassword)\n\(newPassword)\n\(newPassword)\n"
+            if let data = input.data(using: .utf8) {
+                inputPipe.fileHandleForWriting.write(data)
+                try? inputPipe.fileHandleForWriting.close()
+            }
         }
-
-        process.waitUntilExit()
 
         if process.terminationStatus != 0 {
             let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
@@ -201,8 +209,18 @@ actor VaultService {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
         process.arguments = ["compact", config.bundlePath]
-        try process.run()
-        process.waitUntilExit()
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            process.terminationHandler = { _ in
+                continuation.resume()
+            }
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                continuation.resume(throwing: error)
+            }
+        }
     }
 
     // MARK: - Manifest Persistence
@@ -253,14 +271,22 @@ actor VaultService {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = errorPipe
 
-        try process.run()
-
-        if let data = password.data(using: .utf8) {
-            inputPipe.fileHandleForWriting.write(data)
-            try inputPipe.fileHandleForWriting.close()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            process.terminationHandler = { _ in
+                continuation.resume()
+            }
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                continuation.resume(throwing: error)
+                return
+            }
+            if let data = password.data(using: .utf8) {
+                inputPipe.fileHandleForWriting.write(data)
+                try? inputPipe.fileHandleForWriting.close()
+            }
         }
-
-        process.waitUntilExit()
 
         if process.terminationStatus != 0 {
             let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
@@ -281,14 +307,22 @@ actor VaultService {
         process.standardOutput = outputPipe
         process.standardError = errorPipe
 
-        try process.run()
-
-        if let data = password.data(using: .utf8) {
-            inputPipe.fileHandleForWriting.write(data)
-            try inputPipe.fileHandleForWriting.close()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            process.terminationHandler = { _ in
+                continuation.resume()
+            }
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                continuation.resume(throwing: error)
+                return
+            }
+            if let data = password.data(using: .utf8) {
+                inputPipe.fileHandleForWriting.write(data)
+                try? inputPipe.fileHandleForWriting.close()
+            }
         }
-
-        process.waitUntilExit()
 
         if process.terminationStatus != 0 {
             let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
@@ -330,8 +364,17 @@ actor VaultService {
         process.standardError = errorPipe
         process.standardOutput = FileHandle.nullDevice
 
-        try process.run()
-        process.waitUntilExit()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            process.terminationHandler = { _ in
+                continuation.resume()
+            }
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                continuation.resume(throwing: error)
+            }
+        }
 
         if process.terminationStatus != 0 {
             let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
@@ -352,10 +395,21 @@ actor VaultService {
         process.standardOutput = outputPipe
         process.standardError = FileHandle.nullDevice
 
-        do {
-            try process.run()
-            process.waitUntilExit()
+        let launched: Bool = await withCheckedContinuation { continuation in
+            process.terminationHandler = { _ in
+                continuation.resume(returning: true)
+            }
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                continuation.resume(returning: false)
+            }
+        }
 
+        guard launched else { return nil }
+
+        do {
             let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
             guard let plist = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
                   let images = plist["images"] as? [[String: Any]] else {

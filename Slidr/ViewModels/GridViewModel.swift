@@ -7,6 +7,7 @@ final class GridViewModel {
     // MARK: - State
     var browserMode: BrowserViewMode = .grid
     var selectedItems: Set<UUID> = []
+    var selectionAnchor: UUID? = nil
     var thumbnailSize: ThumbnailSize = .medium
     var sortOrder: SortOrder = .dateImported
     var sortAscending: Bool = false
@@ -38,6 +39,7 @@ final class GridViewModel {
 
     func select(_ item: MediaItem) {
         selectedItems = [item.id]
+        selectionAnchor = item.id
     }
 
     func toggleSelection(_ item: MediaItem) {
@@ -45,18 +47,19 @@ final class GridViewModel {
             selectedItems.remove(item.id)
         } else {
             selectedItems.insert(item.id)
+            selectionAnchor = item.id
         }
     }
 
     func extendSelection(to item: MediaItem, in items: [MediaItem]) {
-        guard let lastSelected = selectedItems.first,
-              let lastIndex = items.firstIndex(where: { $0.id == lastSelected }),
+        guard let anchor = selectionAnchor,
+              let anchorIndex = items.firstIndex(where: { $0.id == anchor }),
               let newIndex = items.firstIndex(where: { $0.id == item.id }) else {
             select(item)
             return
         }
 
-        let range = min(lastIndex, newIndex)...max(lastIndex, newIndex)
+        let range = min(anchorIndex, newIndex)...max(anchorIndex, newIndex)
         for i in range {
             selectedItems.insert(items[i].id)
         }
@@ -68,6 +71,7 @@ final class GridViewModel {
 
     func clearSelection() {
         selectedItems.removeAll()
+        selectionAnchor = nil
     }
 
     func isSelected(_ item: MediaItem) -> Bool {
@@ -158,7 +162,7 @@ final class GridViewModel {
 
     func moveSelection(direction: NavigationDirection, in items: [MediaItem], columns: Int) {
         guard !items.isEmpty else { return }
-        let currentIndex = focusedIndex ?? (selectedItems.first.flatMap { id in
+        let currentIndex = focusedIndex ?? (selectionAnchor.flatMap { id in
             items.firstIndex { $0.id == id }
         }) ?? 0
 
@@ -172,6 +176,7 @@ final class GridViewModel {
 
         focusedIndex = newIndex
         selectedItems = [items[newIndex].id]
+        selectionAnchor = items[newIndex].id
     }
 
     func increaseThumbnailSize() {

@@ -22,9 +22,12 @@ final class MediaQueryService {
     }
 
     var allTags: [String] {
-        let tagSets = allItems.map { Set($0.tags) }
-        let allTags = tagSets.reduce(into: Set<String>()) { $0.formUnion($1) }
-        return allTags.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        // Fetch without sorting — we only need the tags field, and allItems adds
+        // an unnecessary ORDER BY that the database has to evaluate.
+        let descriptor = FetchDescriptor<MediaItem>()
+        let items = (try? modelContext.fetch(descriptor)) ?? []
+        return items.reduce(into: Set<String>()) { $0.formUnion($1.tags) }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     var allSources: [String] {
@@ -81,14 +84,14 @@ final class MediaQueryService {
 
     func lastImportItems(since importDate: Date, sortedBy sortOrder: SortOrder, ascending: Bool) -> [MediaItem] {
         let threshold = importDate.addingTimeInterval(-2)
-        return items(sortedBy: sortOrder, ascending: ascending)
-            .filter { $0.importDate >= threshold }
+        let predicate = #Predicate<MediaItem> { $0.importDate >= threshold }
+        return items(matching: predicate, sortedBy: sortOrder, ascending: ascending)
     }
 
     func importedTodayItems(sortedBy sortOrder: SortOrder, ascending: Bool) -> [MediaItem] {
         let startOfDay = Calendar.current.startOfDay(for: Date())
-        return items(sortedBy: sortOrder, ascending: ascending)
-            .filter { $0.importDate >= startOfDay }
+        let predicate = #Predicate<MediaItem> { $0.importDate >= startOfDay }
+        return items(matching: predicate, sortedBy: sortOrder, ascending: ascending)
     }
 
     var unplayableVideoCount: Int {

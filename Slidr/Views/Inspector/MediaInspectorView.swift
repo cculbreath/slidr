@@ -117,8 +117,7 @@ struct MediaInspectorView: View {
                     copyToLibrary()
                 } label: {
                     if isCopyingToLibrary {
-                        ProgressView()
-                            .controlSize(.small)
+                        SpinnerView()
                     } else {
                         Label("Copy to Library", systemImage: "arrow.down.doc")
                             .frame(maxWidth: .infinity)
