@@ -7,6 +7,7 @@ import OSLog
 struct MediaGridView: View {
     @Environment(MediaLibrary.self) private var library
     @Environment(PlaylistService.self) private var playlistService
+    @Environment(AIProcessingCoordinator.self) private var aiCoordinator
     @Environment(\.modelContext) private var modelContext
     @Bindable var viewModel: GridViewModel
     @Query private var settingsQuery: [AppSettings]
@@ -368,6 +369,29 @@ struct MediaGridView: View {
 
         Divider()
 
+        Menu("Intelligence") {
+            Button("Process with AI") {
+                aiProcess(item)
+            }
+
+            Divider()
+
+            Button("Tag with AI") {
+                aiTag(item)
+            }
+
+            Button("Summarize with AI") {
+                aiSummarize(item)
+            }
+
+            Button("Transcribe") {
+                aiTranscribe(item)
+            }
+            .disabled(!item.isVideo || item.hasAudio != true)
+        }
+
+        Divider()
+
         Button("Move to Trash", role: .destructive) {
             itemsToDelete = [item]
             showDeleteConfirmation = true
@@ -581,6 +605,36 @@ struct MediaGridView: View {
 
     private func removeFromPlaylist(_ item: MediaItem, playlist: Playlist) {
         playlistService.removeItem(item, from: playlist)
+    }
+
+    // MARK: - AI Context Menu Actions
+
+    private func aiProcess(_ item: MediaItem) {
+        guard let settings else { return }
+        Task {
+            await aiCoordinator.processItems([item], settings: settings, allTags: allTags, modelContext: modelContext)
+        }
+    }
+
+    private func aiTag(_ item: MediaItem) {
+        guard let settings else { return }
+        Task {
+            await aiCoordinator.tagItem(item, settings: settings, allTags: allTags, modelContext: modelContext)
+        }
+    }
+
+    private func aiSummarize(_ item: MediaItem) {
+        guard let settings else { return }
+        Task {
+            await aiCoordinator.summarizeItem(item, settings: settings, library: library, modelContext: modelContext)
+        }
+    }
+
+    private func aiTranscribe(_ item: MediaItem) {
+        guard let settings else { return }
+        Task {
+            await aiCoordinator.transcribeItem(item, settings: settings, modelContext: modelContext, library: library)
+        }
     }
 
     // MARK: - Settings Toggles

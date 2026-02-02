@@ -32,6 +32,11 @@ struct SettingsView: View {
                     .tabItem {
                         Label("Cache", systemImage: "internaldrive")
                     }
+
+                AISettingsView(settings: settings)
+                    .tabItem {
+                        Label("Intelligence", systemImage: "sparkles")
+                    }
             }
             .frame(width: 500, height: 400)
             .padding()

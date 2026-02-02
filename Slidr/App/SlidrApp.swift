@@ -13,6 +13,7 @@ struct SlidrApp: App {
     let folderWatcher: FolderWatcher
     let playlistService: PlaylistService
     let hoverVideoPlayer: HoverVideoPlayer
+    let aiCoordinator: AIProcessingCoordinator
 
     init() {
         let slidrDir = Self.ensureSlidrDirectory()
@@ -33,6 +34,7 @@ struct SlidrApp: App {
         folderWatcher = FolderWatcher()
         playlistService = PlaylistService(modelContainer: modelContainer, mediaLibrary: mediaLibrary, folderWatcher: folderWatcher)
         hoverVideoPlayer = HoverVideoPlayer()
+        aiCoordinator = AIProcessingCoordinator()
     }
 
     // MARK: - Setup Helpers
@@ -45,7 +47,7 @@ struct SlidrApp: App {
     }
 
     private static func createModelContainer(slidrDir: URL) -> ModelContainer {
-        let schema = Schema(versionedSchema: SlidrSchemaV13.self)
+        let schema = Schema(versionedSchema: SlidrSchemaV14.self)
         let storeURL = slidrDir.appendingPathComponent("Slidr.store")
         let config = ModelConfiguration("Slidr", schema: schema, url: storeURL)
 
@@ -125,6 +127,7 @@ struct SlidrApp: App {
                 .environment(mediaLibrary)
                 .environment(playlistService)
                 .environment(hoverVideoPlayer)
+                .environment(aiCoordinator)
                 .environment(\.transcriptStore, transcriptStore)
                 .preferredColorScheme(.dark)
         }

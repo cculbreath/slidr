@@ -65,6 +65,7 @@
 			);
 			name = Slidr;
 			packageProductDependencies = (
+				57A100022F40000000000002 /* SwiftOpenAI */,
 			);
 			productName = Slidr;
 			productReference = 579FD6C92F28241D0061CAFF /* Slidr.app */;
@@ -98,6 +99,9 @@
 			productRefGroup = 579FD6CA2F28241D0061CAFF /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
+			packageReferences = (
+				57A100012F40000000000001 /* XCRemoteSwiftPackageReference "SwiftOpenAI" */,
+			);
 			targets = (
 				579FD6C82F28241D0061CAFF /* Slidr */,
 			);
@@ -347,6 +351,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		57A100012F40000000000001 /* XCRemoteSwiftPackageReference "SwiftOpenAI" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jamesrochabrun/SwiftOpenAI";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		57A100022F40000000000002 /* SwiftOpenAI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 57A100012F40000000000001 /* XCRemoteSwiftPackageReference "SwiftOpenAI" */;
+			productName = SwiftOpenAI;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 579FD6C12F28241D0061CAFF /* Project object */;
 }

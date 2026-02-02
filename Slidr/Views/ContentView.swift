@@ -7,6 +7,7 @@ struct ContentView: View {
     @Environment(PlaylistService.self) private var playlistService
     @Environment(\.modelContext) private var modelContext
     @Environment(\.transcriptStore) private var transcriptStore
+    @Environment(AIProcessingCoordinator.self) private var aiCoordinator
     @Query private var settingsQuery: [AppSettings]
 
     @State private var sidebarViewModel = SidebarViewModel()
@@ -38,6 +39,14 @@ struct ContentView: View {
     @State private var subtitlePosition: CaptionPosition = .bottom
     @State private var subtitleFontSize: Double = 16.0
     @State private var subtitleOpacity: Double = 0.7
+    @State private var slideDuration: Double = 5.0
+    @State private var playFullGIF: Bool = false
+    @State private var videoPlayDuration: VideoPlayDuration = .fixed(30)
+    @State private var showTimerBar: Bool = false
+    @State private var showSlideshowCaptions: Bool = false
+    @State private var aiAutoProcess: Bool = false
+    @State private var aiAutoTranscribe: Bool = false
+    @State private var aiTagMode: AITagMode = .generateNew
 
     var body: some View {
         ZStack {
@@ -132,6 +141,14 @@ struct ContentView: View {
                     subtitleFontSize = settings.subtitleFontSize
                     subtitleOpacity = settings.subtitleOpacity
                     gridViewModel.browserMode = settings.browserViewMode
+                    slideDuration = settings.defaultImageDuration
+                    playFullGIF = settings.playFullGIF
+                    videoPlayDuration = settings.videoPlayDuration
+                    showTimerBar = settings.showTimerBar
+                    showSlideshowCaptions = settings.showCaptions
+                    aiAutoProcess = settings.aiAutoProcessOnImport
+                    aiAutoTranscribe = settings.aiAutoTranscribeOnImport
+                    aiTagMode = settings.aiTagMode
                 }
                 refreshItems()
                 let count = settingsQuery.first?.scrubThumbnailCount ?? 100
@@ -147,7 +164,7 @@ struct ContentView: View {
     }
 
     private var navigationViewWithFocusedValues: some View {
-        navigationViewWithBrowserBindings
+        navigationViewWithAIBindings
             // Action-based focused values for menu commands
             .focusedSceneValue(\.toggleInspector, { showInspector.toggle() })
             .focusedSceneValue(\.importFilesAction, { importFiles() })
@@ -171,6 +188,28 @@ struct ContentView: View {
             }
     }
 
+    private var navigationViewWithAIBindings: some View {
+        navigationViewWithBrowserBindings
+            .focusedSceneValue(\.aiAutoProcess, $aiAutoProcess)
+            .focusedSceneValue(\.aiAutoTranscribe, $aiAutoTranscribe)
+            .focusedSceneValue(\.aiTagMode, $aiTagMode)
+            .focusedSceneValue(\.aiProcessSelected, { aiProcessSelected() })
+            .focusedSceneValue(\.aiTagSelected, { aiTagSelected() })
+            .focusedSceneValue(\.aiSummarizeSelected, { aiSummarizeSelected() })
+            .focusedSceneValue(\.aiTranscribeSelected, { aiTranscribeSelected() })
+            .focusedSceneValue(\.aiProcessUntagged, { aiProcessUntagged() })
+            .focusedSceneValue(\.aiProcessUntranscribed, { aiProcessUntranscribed() })
+            .onChange(of: aiAutoProcess) { _, newValue in
+                settingsQuery.first?.aiAutoProcessOnImport = newValue
+            }
+            .onChange(of: aiAutoTranscribe) { _, newValue in
+                settingsQuery.first?.aiAutoTranscribeOnImport = newValue
+            }
+            .onChange(of: aiTagMode) { _, newValue in
+                settingsQuery.first?.aiTagMode = newValue
+            }
+    }
+
     private var navigationViewWithBrowserBindings: some View {
         navigationViewWithSubtitleBindings
             // Browser & slideshow bindings
@@ -179,6 +218,11 @@ struct ContentView: View {
             .focusedSceneValue(\.loopSlideshow, $loopSlideshow)
             .focusedSceneValue(\.shuffleSlideshow, $shuffleSlideshow)
             .focusedSceneValue(\.slideshowTransition, $slideshowTransition)
+            .focusedSceneValue(\.slideDuration, $slideDuration)
+            .focusedSceneValue(\.playFullGIF, $playFullGIF)
+            .focusedSceneValue(\.videoPlayDuration, $videoPlayDuration)
+            .focusedSceneValue(\.showTimerBar, $showTimerBar)
+            .focusedSceneValue(\.showSlideshowCaptions, $showSlideshowCaptions)
             .onChange(of: videoHoverScrub) { _, newValue in
                 settingsQuery.first?.gridVideoHoverScrub = newValue
             }
@@ -197,6 +241,21 @@ struct ContentView: View {
             }
             .onChange(of: slideshowTransition) { _, newValue in
                 settingsQuery.first?.slideshowTransition = newValue
+            }
+            .onChange(of: slideDuration) { _, newValue in
+                settingsQuery.first?.defaultImageDuration = newValue
+            }
+            .onChange(of: playFullGIF) { _, newValue in
+                settingsQuery.first?.playFullGIF = newValue
+            }
+            .onChange(of: videoPlayDuration) { _, newValue in
+                settingsQuery.first?.videoPlayDuration = newValue
+            }
+            .onChange(of: showTimerBar) { _, newValue in
+                settingsQuery.first?.showTimerBar = newValue
+            }
+            .onChange(of: showSlideshowCaptions) { _, newValue in
+                settingsQuery.first?.showCaptions = newValue
             }
     }
 
@@ -487,13 +546,16 @@ struct ContentView: View {
             options.targetFormat = settings.importTargetFormat
         }
 
+        var importedItems: [MediaItem] = []
+
         let hasFolders = urls.contains { url in
             var isDir: ObjCBool = false
             return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
         }
 
         if hasFolders {
-            guard let (_, folderGroups) = try? await library.importFolders(urls: urls, options: options) else { return }
+            guard let (result, folderGroups) = try? await library.importFolders(urls: urls, options: options) else { return }
+            importedItems = result.imported
 
             if settingsQuery.first?.createPlaylistsFromFolders == true {
                 for group in folderGroups {
@@ -503,7 +565,25 @@ struct ContentView: View {
                 }
             }
         } else {
-            _ = try? await library.importFiles(urls: urls, options: options)
+            if let result = try? await library.importFiles(urls: urls, options: options) {
+                importedItems = result.imported
+            }
+        }
+
+        // AI processing after import
+        if let settings = settingsQuery.first, !importedItems.isEmpty {
+            if settings.aiAutoProcessOnImport {
+                Task {
+                    await aiCoordinator.processItems(importedItems, settings: settings, allTags: allTags, modelContext: modelContext)
+                }
+            } else if settings.aiAutoTranscribeOnImport {
+                let videos = importedItems.filter { $0.isVideo && $0.hasAudio == true }
+                if !videos.isEmpty {
+                    Task {
+                        await aiCoordinator.transcribeItems(videos, settings: settings, modelContext: modelContext)
+                    }
+                }
+            }
         }
     }
 
@@ -540,6 +620,59 @@ struct ContentView: View {
         }
         transcriptSearchService.clearResults()
         gridViewModel.searchText = ""
+    }
+
+    // MARK: - AI Actions
+
+    private func aiProcessSelected() {
+        let selectedItems = cachedItems.filter { gridViewModel.selectedItems.contains($0.id) }
+        guard !selectedItems.isEmpty, let settings = settingsQuery.first else { return }
+        Task {
+            await aiCoordinator.processItems(selectedItems, settings: settings, allTags: allTags, modelContext: modelContext)
+        }
+    }
+
+    private func aiTagSelected() {
+        guard let selectedID = gridViewModel.selectedItems.first,
+              let item = cachedItems.first(where: { $0.id == selectedID }),
+              let settings = settingsQuery.first else { return }
+        Task {
+            await aiCoordinator.tagItem(item, settings: settings, allTags: allTags, modelContext: modelContext)
+        }
+    }
+
+    private func aiSummarizeSelected() {
+        guard let selectedID = gridViewModel.selectedItems.first,
+              let item = cachedItems.first(where: { $0.id == selectedID }),
+              let settings = settingsQuery.first else { return }
+        Task {
+            await aiCoordinator.summarizeItem(item, settings: settings, library: library, modelContext: modelContext)
+        }
+    }
+
+    private func aiTranscribeSelected() {
+        guard let selectedID = gridViewModel.selectedItems.first,
+              let item = cachedItems.first(where: { $0.id == selectedID }),
+              let settings = settingsQuery.first else { return }
+        Task {
+            await aiCoordinator.transcribeItem(item, settings: settings, modelContext: modelContext, library: library)
+        }
+    }
+
+    private func aiProcessUntagged() {
+        let untagged = cachedItems.filter { $0.tags.isEmpty }
+        guard !untagged.isEmpty, let settings = settingsQuery.first else { return }
+        Task {
+            await aiCoordinator.processItems(untagged, settings: settings, allTags: allTags, modelContext: modelContext)
+        }
+    }
+
+    private func aiProcessUntranscribed() {
+        let untranscribed = cachedItems.filter { $0.isVideo && $0.hasAudio == true && $0.transcriptText == nil }
+        guard !untranscribed.isEmpty, let settings = settingsQuery.first else { return }
+        Task {
+            await aiCoordinator.transcribeItems(untranscribed, settings: settings, modelContext: modelContext)
+        }
     }
 
     // MARK: - Inspector

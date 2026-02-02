@@ -184,6 +184,68 @@ struct SubtitleOpacityKey: FocusedValueKey {
     typealias Value = Binding<Double>
 }
 
+// MARK: - Slideshow Settings Binding Keys
+
+struct SlideDurationKey: FocusedValueKey {
+    typealias Value = Binding<Double>
+}
+
+struct PlayFullGIFKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+struct VideoPlayDurationKey: FocusedValueKey {
+    typealias Value = Binding<VideoPlayDuration>
+}
+
+struct ShowTimerBarKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+struct ShowSlideshowCaptionsKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+// MARK: - AI Binding Keys
+
+struct AIAutoProcessKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+struct AIAutoTranscribeKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+struct AITagModeKey: FocusedValueKey {
+    typealias Value = Binding<AITagMode>
+}
+
+// MARK: - AI Action Keys
+
+struct AIProcessSelectedKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+struct AITagSelectedKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+struct AISummarizeSelectedKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+struct AITranscribeSelectedKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+struct AIProcessUntaggedKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+struct AIProcessUntranscribedKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
 // MARK: - FocusedValues Extension
 
 extension FocusedValues {
@@ -409,5 +471,78 @@ extension FocusedValues {
     var subtitleOpacity: Binding<Double>? {
         get { self[SubtitleOpacityKey.self] }
         set { self[SubtitleOpacityKey.self] = newValue }
+    }
+
+    // Slideshow settings bindings
+    var slideDuration: Binding<Double>? {
+        get { self[SlideDurationKey.self] }
+        set { self[SlideDurationKey.self] = newValue }
+    }
+
+    var playFullGIF: Binding<Bool>? {
+        get { self[PlayFullGIFKey.self] }
+        set { self[PlayFullGIFKey.self] = newValue }
+    }
+
+    var videoPlayDuration: Binding<VideoPlayDuration>? {
+        get { self[VideoPlayDurationKey.self] }
+        set { self[VideoPlayDurationKey.self] = newValue }
+    }
+
+    var showTimerBar: Binding<Bool>? {
+        get { self[ShowTimerBarKey.self] }
+        set { self[ShowTimerBarKey.self] = newValue }
+    }
+
+    var showSlideshowCaptions: Binding<Bool>? {
+        get { self[ShowSlideshowCaptionsKey.self] }
+        set { self[ShowSlideshowCaptionsKey.self] = newValue }
+    }
+
+    // AI bindings
+    var aiAutoProcess: Binding<Bool>? {
+        get { self[AIAutoProcessKey.self] }
+        set { self[AIAutoProcessKey.self] = newValue }
+    }
+
+    var aiAutoTranscribe: Binding<Bool>? {
+        get { self[AIAutoTranscribeKey.self] }
+        set { self[AIAutoTranscribeKey.self] = newValue }
+    }
+
+    var aiTagMode: Binding<AITagMode>? {
+        get { self[AITagModeKey.self] }
+        set { self[AITagModeKey.self] = newValue }
+    }
+
+    // AI actions
+    var aiProcessSelected: (() -> Void)? {
+        get { self[AIProcessSelectedKey.self] }
+        set { self[AIProcessSelectedKey.self] = newValue }
+    }
+
+    var aiTagSelected: (() -> Void)? {
+        get { self[AITagSelectedKey.self] }
+        set { self[AITagSelectedKey.self] = newValue }
+    }
+
+    var aiSummarizeSelected: (() -> Void)? {
+        get { self[AISummarizeSelectedKey.self] }
+        set { self[AISummarizeSelectedKey.self] = newValue }
+    }
+
+    var aiTranscribeSelected: (() -> Void)? {
+        get { self[AITranscribeSelectedKey.self] }
+        set { self[AITranscribeSelectedKey.self] = newValue }
+    }
+
+    var aiProcessUntagged: (() -> Void)? {
+        get { self[AIProcessUntaggedKey.self] }
+        set { self[AIProcessUntaggedKey.self] = newValue }
+    }
+
+    var aiProcessUntranscribed: (() -> Void)? {
+        get { self[AIProcessUntranscribedKey.self] }
+        set { self[AIProcessUntranscribedKey.self] = newValue }
     }
 }

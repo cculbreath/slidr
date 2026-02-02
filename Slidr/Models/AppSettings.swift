@@ -128,6 +128,33 @@ final class AppSettings {
         set { subtitleOpacityRaw = newValue }
     }
 
+    // MARK: - AI Computed Properties
+
+    var aiAutoProcessOnImport: Bool {
+        get { aiAutoProcessOnImportRaw ?? false }
+        set { aiAutoProcessOnImportRaw = newValue }
+    }
+
+    var aiAutoTranscribeOnImport: Bool {
+        get { aiAutoTranscribeOnImportRaw ?? false }
+        set { aiAutoTranscribeOnImportRaw = newValue }
+    }
+
+    var aiModel: String {
+        get { aiModelRaw ?? "grok-4-fast" }
+        set { aiModelRaw = newValue }
+    }
+
+    var aiTagMode: AITagMode {
+        get { aiTagModeRaw.flatMap { AITagMode(rawValue: $0) } ?? .generateNew }
+        set { aiTagModeRaw = newValue.rawValue }
+    }
+
+    var groqModel: String {
+        get { groqModelRaw ?? "whisper-large-v3" }
+        set { groqModelRaw = newValue }
+    }
+
     // MARK: - Verification
     var verifyFilesOnLaunch: Bool
     var removeOrphanedThumbnails: Bool
@@ -136,6 +163,13 @@ final class AppSettings {
     // MARK: - Audio
     var defaultVolume: Float
     var muteByDefault: Bool
+
+    // MARK: - AI Processing
+    var aiAutoProcessOnImportRaw: Bool?
+    var aiAutoTranscribeOnImportRaw: Bool?
+    var aiModelRaw: String?
+    var aiTagModeRaw: String?
+    var groqModelRaw: String?
 
     // MARK: - Initialization
     init() {

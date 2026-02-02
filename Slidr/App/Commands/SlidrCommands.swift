@@ -96,10 +96,26 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.shuffleSlideshow) var shuffleSlideshow
     @FocusedValue(\.slideshowTransition) var slideshowTransition
     @FocusedValue(\.listColumnCustomization) var listColumnCustomization
+    @FocusedValue(\.slideDuration) var slideDuration
+    @FocusedValue(\.playFullGIF) var playFullGIF
+    @FocusedValue(\.videoPlayDuration) var videoPlayDuration
+    @FocusedValue(\.showTimerBar) var showTimerBar
+    @FocusedValue(\.showSlideshowCaptions) var showSlideshowCaptions
     @FocusedValue(\.subtitleShow) var subtitleShow
     @FocusedValue(\.subtitlePosition) var subtitlePosition
     @FocusedValue(\.subtitleFontSize) var subtitleFontSize
     @FocusedValue(\.subtitleOpacity) var subtitleOpacity
+
+    // MARK: - AI FocusedValues
+    @FocusedValue(\.aiAutoProcess) var aiAutoProcess
+    @FocusedValue(\.aiAutoTranscribe) var aiAutoTranscribe
+    @FocusedValue(\.aiTagMode) var aiTagMode
+    @FocusedValue(\.aiProcessSelected) var aiProcessSelected
+    @FocusedValue(\.aiTagSelected) var aiTagSelected
+    @FocusedValue(\.aiSummarizeSelected) var aiSummarizeSelected
+    @FocusedValue(\.aiTranscribeSelected) var aiTranscribeSelected
+    @FocusedValue(\.aiProcessUntagged) var aiProcessUntagged
+    @FocusedValue(\.aiProcessUntranscribed) var aiProcessUntranscribed
 
     var body: some Commands {
         helpCommands
@@ -109,7 +125,7 @@ struct SlidrCommands: Commands {
         viewCommands
         browserCommands
         slideshowCommands
-        subtitleCommands
+        aiCommands
     }
 
     // MARK: - Help Menu
@@ -617,6 +633,26 @@ struct SlidrCommands: Commands {
 
             Divider()
 
+            slideDurationMenu
+
+            if let playFullGIF {
+                Toggle("Play Full GIF", isOn: playFullGIF)
+            }
+
+            videoDurationMenu
+
+            Divider()
+
+            if let showTimerBar {
+                Toggle("Show Timer Bar", isOn: showTimerBar)
+            }
+
+            if let showSlideshowCaptions {
+                Toggle("Show Caption", isOn: showSlideshowCaptions)
+            }
+
+            Divider()
+
             Menu("Transition") {
                 if let slideshowTransition {
                     ForEach(TransitionType.allCases, id: \.self) { transition in
@@ -634,13 +670,94 @@ struct SlidrCommands: Commands {
                     }
                 }
             }
+
+            Divider()
+
+            subtitlesMenu
         }
     }
 
-    // MARK: - Subtitles Menu
+    // MARK: - Slide Duration Submenu
 
-    private var subtitleCommands: some Commands {
-        CommandMenu("Subtitles") {
+    @ViewBuilder
+    private var slideDurationMenu: some View {
+        Menu("Slide Duration") {
+            if let slideDuration {
+                ForEach([3.0, 5.0, 10.0, 15.0, 20.0, 30.0], id: \.self) { seconds in
+                    Button {
+                        slideDuration.wrappedValue = seconds
+                    } label: {
+                        HStack {
+                            Text("\(Int(seconds)) Seconds")
+                            if slideDuration.wrappedValue == seconds {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Video Duration Submenu
+
+    @ViewBuilder
+    private var videoDurationMenu: some View {
+        Menu("Video Duration") {
+            if let videoPlayDuration {
+                Button {
+                    videoPlayDuration.wrappedValue = .slideshowTimer
+                } label: {
+                    HStack {
+                        Text("Slideshow Timer")
+                        if videoPlayDuration.wrappedValue == .slideshowTimer {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+
+                Button {
+                    videoPlayDuration.wrappedValue = .fullVideo
+                } label: {
+                    HStack {
+                        Text("Full Video")
+                        if videoPlayDuration.wrappedValue == .fullVideo {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+
+                Divider()
+
+                ForEach(
+                    [(5.0, "5 sec"), (15.0, "15 sec"), (30.0, "30 sec"),
+                     (60.0, "1 min"), (300.0, "5 min"), (600.0, "10 min")],
+                    id: \.0
+                ) { seconds, label in
+                    Button {
+                        videoPlayDuration.wrappedValue = .fixed(seconds)
+                    } label: {
+                        HStack {
+                            Text(label)
+                            if videoPlayDuration.wrappedValue == .fixed(seconds) {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Subtitles Submenu
+
+    @ViewBuilder
+    private var subtitlesMenu: some View {
+        Menu("Subtitles") {
             if let subtitleShow {
                 Toggle("Show Subtitles", isOn: subtitleShow)
             } else {
@@ -705,4 +822,85 @@ struct SlidrCommands: Commands {
             }
         }
     }
+
+    // MARK: - AI Menu
+
+    private var aiCommands: some Commands {
+        CommandMenu("Intelligence") {
+            if let aiAutoProcess {
+                Toggle("Auto-Process on Import", isOn: aiAutoProcess)
+            }
+
+            if let aiAutoTranscribe {
+                Toggle("Auto-Transcribe on Import", isOn: aiAutoTranscribe)
+            }
+
+            Divider()
+
+            if let aiTagMode {
+                Button {
+                    aiTagMode.wrappedValue = .generateNew
+                } label: {
+                    HStack {
+                        Text("Generate New Tags")
+                        if aiTagMode.wrappedValue == .generateNew {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+
+                Button {
+                    aiTagMode.wrappedValue = .constrainToExisting
+                } label: {
+                    HStack {
+                        Text("Use Existing Tags Only")
+                        if aiTagMode.wrappedValue == .constrainToExisting {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
+            Button("Process Selected") {
+                aiProcessSelected?()
+            }
+            .keyboardShortcut("p", modifiers: [.command, .option])
+            .disabled(aiProcessSelected == nil)
+
+            Button("Tag Selected") {
+                aiTagSelected?()
+            }
+            .keyboardShortcut("t", modifiers: [.command, .option])
+            .disabled(aiTagSelected == nil)
+
+            Button("Summarize Selected") {
+                aiSummarizeSelected?()
+            }
+            .keyboardShortcut("s", modifiers: [.command, .option])
+            .disabled(aiSummarizeSelected == nil)
+
+            Button("Transcribe Selected") {
+                aiTranscribeSelected?()
+            }
+            .keyboardShortcut("w", modifiers: [.command, .option])
+            .disabled(aiTranscribeSelected == nil)
+
+            Divider()
+
+            Button("Process All Untagged\u{2026}") {
+                aiProcessUntagged?()
+            }
+            .disabled(aiProcessUntagged == nil)
+
+            Button("Process All Untranscribed\u{2026}") {
+                aiProcessUntranscribed?()
+            }
+            .disabled(aiProcessUntranscribed == nil)
+        }
+    }
+
 }
