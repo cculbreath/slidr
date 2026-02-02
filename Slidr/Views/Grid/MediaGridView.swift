@@ -612,14 +612,14 @@ struct MediaGridView: View {
     private func aiProcess(_ item: MediaItem) {
         guard let settings else { return }
         Task {
-            await aiCoordinator.processItems([item], settings: settings, allTags: allTags, modelContext: modelContext)
+            await aiCoordinator.processItems([item], settings: settings, allTags: allTags, library: library, modelContext: modelContext)
         }
     }
 
     private func aiTag(_ item: MediaItem) {
         guard let settings else { return }
         Task {
-            await aiCoordinator.tagItem(item, settings: settings, allTags: allTags, modelContext: modelContext)
+            await aiCoordinator.tagItem(item, settings: settings, allTags: allTags, library: library, modelContext: modelContext)
         }
     }
 

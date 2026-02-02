@@ -116,6 +116,7 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.aiTranscribeSelected) var aiTranscribeSelected
     @FocusedValue(\.aiProcessUntagged) var aiProcessUntagged
     @FocusedValue(\.aiProcessUntranscribed) var aiProcessUntranscribed
+    @FocusedValue(\.aiShowStatusWindow) var aiShowStatusWindow
 
     var body: some Commands {
         helpCommands
@@ -838,29 +839,14 @@ struct SlidrCommands: Commands {
             Divider()
 
             if let aiTagMode {
-                Button {
-                    aiTagMode.wrappedValue = .generateNew
-                } label: {
-                    HStack {
-                        Text("Generate New Tags")
-                        if aiTagMode.wrappedValue == .generateNew {
-                            Spacer()
-                            Image(systemName: "checkmark")
-                        }
+                Picker(selection: aiTagMode) {
+                    ForEach(AITagMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
                     }
-                }
-
-                Button {
-                    aiTagMode.wrappedValue = .constrainToExisting
                 } label: {
-                    HStack {
-                        Text("Use Existing Tags Only")
-                        if aiTagMode.wrappedValue == .constrainToExisting {
-                            Spacer()
-                            Image(systemName: "checkmark")
-                        }
-                    }
+                    EmptyView()
                 }
+                .pickerStyle(.inline)
             }
 
             Divider()
@@ -900,6 +886,13 @@ struct SlidrCommands: Commands {
                 aiProcessUntranscribed?()
             }
             .disabled(aiProcessUntranscribed == nil)
+
+            Divider()
+
+            Button("Show Status Window") {
+                aiShowStatusWindow?()
+            }
+            .disabled(aiShowStatusWindow == nil)
         }
     }
 

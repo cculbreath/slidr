@@ -246,6 +246,10 @@ struct AIProcessUntranscribedKey: FocusedValueKey {
     typealias Value = () -> Void
 }
 
+struct AIShowStatusWindowKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
 // MARK: - FocusedValues Extension
 
 extension FocusedValues {
@@ -544,5 +548,10 @@ extension FocusedValues {
     var aiProcessUntranscribed: (() -> Void)? {
         get { self[AIProcessUntranscribedKey.self] }
         set { self[AIProcessUntranscribedKey.self] = newValue }
+    }
+
+    var aiShowStatusWindow: (() -> Void)? {
+        get { self[AIShowStatusWindowKey.self] }
+        set { self[AIShowStatusWindowKey.self] = newValue }
     }
 }

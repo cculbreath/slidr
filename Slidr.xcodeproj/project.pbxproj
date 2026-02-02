@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5738A3F22F3072BD0058C4A4 /* SwiftOpenAI in Frameworks */ = {isa = PBXBuildFile; productRef = 57A100022F40000000000002 /* SwiftOpenAI */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		579FD6C92F28241D0061CAFF /* Slidr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Slidr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5738A3F22F3072BD0058C4A4 /* SwiftOpenAI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -95,13 +100,13 @@
 			);
 			mainGroup = 579FD6C02F28241D0061CAFF;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				57A100012F40000000000001 /* XCRemoteSwiftPackageReference "SwiftOpenAI" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 579FD6CA2F28241D0061CAFF /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			packageReferences = (
-				57A100012F40000000000001 /* XCRemoteSwiftPackageReference "SwiftOpenAI" */,
-			);
 			targets = (
 				579FD6C82F28241D0061CAFF /* Slidr */,
 			);

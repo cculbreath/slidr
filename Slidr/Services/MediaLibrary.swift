@@ -266,7 +266,7 @@ final class MediaLibrary {
 
     func backgroundGenerateMissingScrubThumbnails(count: Int) {
         let cache = thumbnailCache
-        let videoItems = allItems.filter { $0.isVideo }
+        let videoItems = allItems.filter { $0.isVideo && !$0.hasDecodeError }
             .map { PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename) }
 
         guard !videoItems.isEmpty else { return }

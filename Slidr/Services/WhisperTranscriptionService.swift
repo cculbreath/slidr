@@ -5,6 +5,14 @@ import OSLog
 actor WhisperTranscriptionService {
     private static let logger = Logger(subsystem: "com.physicscloud.slidr", category: "Transcription")
     private let endpoint = URL(string: "https://api.groq.com/openai/v1/audio/transcriptions")!
+    static let maxFileSize: Int = 100 * 1024 * 1024 // 100 MB Groq dev tier limit
+
+    private let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 300
+        config.timeoutIntervalForResource = 600
+        return URLSession(configuration: config)
+    }()
 
     struct TranscriptionResult: Sendable {
         let text: String
@@ -13,26 +21,31 @@ actor WhisperTranscriptionService {
     // MARK: - Transcribe
 
     func transcribe(audioURL: URL, model: String, apiKey: String) async throws -> TranscriptionResult {
+        let fileData = try Data(contentsOf: audioURL)
+        let filename = audioURL.lastPathComponent
+
+        if fileData.count > Self.maxFileSize {
+            Self.logger.warning("Audio file \(filename) is \(fileData.count / 1_048_576)MB, exceeds Groq 25MB limit")
+            throw TranscriptionError.fileTooLarge(sizeMB: fileData.count / 1_048_576)
+        }
+
         let boundary = UUID().uuidString
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
-        let audioData = try Data(contentsOf: audioURL)
-        let filename = audioURL.lastPathComponent
-
         var body = Data()
-        body.appendMultipart(boundary: boundary, name: "file", filename: filename, mimeType: mimeType(for: audioURL), data: audioData)
+        body.appendMultipart(boundary: boundary, name: "file", filename: filename, mimeType: mimeType(for: audioURL), data: fileData)
         body.appendMultipart(boundary: boundary, name: "model", value: model)
         body.appendMultipart(boundary: boundary, name: "response_format", value: "text")
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
         request.httpBody = body
 
-        Self.logger.info("Transcribing \(filename) with model \(model)")
+        Self.logger.info("Transcribing \(filename) (\(fileData.count / 1_048_576)MB) with model \(model)")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw TranscriptionError.invalidResponse
@@ -53,12 +66,69 @@ actor WhisperTranscriptionService {
     // MARK: - Audio Extraction
 
     func extractAudio(from videoURL: URL) async throws -> URL {
+        // Prefer ffmpeg (handles more containers reliably), fall back to AVFoundation
+        if let ffmpegPath = FFmpegHelper.findFFmpeg() {
+            return try await extractAudioWithFFmpeg(from: videoURL, ffmpegPath: ffmpegPath)
+        }
+        Self.logger.info("ffmpeg not found, using AVFoundation for audio extraction")
+        return try await extractAudioWithAVFoundation(from: videoURL)
+    }
+
+    private func extractAudioWithFFmpeg(from videoURL: URL, ffmpegPath: String) async throws -> URL {
+        let tempDir = FileManager.default.temporaryDirectory
+        let outputURL = tempDir.appendingPathComponent(UUID().uuidString + ".m4a")
+
+        Self.logger.info("Extracting audio with ffmpeg: \(videoURL.lastPathComponent)")
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: ffmpegPath)
+        process.arguments = [
+            "-i", videoURL.path,
+            "-vn",              // No video
+            "-acodec", "aac",   // AAC codec
+            "-b:a", "128k",     // 128k bitrate (keeps file size reasonable)
+            "-ar", "16000",     // 16kHz (optimal for speech recognition)
+            "-ac", "1",         // Mono
+            "-y",               // Overwrite
+            outputURL.path
+        ]
+
+        let pipe = Pipe()
+        process.standardError = pipe
+        process.standardOutput = FileHandle.nullDevice
+
+        return try await withCheckedThrowingContinuation { continuation in
+            process.terminationHandler = { proc in
+                if proc.terminationStatus == 0 {
+                    Self.logger.info("ffmpeg audio extraction complete: \(outputURL.lastPathComponent)")
+                    continuation.resume(returning: outputURL)
+                } else {
+                    let errorData = pipe.fileHandleForReading.readDataToEndOfFile()
+                    let errorOutput = String(data: errorData, encoding: .utf8) ?? "unknown error"
+                    Self.logger.error("ffmpeg failed (exit \(proc.terminationStatus)): \(errorOutput.suffix(200))")
+                    try? FileManager.default.removeItem(at: outputURL)
+                    continuation.resume(throwing: TranscriptionError.exportFailed(
+                        NSError(domain: "FFmpeg", code: Int(proc.terminationStatus),
+                                userInfo: [NSLocalizedDescriptionKey: "ffmpeg audio extraction failed: \(errorOutput.suffix(200))"])
+                    ))
+                }
+            }
+
+            do {
+                try process.run()
+            } catch {
+                continuation.resume(throwing: TranscriptionError.exportFailed(error))
+            }
+        }
+    }
+
+    private func extractAudioWithAVFoundation(from videoURL: URL) async throws -> URL {
         let asset = AVURLAsset(url: videoURL)
 
         guard let audioTrack = try await asset.loadTracks(withMediaType: .audio).first else {
             throw TranscriptionError.noAudioTrack
         }
-        _ = audioTrack // Verify audio track exists
+        _ = audioTrack
 
         let tempDir = FileManager.default.temporaryDirectory
         let outputURL = tempDir.appendingPathComponent(UUID().uuidString + ".m4a")
@@ -79,7 +149,7 @@ actor WhisperTranscriptionService {
             throw TranscriptionError.exportSessionFailed
         }
 
-        Self.logger.info("Audio extracted to \(outputURL.lastPathComponent)")
+        Self.logger.info("AVFoundation audio extracted to \(outputURL.lastPathComponent)")
         return outputURL
     }
 
@@ -106,6 +176,7 @@ enum TranscriptionError: LocalizedError {
     case exportFailed(Error)
     case invalidResponse
     case apiError(statusCode: Int, body: String)
+    case fileTooLarge(sizeMB: Int)
 
     var errorDescription: String? {
         switch self {
@@ -119,6 +190,8 @@ enum TranscriptionError: LocalizedError {
             return "Invalid response from transcription API"
         case .apiError(let statusCode, let body):
             return "Transcription API error (\(statusCode)): \(body)"
+        case .fileTooLarge(let sizeMB):
+            return "Audio file too large (\(sizeMB)MB). Groq limit is 25MB."
         }
     }
 }

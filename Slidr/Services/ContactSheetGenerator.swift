@@ -9,6 +9,22 @@ actor ContactSheetGenerator {
     // MARK: - Video Frame Extraction
 
     func extractVideoFrames(from url: URL, count: Int, thumbnailSize: CGFloat) async throws -> [NSImage] {
+        // Try AVFoundation first
+        do {
+            return try await extractVideoFramesAVF(from: url, count: count, thumbnailSize: thumbnailSize)
+        } catch {
+            Self.logger.warning("AVFoundation frame extraction failed for \(url.lastPathComponent): \(error.localizedDescription), trying ffmpeg")
+        }
+
+        // Fall back to ffmpeg
+        let frames = await FFmpegHelper.extractFrames(from: url, count: count, thumbnailSize: thumbnailSize)
+        if frames.isEmpty {
+            Self.logger.error("ffmpeg frame extraction also returned 0 frames for \(url.lastPathComponent)")
+        }
+        return frames
+    }
+
+    private func extractVideoFramesAVF(from url: URL, count: Int, thumbnailSize: CGFloat) async throws -> [NSImage] {
         let asset = AVURLAsset(url: url)
         let duration = try await asset.load(.duration)
         let durationSeconds = CMTimeGetSeconds(duration)
@@ -33,7 +49,17 @@ actor ContactSheetGenerator {
                 let (cgImage, _) = try await generator.image(at: time)
                 frames.append(NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height)))
             } catch {
-                Self.logger.debug("Frame extraction failed at \(CMTimeGetSeconds(time))s: \(error.localizedDescription)")
+                // Retry with broader tolerance for problematic containers
+                generator.requestedTimeToleranceBefore = CMTime(seconds: 2.0, preferredTimescale: 600)
+                generator.requestedTimeToleranceAfter = CMTime(seconds: 2.0, preferredTimescale: 600)
+                do {
+                    let (cgImage, _) = try await generator.image(at: time)
+                    frames.append(NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height)))
+                } catch {
+                    Self.logger.debug("Frame extraction failed at \(CMTimeGetSeconds(time))s: \(error.localizedDescription)")
+                }
+                generator.requestedTimeToleranceBefore = .zero
+                generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
             }
         }
 
@@ -120,6 +146,17 @@ actor ContactSheetGenerator {
     // MARK: - Video Frame Range (Zoom)
 
     func extractVideoFrameRange(from url: URL, startFraction: Double, endFraction: Double, count: Int, thumbSize: CGFloat) async throws -> [NSImage] {
+        // Try AVFoundation first
+        do {
+            return try await extractVideoFrameRangeAVF(from: url, startFraction: startFraction, endFraction: endFraction, count: count, thumbSize: thumbSize)
+        } catch {
+            Self.logger.warning("AVFoundation range extraction failed for \(url.lastPathComponent): \(error.localizedDescription), trying ffmpeg")
+        }
+
+        return await FFmpegHelper.extractFrameRange(from: url, startFraction: startFraction, endFraction: endFraction, count: count, thumbSize: thumbSize)
+    }
+
+    private func extractVideoFrameRangeAVF(from url: URL, startFraction: Double, endFraction: Double, count: Int, thumbSize: CGFloat) async throws -> [NSImage] {
         let asset = AVURLAsset(url: url)
         let duration = try await asset.load(.duration)
         let durationSeconds = CMTimeGetSeconds(duration)
@@ -146,7 +183,16 @@ actor ContactSheetGenerator {
                 let (cgImage, _) = try await generator.image(at: time)
                 frames.append(NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height)))
             } catch {
-                Self.logger.debug("Range frame extraction failed: \(error.localizedDescription)")
+                generator.requestedTimeToleranceBefore = CMTime(seconds: 2.0, preferredTimescale: 600)
+                generator.requestedTimeToleranceAfter = CMTime(seconds: 2.0, preferredTimescale: 600)
+                do {
+                    let (cgImage, _) = try await generator.image(at: time)
+                    frames.append(NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height)))
+                } catch {
+                    Self.logger.debug("Range frame extraction failed: \(error.localizedDescription)")
+                }
+                generator.requestedTimeToleranceBefore = .zero
+                generator.requestedTimeToleranceAfter = CMTime(seconds: 0.2, preferredTimescale: 600)
             }
         }
 
@@ -156,6 +202,25 @@ actor ContactSheetGenerator {
     // MARK: - Single Frame (Max Resolution)
 
     func extractSingleFrame(from url: URL, atFraction: Double, maxSize: CGFloat) async throws -> NSImage {
+        // Try AVFoundation first
+        do {
+            return try await extractSingleFrameAVF(from: url, atFraction: atFraction, maxSize: maxSize)
+        } catch {
+            Self.logger.warning("AVFoundation single frame failed for \(url.lastPathComponent): \(error.localizedDescription), trying ffmpeg")
+        }
+
+        // Fall back to ffmpeg
+        guard let duration = await FFmpegHelper.videoDuration(url: url) else {
+            throw ContactSheetError.ffmpegExtractionFailed
+        }
+        let time = atFraction * duration
+        guard let image = await FFmpegHelper.extractFrame(from: url, atSeconds: time, maxSize: maxSize) else {
+            throw ContactSheetError.ffmpegExtractionFailed
+        }
+        return image
+    }
+
+    private func extractSingleFrameAVF(from url: URL, atFraction: Double, maxSize: CGFloat) async throws -> NSImage {
         let asset = AVURLAsset(url: url)
         let duration = try await asset.load(.duration)
         let durationSeconds = CMTimeGetSeconds(duration)
@@ -197,11 +262,15 @@ actor ContactSheetGenerator {
     // MARK: - Convenience: Full Contact Sheet Pipeline
 
     func generateOverviewSheet(from url: URL, mediaType: MediaType, frameCount: Int = 20) async throws -> Data? {
-        let frames: [NSImage]
+        var frames: [NSImage]
 
         switch mediaType {
         case .video:
             frames = try await extractVideoFrames(from: url, count: frameCount, thumbnailSize: 160)
+            if frames.isEmpty {
+                Self.logger.error("All frame extraction methods failed for \(url.lastPathComponent)")
+                return nil
+            }
         case .gif:
             frames = try extractGIFFrames(from: url, count: frameCount)
         case .image:
@@ -228,6 +297,7 @@ actor ContactSheetGenerator {
 enum ContactSheetError: LocalizedError {
     case failedToCreateImageSource
     case failedToLoadImage
+    case ffmpegExtractionFailed
 
     var errorDescription: String? {
         switch self {
@@ -235,6 +305,8 @@ enum ContactSheetError: LocalizedError {
             return "Failed to create image source for frame extraction"
         case .failedToLoadImage:
             return "Failed to load image file"
+        case .ffmpegExtractionFailed:
+            return "Failed to extract frame via ffmpeg"
         }
     }
 }

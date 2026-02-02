@@ -18,27 +18,38 @@ final class AITaggingService {
     // MARK: - Single-Pass: Images & GIFs
 
     func tagImage(imageData: Data, existingTags: [String]?, tagMode: AITagMode, model: String, apiKey: String) async throws -> AITagResult {
+        Self.logger.info("tagImage: model=\(model), imageSize=\(imageData.count / 1024)KB, tagMode=\(tagMode.rawValue)")
         let service = OpenAIServiceFactory.service(apiKey: apiKey, overrideBaseURL: "https://api.x.ai")
 
         let base64Image = imageData.base64EncodedString()
         let systemPrompt = buildSystemPrompt(tagMode: tagMode, existingTags: existingTags, transcript: nil)
 
         let schema = buildResponseSchema(tagMode: tagMode, existingTags: existingTags)
+        let responseFormat = JSONSchemaResponseFormat(name: "tag_result", strict: true, schema: schema)
 
         let parameters = ChatCompletionParameters(
             messages: [
                 .init(role: .system, content: .text(systemPrompt)),
-                .init(role: .user, content: .contentParts([
+                .init(role: .user, content: .contentArray([
                     .text("Analyze this media and provide tags, summary, and production classification."),
-                    .imageUrl(.init(url: "data:image/jpeg;base64,\(base64Image)")),
+                    .imageUrl(.init(url: URL(string: "data:image/jpeg;base64,\(base64Image)")!)),
                 ])),
             ],
             model: .custom(model),
-            responseFormat: .jsonSchema(name: "tag_result", schema: schema)
+            responseFormat: .jsonSchema(responseFormat)
         )
 
-        let result = try await service.startChat(parameters: parameters)
-        guard let content = result.choices.first?.message.content else {
+        Self.logger.debug("tagImage: sending request to xAI API...")
+        let result: ChatCompletionObject
+        do {
+            result = try await service.startChat(parameters: parameters)
+        } catch {
+            Self.logger.error("tagImage API call failed: \(Self.describeAPIError(error))")
+            throw error
+        }
+        Self.logger.info("tagImage: response received, choices=\(result.choices?.count ?? 0)")
+
+        guard let content = result.choices?.first?.message?.content else {
             throw AITaggingError.emptyResponse
         }
 
@@ -48,12 +59,15 @@ final class AITaggingService {
     // MARK: - Multi-Turn: Videos
 
     func tagVideo(videoURL: URL, transcript: String?, existingTags: [String]?, tagMode: AITagMode, model: String, apiKey: String) async throws -> AITagResult {
+        Self.logger.info("tagVideo: model=\(model), url=\(videoURL.lastPathComponent), tagMode=\(tagMode.rawValue)")
         let service = OpenAIServiceFactory.service(apiKey: apiKey, overrideBaseURL: "https://api.x.ai")
 
         // Generate overview contact sheet
+        Self.logger.debug("tagVideo: generating contact sheet...")
         guard let overviewData = try await contactSheetGenerator.generateOverviewSheet(from: videoURL, mediaType: .video) else {
             throw AITaggingError.contactSheetFailed
         }
+        Self.logger.info("tagVideo: contact sheet generated (\(overviewData.count / 1024)KB)")
 
         let base64Overview = overviewData.base64EncodedString()
         let systemPrompt = buildSystemPrompt(tagMode: tagMode, existingTags: existingTags, transcript: transcript)
@@ -61,9 +75,9 @@ final class AITaggingService {
 
         var messages: [ChatCompletionParameters.Message] = [
             .init(role: .system, content: .text(systemPrompt)),
-            .init(role: .user, content: .contentParts([
+            .init(role: .user, content: .contentArray([
                 .text("Analyze this video contact sheet. Each thumbnail represents an evenly-spaced frame. You have tools to zoom into frame ranges or view individual frames at higher resolution. When done analyzing, call submit_tags."),
-                .imageUrl(.init(url: "data:image/jpeg;base64,\(base64Overview)")),
+                .imageUrl(.init(url: URL(string: "data:image/jpeg;base64,\(base64Overview)")!)),
             ])),
         ]
 
@@ -71,33 +85,42 @@ final class AITaggingService {
         let maxTurns = 8
 
         for turn in 0..<maxTurns {
+            Self.logger.debug("tagVideo: turn \(turn + 1)/\(maxTurns), sending request...")
             let parameters = ChatCompletionParameters(
                 messages: messages,
                 model: .custom(model),
                 tools: tools
             )
 
-            let result = try await service.startChat(parameters: parameters)
-            guard let choice = result.choices.first else {
+            let result: ChatCompletionObject
+            do {
+                result = try await service.startChat(parameters: parameters)
+            } catch {
+                Self.logger.error("tagVideo API call failed on turn \(turn + 1): \(Self.describeAPIError(error))")
+                throw error
+            }
+            guard let choice = result.choices?.first else {
                 throw AITaggingError.emptyResponse
             }
 
-            let assistantMessage = choice.message
+            guard let assistantMessage = choice.message else {
+                throw AITaggingError.emptyResponse
+            }
 
             // Check for tool calls
             if let toolCalls = assistantMessage.toolCalls, !toolCalls.isEmpty {
                 messages.append(.init(role: .assistant, content: .text(assistantMessage.content ?? ""), toolCalls: toolCalls))
 
                 for toolCall in toolCalls {
-                    let functionName = toolCall.function.name
-                    let arguments = toolCall.function.arguments
+                    guard let functionName = toolCall.function.name else { continue }
+                    let arguments = toolCall.function.arguments ?? "{}"
 
                     if functionName == "submit_tags" {
                         return try parseSubmitTagsArguments(arguments)
                     }
 
                     if zoomBudget <= 0 {
-                        messages.append(.init(role: .tool, content: .text("Zoom budget exhausted. Please call submit_tags now with your analysis."), toolCallId: toolCall.id))
+                        messages.append(.init(role: .tool, content: .text("Zoom budget exhausted. Please call submit_tags now with your analysis."), toolCallID: toolCall.id))
                         continue
                     }
 
@@ -106,12 +129,12 @@ final class AITaggingService {
 
                     if let imageData = toolResult.imageData {
                         let base64 = imageData.base64EncodedString()
-                        messages.append(.init(role: .tool, content: .contentParts([
+                        messages.append(.init(role: .tool, content: .contentArray([
                             .text(toolResult.text),
-                            .imageUrl(.init(url: "data:image/jpeg;base64,\(base64)")),
-                        ]), toolCallId: toolCall.id))
+                            .imageUrl(.init(url: URL(string: "data:image/jpeg;base64,\(base64)")!)),
+                        ]), toolCallID: toolCall.id))
                     } else {
-                        messages.append(.init(role: .tool, content: .text(toolResult.text), toolCallId: toolCall.id))
+                        messages.append(.init(role: .tool, content: .text(toolResult.text), toolCallID: toolCall.id))
                     }
                 }
             } else {
@@ -129,16 +152,17 @@ final class AITaggingService {
         // Fallback: force a final structured response
         Self.logger.warning("Multi-turn loop exhausted without submit_tags call, requesting final answer")
         let schema = buildResponseSchema(tagMode: tagMode, existingTags: existingTags)
+        let responseFormat = JSONSchemaResponseFormat(name: "tag_result", strict: true, schema: schema)
         messages.append(.init(role: .user, content: .text("Please provide your final analysis as JSON.")))
 
         let finalParams = ChatCompletionParameters(
             messages: messages,
             model: .custom(model),
-            responseFormat: .jsonSchema(name: "tag_result", schema: schema)
+            responseFormat: .jsonSchema(responseFormat)
         )
 
         let finalResult = try await service.startChat(parameters: finalParams)
-        guard let content = finalResult.choices.first?.message.content else {
+        guard let content = finalResult.choices?.first?.message?.content else {
             throw AITaggingError.emptyResponse
         }
 
@@ -148,26 +172,50 @@ final class AITaggingService {
     // MARK: - Summary-Only
 
     func summarize(imageData: Data, model: String, apiKey: String) async throws -> String {
+        Self.logger.info("summarize: model=\(model), imageSize=\(imageData.count / 1024)KB")
         let service = OpenAIServiceFactory.service(apiKey: apiKey, overrideBaseURL: "https://api.x.ai")
         let base64 = imageData.base64EncodedString()
 
         let parameters = ChatCompletionParameters(
             messages: [
                 .init(role: .system, content: .text("You are a media analyst. Provide a concise 2-3 sentence description of the visual content.")),
-                .init(role: .user, content: .contentParts([
+                .init(role: .user, content: .contentArray([
                     .text("Describe this media."),
-                    .imageUrl(.init(url: "data:image/jpeg;base64,\(base64)")),
+                    .imageUrl(.init(url: URL(string: "data:image/jpeg;base64,\(base64)")!)),
                 ])),
             ],
             model: .custom(model)
         )
 
-        let result = try await service.startChat(parameters: parameters)
-        guard let content = result.choices.first?.message.content else {
+        Self.logger.debug("summarize: sending request to xAI API...")
+        let result: ChatCompletionObject
+        do {
+            result = try await service.startChat(parameters: parameters)
+        } catch {
+            Self.logger.error("summarize API call failed: \(Self.describeAPIError(error))")
+            throw error
+        }
+        guard let content = result.choices?.first?.message?.content else {
             throw AITaggingError.emptyResponse
         }
 
         return content
+    }
+
+    // MARK: - Error Helpers
+
+    static func describeAPIError(_ error: Error) -> String {
+        if let apiError = error as? APIError {
+            return apiError.displayDescription
+        }
+        if let localizedError = error as? LocalizedError, let desc = localizedError.errorDescription {
+            return desc
+        }
+        let desc = error.localizedDescription
+        if desc.contains("The operation could") || desc.contains("The operation couldn") {
+            return String(describing: error)
+        }
+        return desc
     }
 
     // MARK: - Prompt Building
@@ -208,7 +256,8 @@ final class AITaggingService {
                 "production_source": .init(type: .string, enum: ["studio", "creator", "homemade", "unknown"].map { .init($0) }),
                 "confidence": .init(type: .number),
             ],
-            required: ["tags", "summary", "production_source", "confidence"]
+            required: ["tags", "summary", "production_source", "confidence"],
+            additionalProperties: false
         )
     }
 
@@ -218,6 +267,7 @@ final class AITaggingService {
         [
             .init(function: .init(
                 name: "range_zoom",
+                strict: nil,
                 description: "Zoom into a range of thumbnails for higher resolution. Provide start and end thumbnail numbers (1-indexed from the overview).",
                 parameters: .init(
                     type: .object,
@@ -230,6 +280,7 @@ final class AITaggingService {
             )),
             .init(function: .init(
                 name: "view_frame",
+                strict: nil,
                 description: "View a single frame at maximum resolution. Provide the thumbnail number from the overview.",
                 parameters: .init(
                     type: .object,
@@ -241,6 +292,7 @@ final class AITaggingService {
             )),
             .init(function: .init(
                 name: "submit_tags",
+                strict: nil,
                 description: "Submit your final analysis with tags, summary, production source, and confidence.",
                 parameters: .init(
                     type: .object,
