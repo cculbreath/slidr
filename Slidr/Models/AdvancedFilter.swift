@@ -20,6 +20,7 @@ struct AdvancedFilter {
                 || (item.caption?.lowercased().contains(query) ?? false)
                 || (item.transcriptText?.lowercased().contains(query) ?? false)
                 || (item.summary?.lowercased().contains(query) ?? false)
+                || (item.source?.lowercased().contains(query) ?? false)
             if !matchesSearch { return false }
         }
 
@@ -41,11 +42,21 @@ struct AdvancedFilter {
         var productionTypes: [String] = []
         var includeTags: [String] = []
         var excludeTags: [String] = []
+        var includeSources: [String] = []
         var hasTranscript: Bool?
         var hasCaption: Bool?
 
         for rule in rules {
             switch rule.field {
+            case .source:
+                if case .string(let value) = rule.value, !value.isEmpty {
+                    switch rule.condition {
+                    case .contains, .is:
+                        includeSources.append(value)
+                    default:
+                        break
+                    }
+                }
             case .tag:
                 if case .string(let value) = rule.value {
                     switch rule.condition {
@@ -120,6 +131,9 @@ struct AdvancedFilter {
         if let hasCaption {
             playlist.filterHasCaption = hasCaption
         }
+        if !includeSources.isEmpty {
+            playlist.filterSources = includeSources
+        }
     }
 }
 
@@ -147,6 +161,23 @@ struct FilterRule: Identifiable {
 
     func matches(_ item: MediaItem) -> Bool {
         switch field {
+        case .source:
+            guard case .string(let sourceValue) = value else { return true }
+            let query = sourceValue.lowercased()
+            let itemSource = item.source?.lowercased() ?? ""
+            switch condition {
+            case .contains:
+                return itemSource.contains(query)
+            case .doesNotContain:
+                return !itemSource.contains(query)
+            case .is:
+                return itemSource == query
+            case .isNot:
+                return itemSource != query
+            default:
+                return true
+            }
+
         case .tag:
             guard case .string(let tagValue) = value else { return true }
             let query = tagValue.lowercased()
@@ -212,6 +243,7 @@ struct FilterRule: Identifiable {
 
 enum FilterField: String, CaseIterable {
     case tag = "Tag"
+    case source = "Source"
     case mediaType = "Media Type"
     case productionType = "Production Type"
     case duration = "Duration"
@@ -221,7 +253,7 @@ enum FilterField: String, CaseIterable {
 
     var availableConditions: [FilterCondition] {
         switch self {
-        case .tag:
+        case .tag, .source:
             return [.contains, .doesNotContain, .is, .isNot]
         case .mediaType, .productionType:
             return [.is, .isNot]
@@ -236,7 +268,7 @@ enum FilterField: String, CaseIterable {
 
     var defaultValue: FilterValue {
         switch self {
-        case .tag: return .string("")
+        case .tag, .source: return .string("")
         case .mediaType: return .mediaType(.video)
         case .productionType: return .productionType(.professional)
         case .duration: return .duration(30)

@@ -153,11 +153,7 @@ struct MediaInspectorView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
 
-            TextField("Attribution or origin", text: Binding(
-                get: { item.source ?? "" },
-                set: { item.source = $0.isEmpty ? nil : $0 }
-            ))
-            .textFieldStyle(.roundedBorder)
+            SourceEditorView(source: $item.source, allLibrarySources: library.allSources)
         }
     }
 

@@ -38,16 +38,10 @@ final class MediaLibrary {
 
     // MARK: - Initialization
 
-    init(modelContainer: ModelContainer, thumbnailCache: ThumbnailCache, transcriptStore: TranscriptStore) {
+    init(modelContainer: ModelContainer, thumbnailCache: ThumbnailCache, transcriptStore: TranscriptStore, libraryRoot: URL) {
         self.modelContainer = modelContainer
         self.thumbnailCache = thumbnailCache
         self.transcriptStore = transcriptStore
-
-        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            fatalError("Application Support directory not available — this should never happen on macOS")
-        }
-        let slidrDir = appSupport.appendingPathComponent("Slidr", isDirectory: true)
-        let libraryRoot = slidrDir.appendingPathComponent("Library", isDirectory: true)
         self.libraryRoot = libraryRoot
 
         // Ensure directories exist

@@ -12,4 +12,5 @@ extension Logger {
     static let folderWatcher = Logger(subsystem: subsystem, category: "FolderWatcher")
     static let hoverPlayer = Logger(subsystem: subsystem, category: "HoverPlayer")
     static let transcripts = Logger(subsystem: subsystem, category: "Transcripts")
+    nonisolated(unsafe) static let vault = Logger(subsystem: subsystem, category: "Vault")
 }

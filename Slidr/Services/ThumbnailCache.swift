@@ -11,7 +11,9 @@ actor ThumbnailCache {
     private let memoryCache = NSCache<NSString, NSImage>()
     private var generationTasks: [String: Task<NSImage, Error>] = [:]
 
-    private let maxMemoryCacheSize = 100
+    /// Memory cache holds up to 2000 thumbnails. At ~80KB each this is ~160MB,
+    /// which avoids constant re-reads from encrypted vault sparse bundles.
+    private let maxMemoryCacheSize = 2000
     private let jpegQuality: CGFloat = 0.8
 
     init(cacheDirectory: URL) {

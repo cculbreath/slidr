@@ -38,6 +38,7 @@ final class Playlist {
     var filterTags: [String]?
     var filterTagsExcluded: [String]?
     var filterSearchText: String?
+    var filterSources: [String]?
 
     // MARK: - Display Properties
     var iconName: String?

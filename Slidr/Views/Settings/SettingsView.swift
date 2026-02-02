@@ -37,6 +37,11 @@ struct SettingsView: View {
                     .tabItem {
                         Label("Intelligence", systemImage: "sparkles")
                     }
+
+                VaultSettingsView()
+                    .tabItem {
+                        Label("Vault", systemImage: "lock.shield")
+                    }
             }
             .frame(width: 500, height: 400)
             .padding()

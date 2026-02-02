@@ -140,6 +140,11 @@ struct AdvancedFilterSheet: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(minWidth: 100)
 
+        case .source:
+            TextField("Source", text: stringValueBinding(at: index))
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 100)
+
         case .mediaType:
             Picker("", selection: mediaTypeValueBinding(at: index)) {
                 ForEach(MediaType.allCases, id: \.self) { type in

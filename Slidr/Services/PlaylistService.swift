@@ -254,6 +254,14 @@ final class PlaylistService {
             }
         }
 
+        // Filter by source
+        if let sources = playlist.filterSources, !sources.isEmpty {
+            filtered = filtered.filter { item in
+                guard let itemSource = item.source?.lowercased() else { return false }
+                return sources.contains { itemSource.contains($0.lowercased()) }
+            }
+        }
+
         // Filter by excluded tags
         if let excludedTags = playlist.filterTagsExcluded, !excludedTags.isEmpty {
             filtered = filtered.filter { item in
