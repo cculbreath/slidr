@@ -19,7 +19,7 @@ enum TranscriptFormat: String, Sendable {
     case srt
     case vtt
 
-    init?(fileExtension: String) {
+    nonisolated init?(fileExtension: String) {
         switch fileExtension.lowercased() {
         case "srt": self = .srt
         case "vtt": self = .vtt
@@ -52,7 +52,7 @@ enum TranscriptError: LocalizedError {
 
 struct TranscriptParser {
 
-    static func parse(fileAt url: URL) throws -> [TranscriptCue] {
+    nonisolated static func parse(fileAt url: URL) throws -> [TranscriptCue] {
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw TranscriptError.fileNotFound
         }
@@ -78,7 +78,7 @@ struct TranscriptParser {
         return cues
     }
 
-    static func extractPlainText(from cues: [TranscriptCue]) -> String {
+    nonisolated static func extractPlainText(from cues: [TranscriptCue]) -> String {
         cues.map { stripHTMLTags($0.text) }.joined(separator: " ")
     }
 
@@ -107,7 +107,7 @@ struct TranscriptParser {
 
     // MARK: - SRT Parsing
 
-    private static func parseSRT(_ content: String) throws -> [TranscriptCue] {
+    nonisolated private static func parseSRT(_ content: String) throws -> [TranscriptCue] {
         let blocks = content
             .replacingOccurrences(of: "\r\n", with: "\n")
             .components(separatedBy: "\n\n")
@@ -148,7 +148,7 @@ struct TranscriptParser {
     }
 
     /// Parses SRT timestamp: `HH:MM:SS,mmm`
-    private static func parseSRTTimestamp(_ string: String) -> TimeInterval? {
+    nonisolated private static func parseSRTTimestamp(_ string: String) -> TimeInterval? {
         // SRT uses comma for ms: 00:01:23,456
         let normalized = string.replacingOccurrences(of: ",", with: ".")
         return parseTimestamp(normalized)
@@ -156,7 +156,7 @@ struct TranscriptParser {
 
     // MARK: - VTT Parsing
 
-    private static func parseVTT(_ content: String) throws -> [TranscriptCue] {
+    nonisolated private static func parseVTT(_ content: String) throws -> [TranscriptCue] {
         var lines = content
             .replacingOccurrences(of: "\r\n", with: "\n")
             .components(separatedBy: "\n")
@@ -231,7 +231,7 @@ struct TranscriptParser {
     // MARK: - Shared Timestamp Parsing
 
     /// Parses timestamps in `HH:MM:SS.mmm` or `MM:SS.mmm` format.
-    private static func parseTimestamp(_ string: String) -> TimeInterval? {
+    nonisolated private static func parseTimestamp(_ string: String) -> TimeInterval? {
         let components = string.components(separatedBy: ":")
         guard components.count >= 2 else { return nil }
 
@@ -345,7 +345,7 @@ struct TranscriptParser {
 
     // MARK: - HTML Tag Stripping
 
-    private static func stripHTMLTags(_ string: String) -> String {
+    nonisolated private static func stripHTMLTags(_ string: String) -> String {
         string.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
     }
 }

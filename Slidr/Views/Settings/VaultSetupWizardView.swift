@@ -461,9 +461,6 @@ struct VaultSetupWizardView: View {
 
         // Determine the drive the external library is on
         let drive = extRoot.deletingLastPathComponent()
-        let driveName = URL(fileURLWithPath: "/Volumes/").appendingPathComponent(
-            extRoot.pathComponents.count >= 3 ? extRoot.pathComponents[2] : "External"
-        )
 
         // Create external vault on same drive
         migrationStatus = "Creating external encrypted vault..."

@@ -411,7 +411,7 @@ struct ContentView: View {
     }
 
     private func performImport(urls: [URL]) async {
-        var options = ImportOptions.default
+        var options = ImportOptions()
         if let settings = settingsQuery.first {
             options.importMode = settings.importMode
             options.storageLocation = settings.defaultImportLocation

@@ -22,7 +22,7 @@ struct VaultConfiguration: Codable, Identifiable, Sendable {
 }
 
 /// Registry of all vault locations, stored as JSON outside the vault.
-struct VaultManifest: Codable, Sendable {
+struct VaultManifest: Sendable {
     var vaults: [VaultConfiguration]
     var useKeychain: Bool
     var autoLockOnSleep: Bool
@@ -39,5 +39,29 @@ struct VaultManifest: Codable, Sendable {
             autoLockOnScreensaver: true,
             lockTimeoutMinutes: nil
         )
+    }
+}
+
+extension VaultManifest: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case vaults, useKeychain, autoLockOnSleep, autoLockOnScreensaver, lockTimeoutMinutes
+    }
+
+    nonisolated init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        vaults = try container.decode([VaultConfiguration].self, forKey: .vaults)
+        useKeychain = try container.decode(Bool.self, forKey: .useKeychain)
+        autoLockOnSleep = try container.decode(Bool.self, forKey: .autoLockOnSleep)
+        autoLockOnScreensaver = try container.decode(Bool.self, forKey: .autoLockOnScreensaver)
+        lockTimeoutMinutes = try container.decodeIfPresent(Int.self, forKey: .lockTimeoutMinutes)
+    }
+
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(vaults, forKey: .vaults)
+        try container.encode(useKeychain, forKey: .useKeychain)
+        try container.encode(autoLockOnSleep, forKey: .autoLockOnSleep)
+        try container.encode(autoLockOnScreensaver, forKey: .autoLockOnScreensaver)
+        try container.encodeIfPresent(lockTimeoutMinutes, forKey: .lockTimeoutMinutes)
     }
 }

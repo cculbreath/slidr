@@ -38,7 +38,7 @@ struct MediaImporter {
     private let videoConverter = VideoConverter()
     private let options: ImportOptions
 
-    init(libraryRoot: URL, externalLibraryRoot: URL? = nil, modelContext: ModelContext, options: ImportOptions = .default) {
+    init(libraryRoot: URL, externalLibraryRoot: URL? = nil, modelContext: ModelContext, options: ImportOptions = ImportOptions()) {
         self.libraryRoot = libraryRoot
         self.externalLibraryRoot = externalLibraryRoot
         self.modelContext = modelContext

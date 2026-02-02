@@ -126,7 +126,7 @@ final class MediaLibrary {
         Logger.library.info("Import cancelled by user")
     }
 
-    func importFiles(urls: [URL], options: ImportOptions = .default) async throws -> ImportResult {
+    func importFiles(urls: [URL], options: ImportOptions = ImportOptions()) async throws -> ImportResult {
         isLoading = true
         importCancelled = false
         importProgress = ImportProgress(currentItem: 0, totalItems: urls.count, currentFilename: "", phase: .importing)
@@ -138,9 +138,10 @@ final class MediaLibrary {
         }
 
         let result = try await importCoordinator.importFiles(urls: urls, options: options) { [weak self] progress in
+            guard let self else { return }
             Task { @MainActor in
-                guard self?.isLoading == true else { return }
-                self?.importProgress = progress
+                guard self.isLoading else { return }
+                self.importProgress = progress
             }
         }
 
@@ -149,7 +150,7 @@ final class MediaLibrary {
         return result
     }
 
-    func importFolders(urls: [URL], options: ImportOptions = .default) async throws -> (result: ImportResult, folderGroups: [(name: String, items: [MediaItem])]) {
+    func importFolders(urls: [URL], options: ImportOptions = ImportOptions()) async throws -> (result: ImportResult, folderGroups: [(name: String, items: [MediaItem])]) {
         isLoading = true
         importCancelled = false
         defer {
@@ -160,9 +161,10 @@ final class MediaLibrary {
         }
 
         let (result, folderGroups) = try await importCoordinator.importFolders(urls: urls, options: options) { [weak self] progress in
+            guard let self else { return }
             Task { @MainActor in
-                guard self?.isLoading == true else { return }
-                self?.importProgress = progress
+                guard self.isLoading else { return }
+                self.importProgress = progress
             }
         }
 

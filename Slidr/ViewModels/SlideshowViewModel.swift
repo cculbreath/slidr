@@ -371,7 +371,7 @@ final class SlideshowViewModel {
                 preloadedItems[item.id] = PreloadedMedia(image: image, videoAsset: nil)
             }
         case .video:
-            let asset = AVAsset(url: url)
+            let asset = AVURLAsset(url: url)
             preloadedItems[item.id] = PreloadedMedia(image: nil, videoAsset: asset)
         }
     }

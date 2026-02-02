@@ -57,8 +57,9 @@ final class SmoothScrubber {
         // Observe time updates
         let interval = CMTime(seconds: 0.1, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            guard let self else { return }
             Task { @MainActor in
-                self?.currentTime = time
+                self.currentTime = time
             }
         }
 
