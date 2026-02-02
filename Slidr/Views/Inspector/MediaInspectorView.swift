@@ -28,6 +28,11 @@ struct MediaInspectorView: View {
 
                 Divider()
 
+                // Rating
+                ratingSection
+
+                Divider()
+
                 // Production type
                 productionSection
 
@@ -154,6 +159,43 @@ struct MediaInspectorView: View {
                 .foregroundStyle(.secondary)
 
             SourceEditorView(source: $item.source, allLibrarySources: library.allSources)
+        }
+    }
+
+    // MARK: - Rating Section
+
+    private var ratingSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Rating")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 4) {
+                ForEach(1...5, id: \.self) { star in
+                    Button {
+                        item.rating = item.rating == star ? nil : star
+                    } label: {
+                        Image(systemName: star <= (item.rating ?? 0) ? "star.fill" : "star")
+                            .font(.body)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(star <= (item.rating ?? 0) ? .yellow : .secondary)
+                }
+
+                if item.rating != nil {
+                    Button {
+                        item.rating = nil
+                    } label: {
+                        Image(systemName: "xmark.circle")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Clear rating")
+                    .padding(.leading, 4)
+                }
+            }
         }
     }
 

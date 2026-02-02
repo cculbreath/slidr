@@ -4,6 +4,7 @@ struct GridKeyboardModifier: ViewModifier {
     let onDelete: () -> Void
     let onQuickLook: () -> Void
     let onMoveSelection: (NavigationDirection) -> Void
+    let onRate: ((Int) -> Void)?
 
     func body(content: Content) -> some View {
         content
@@ -31,6 +32,13 @@ struct GridKeyboardModifier: ViewModifier {
                 onQuickLook()
                 return .handled
             }
+            .onKeyPress(characters: .init(charactersIn: "012345"), phases: .down) { press in
+                guard press.modifiers == .option,
+                      let digit = press.characters.first?.wholeNumberValue,
+                      let onRate else { return .ignored }
+                onRate(digit)
+                return .handled
+            }
     }
 }
 
@@ -38,12 +46,14 @@ extension View {
     func gridKeyboardHandling(
         onDelete: @escaping () -> Void,
         onQuickLook: @escaping () -> Void,
-        onMoveSelection: @escaping (NavigationDirection) -> Void
+        onMoveSelection: @escaping (NavigationDirection) -> Void,
+        onRate: ((Int) -> Void)? = nil
     ) -> some View {
         modifier(GridKeyboardModifier(
             onDelete: onDelete,
             onQuickLook: onQuickLook,
-            onMoveSelection: onMoveSelection
+            onMoveSelection: onMoveSelection,
+            onRate: onRate
         ))
     }
 }

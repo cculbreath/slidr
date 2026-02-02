@@ -131,6 +131,12 @@ struct MediaGridView: View {
             onMoveSelection: { direction in
                 let columns = viewModel.columnCount(for: containerWidth)
                 viewModel.moveSelection(direction: direction, in: displayedItems, columns: columns)
+            },
+            onRate: { rating in
+                let selectedIDs = viewModel.selectedItems
+                for item in items where selectedIDs.contains(item.id) {
+                    item.rating = rating > 0 ? rating : nil
+                }
             }
         )
         .onAppear { configureToolbar() }

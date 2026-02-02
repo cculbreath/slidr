@@ -57,6 +57,8 @@ enum KeyboardShortcuts {
         ("\u{2318}+", "Larger thumbnails"),
         ("\u{2318}-", "Smaller thumbnails"),
         ("\u{2318}0", "Reset thumbnail size"),
+        ("\u{2325}1-5", "Rate selected (stars)"),
+        ("\u{2325}0", "Clear rating"),
     ]
 
     // MARK: - General Reference
