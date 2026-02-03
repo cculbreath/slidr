@@ -548,16 +548,16 @@ struct VaultSetupWizardView: View {
     }
 
     private func relaunchApp() {
-        let url = URL(fileURLWithPath: Bundle.main.resourcePath!)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let bundlePath = Bundle.main.bundleURL.path
+        let pid = ProcessInfo.processInfo.processIdentifier
 
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        task.arguments = ["-n", url.path]
-        try? task.run()
+        // Spawn a shell that waits for this process to exit, then opens a fresh instance.
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "while kill -0 \(pid) 2>/dev/null; do sleep 0.1; done; open \"\(bundlePath)\""]
+        try? process.run()
 
-        NSApplication.shared.terminate(nil)
+        // exit(0) cannot be blocked by SwiftUI lifecycle, unlike terminate(nil).
+        exit(0)
     }
 }
