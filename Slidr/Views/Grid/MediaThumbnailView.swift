@@ -15,7 +15,7 @@ struct MediaThumbnailView: View {
     var selectedItemIDs: Set<UUID> = []
     @Binding var hoveredItemID: UUID?
     let onTap: () -> Void
-    let onDoubleTap: () -> Void
+    let onDoubleTap: (Double?) -> Void
 
     @Query private var settingsQuery: [AppSettings]
     @State private var hoverState: HoverState = .idle
@@ -56,7 +56,7 @@ struct MediaThumbnailView: View {
     var body: some View {
         VStack(spacing: 4) {
             thumbnailContent
-                .frame(width: size.pixelSize, height: size.pixelSize)
+                .frame(width: size.displaySize, height: size.displaySize)
 
             if showFilenames {
                 Text(item.displayName)
@@ -64,7 +64,7 @@ struct MediaThumbnailView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .foregroundStyle(.secondary)
-                    .frame(width: size.pixelSize)
+                    .frame(width: size.displaySize)
             }
 
             if showCaptions, item.hasCaption {
@@ -73,7 +73,7 @@ struct MediaThumbnailView: View {
                     .lineLimit(2)
                     .truncationMode(.tail)
                     .foregroundStyle(.secondary)
-                    .frame(width: size.pixelSize)
+                    .frame(width: size.displaySize)
                     .italic()
             }
         }
@@ -93,7 +93,7 @@ struct MediaThumbnailView: View {
                 AsyncThumbnailImage(item: item, size: size)
             }
         }
-        .frame(width: size.pixelSize, height: size.pixelSize)
+        .frame(width: size.displaySize, height: size.displaySize)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
@@ -141,11 +141,11 @@ struct MediaThumbnailView: View {
                 // Require the cursor to be within the inner portion of the
                 // thumbnail so that casually passing over doesn't trigger
                 // scrubbing/hover effects.
-                let inset = size.pixelSize * 0.1
+                let inset = size.displaySize * 0.05
                 let activeRect = CGRect(
                     x: inset, y: inset,
-                    width: size.pixelSize - inset * 2,
-                    height: size.pixelSize - inset * 2
+                    width: size.displaySize - inset * 2,
+                    height: size.displaySize - inset * 2
                 )
                 guard activeRect.contains(location) else {
                     if item.isVideo {
@@ -175,7 +175,7 @@ struct MediaThumbnailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .onTapGesture(count: 2) {
-            onDoubleTap()
+            onDoubleTap(item.isVideo && hoverState.isActive ? hoverState.position : nil)
         }
         .onTapGesture {
             onTap()
