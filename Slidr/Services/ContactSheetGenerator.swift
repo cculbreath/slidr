@@ -275,7 +275,7 @@ actor ContactSheetGenerator {
             frames = try extractGIFFrames(from: url, count: frameCount)
         case .image:
             let image = try loadStaticImage(from: url, maxSize: 1200)
-            return image.jpegData(quality: 0.9)
+            return await MainActor.run { image.jpegData(quality: 0.9) }
         }
 
         return composeContactSheet(frames: frames, columns: 10, thumbSize: 160, jpegQuality: 0.8)
@@ -288,7 +288,7 @@ actor ContactSheetGenerator {
 
     func generateSingleFrameData(from url: URL, atFraction: Double) async throws -> Data? {
         let frame = try await extractSingleFrame(from: url, atFraction: atFraction, maxSize: 1200)
-        return frame.jpegData(quality: 0.95)
+        return await MainActor.run { frame.jpegData(quality: 0.95) }
     }
 }
 

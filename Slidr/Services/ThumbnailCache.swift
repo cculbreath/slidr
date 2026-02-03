@@ -113,7 +113,7 @@ actor ThumbnailCache {
             let duration = try await asset.load(.duration)
             let time = CMTime(seconds: duration.seconds * 0.1, preferredTimescale: duration.timescale)
 
-            let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
+            let (cgImage, _) = try await generator.image(at: time)
             return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
         } catch {
             logger.warning("AVFoundation thumbnail failed for \(url.lastPathComponent): \(error.localizedDescription), trying ffmpeg")
@@ -181,7 +181,7 @@ actor ThumbnailCache {
             for i in 1...count {
                 let time = CMTime(seconds: interval * Double(i), preferredTimescale: duration.timescale)
                 do {
-                    let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
+                    let (cgImage, _) = try await generator.image(at: time)
                     let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
                     thumbnails.append(image)
 
@@ -244,7 +244,7 @@ actor ThumbnailCache {
 
                 for i in 1...count {
                     let time = CMTime(seconds: interval * Double(i), preferredTimescale: duration.timescale)
-                    let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
+                    let (cgImage, _) = try await generator.image(at: time)
                     let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
 
                     let diskPath = cacheDirectory.appendingPathComponent("\(item.contentHash)-scrub-\(i - 1).jpg")

@@ -113,7 +113,7 @@ final class AITaggingService {
 
                 for toolCall in toolCalls {
                     guard let functionName = toolCall.function.name else { continue }
-                    let arguments = toolCall.function.arguments ?? "{}"
+                    let arguments = toolCall.function.arguments
 
                     if functionName == "submit_tags" {
                         return try parseSubmitTagsArguments(arguments)

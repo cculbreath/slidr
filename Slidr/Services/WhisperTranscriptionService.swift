@@ -38,10 +38,18 @@ actor WhisperTranscriptionService {
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
         var body = Data()
-        body.appendMultipart(boundary: boundary, name: "file", filename: filename, mimeType: mimeType(for: audioURL), data: fileData)
-        body.appendMultipart(boundary: boundary, name: "model", value: model)
-        body.appendMultipart(boundary: boundary, name: "response_format", value: "text")
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        body.append(Data("--\(boundary)\r\n".utf8))
+        body.append(Data("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".utf8))
+        body.append(Data("Content-Type: \(mimeType(for: audioURL))\r\n\r\n".utf8))
+        body.append(fileData)
+        body.append(Data("\r\n".utf8))
+        body.append(Data("--\(boundary)\r\n".utf8))
+        body.append(Data("Content-Disposition: form-data; name=\"model\"\r\n\r\n".utf8))
+        body.append(Data("\(model)\r\n".utf8))
+        body.append(Data("--\(boundary)\r\n".utf8))
+        body.append(Data("Content-Disposition: form-data; name=\"response_format\"\r\n\r\n".utf8))
+        body.append(Data("text\r\n".utf8))
+        body.append(Data("--\(boundary)--\r\n".utf8))
 
         request.httpBody = body
 
@@ -69,7 +77,7 @@ actor WhisperTranscriptionService {
 
     func extractAudio(from videoURL: URL) async throws -> URL {
         // Prefer ffmpeg (handles more containers reliably), fall back to AVFoundation
-        if let ffmpegPath = FFmpegHelper.findFFmpeg() {
+        if let ffmpegPath = await FFmpegHelper.findFFmpeg() {
             return try await extractAudioWithFFmpeg(from: videoURL, ffmpegPath: ffmpegPath)
         }
         Self.logger.info("ffmpeg not found, using AVFoundation for audio extraction")
@@ -139,16 +147,10 @@ actor WhisperTranscriptionService {
             throw TranscriptionError.exportSessionFailed
         }
 
-        exportSession.outputURL = outputURL
-        exportSession.outputFileType = .m4a
-
-        await exportSession.export()
-
-        guard exportSession.status == .completed else {
-            if let error = exportSession.error {
-                throw TranscriptionError.exportFailed(error)
-            }
-            throw TranscriptionError.exportSessionFailed
+        do {
+            try await exportSession.export(to: outputURL, as: .m4a)
+        } catch {
+            throw TranscriptionError.exportFailed(error)
         }
 
         Self.logger.info("AVFoundation audio extracted to \(outputURL.lastPathComponent)")
@@ -198,20 +200,3 @@ enum TranscriptionError: LocalizedError {
     }
 }
 
-// MARK: - Data Multipart Helper
-
-private extension Data {
-    mutating func appendMultipart(boundary: String, name: String, filename: String, mimeType: String, data: Data) {
-        append("--\(boundary)\r\n".data(using: .utf8)!)
-        append("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
-        append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
-        append(data)
-        append("\r\n".data(using: .utf8)!)
-    }
-
-    mutating func appendMultipart(boundary: String, name: String, value: String) {
-        append("--\(boundary)\r\n".data(using: .utf8)!)
-        append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
-        append("\(value)\r\n".data(using: .utf8)!)
-    }
-}

@@ -74,8 +74,6 @@ actor VideoConverter {
             throw ConversionError.exportFailed("Could not create export session")
         }
 
-        exportSession.outputURL = outputURL
-        exportSession.outputFileType = targetFormat.fileType
         exportSession.shouldOptimizeForNetworkUse = true
 
         let progressTask = Task {
@@ -85,22 +83,19 @@ actor VideoConverter {
             }
         }
 
-        await exportSession.export()
-        progressTask.cancel()
-
-        switch exportSession.status {
-        case .completed:
+        do {
+            try await exportSession.export(to: outputURL, as: targetFormat.fileType)
+            progressTask.cancel()
             Self.logger.info("Conversion complete: \(outputURL.lastPathComponent)")
             progress?(1.0)
             return outputURL
-        case .failed:
-            let error = exportSession.error?.localizedDescription ?? "Unknown error"
-            Self.logger.error("Conversion failed: \(error)")
-            throw ConversionError.exportFailed(error)
-        case .cancelled:
+        } catch is CancellationError {
+            progressTask.cancel()
             throw ConversionError.cancelled
-        default:
-            throw ConversionError.exportFailed("Unexpected status: \(exportSession.status.rawValue)")
+        } catch {
+            progressTask.cancel()
+            Self.logger.error("Conversion failed: \(error.localizedDescription)")
+            throw ConversionError.exportFailed(error.localizedDescription)
         }
     }
 
