@@ -1,8 +1,11 @@
-# Slidr
+<p align="center">
+  <img src="docs/screenshots/logo.png" alt="Slidr" width="400">
+</p>
 
-A native macOS media gallery viewer for images, GIFs, and videos.
+<p align="center">
+  A native macOS media gallery viewer for images, GIFs, and videos.
+</p>
 
-<!-- Replace with your own screenshot -->
 ![Slidr](docs/screenshots/grid-view.png)
 
 ## Features
@@ -71,17 +74,14 @@ All AI features require external API keys and are entirely optional.
 
 ## Screenshots
 
-<!-- Add your own screenshots to docs/screenshots/ -->
-
 | View | Description |
 |------|-------------|
 | ![Grid View](docs/screenshots/grid-view.png) | Main browsing interface with thumbnails and sidebar |
 | ![Slideshow](docs/screenshots/slideshow.png) | Fullscreen presentation with captions |
 | ![Inspector](docs/screenshots/inspector.png) | Media metadata and tag editing panel |
-| ![Video Hover](docs/screenshots/hover-scrub.png) | Video preview on hover |
 | ![Tag Palette](docs/screenshots/tag-palette.png) | Batch tagging interface |
 | ![List View](docs/screenshots/list-view.png) | Column-based sortable list view |
-| ![Smart Playlist](docs/screenshots/smart-playlist.png) | Playlist editor with filter rules |
+| ![Advanced Filter](docs/screenshots/advanced-filter.png) | Advanced filter with multiple criteria |
 | ![Settings](docs/screenshots/settings-ai.png) | AI service configuration |
 | ![Vault Lock](docs/screenshots/vault-lock.png) | Password entry screen |
 
