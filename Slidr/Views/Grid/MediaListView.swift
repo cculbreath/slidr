@@ -3,7 +3,7 @@ import SwiftUI
 struct MediaListView: View {
     @Bindable var viewModel: GridViewModel
     let items: [MediaItem]
-    let onStartSlideshow: ([MediaItem], Int) -> Void
+    let onStartSlideshow: ([MediaItem], Int, Double?) -> Void
     var onQuickLook: ((MediaItem) -> Void)?
     var activePlaylist: Playlist?
 
@@ -182,7 +182,7 @@ struct MediaListView: View {
         } primaryAction: { selectedIDs in
             guard let firstID = selectedIDs.first,
                   let index = displayedItems.firstIndex(where: { $0.id == firstID }) else { return }
-            onStartSlideshow(displayedItems, index)
+            onStartSlideshow(displayedItems, index, nil)
         }
         .focusedSceneValue(\.listColumnCustomization, $columnCustomization)
     }

@@ -117,9 +117,13 @@ final class SlideshowViewModel {
 
     // MARK: - Setup
 
-    func start(with items: [MediaItem], startingAt index: Int = 0) {
+    func start(with items: [MediaItem], startingAt index: Int = 0, seekFraction: Double? = nil) {
         self.items = items
         self.currentIndex = max(0, min(index, items.count - 1))
+
+        if let fraction = seekFraction, currentItem?.isVideo == true {
+            scrubber.setInitialSeekFraction(fraction)
+        }
 
         playAudioCaptionIfNeeded()
 

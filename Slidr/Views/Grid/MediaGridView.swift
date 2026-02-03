@@ -13,7 +13,7 @@ struct MediaGridView: View {
     @Query private var settingsQuery: [AppSettings]
 
     let items: [MediaItem]
-    let onStartSlideshow: ([MediaItem], Int) -> Void
+    let onStartSlideshow: ([MediaItem], Int, Double?) -> Void
     var onQuickLook: ((MediaItem) -> Void)?
     var onImportFiles: (() -> Void)?
     var onToggleInspector: (() -> Void)?
@@ -355,7 +355,7 @@ struct MediaGridView: View {
             selectedItemIDs: viewModel.selectedItems,
             hoveredItemID: $hoveredItemID,
             onTap: { handleTap(item) },
-            onDoubleTap: { handleDoubleTap(item) }
+            onDoubleTap: { position in handleDoubleTap(item, hoverPosition: position) }
         )
         .id(item.id)
         .contextMenu { thumbnailContextMenu(for: item) }
@@ -423,9 +423,9 @@ struct MediaGridView: View {
 
     @ViewBuilder
     private func hoverRevealContent(for item: MediaItem) -> some View {
-        let pixelSize = viewModel.thumbnailSize.pixelSize
-        let revealedWidth = item.aspectWidth(for: pixelSize)
-        let revealedHeight = item.aspectHeight(for: pixelSize)
+        let displaySize = viewModel.thumbnailSize.displaySize
+        let revealedWidth = item.aspectWidth(for: displaySize)
+        let revealedHeight = item.aspectHeight(for: displaySize)
 
         Group {
             if item.isAnimated {
@@ -456,9 +456,9 @@ struct MediaGridView: View {
         }
     }
 
-    private func handleDoubleTap(_ item: MediaItem) {
+    private func handleDoubleTap(_ item: MediaItem, hoverPosition: Double? = nil) {
         guard let index = displayedItems.firstIndex(where: { $0.id == item.id }) else { return }
-        onStartSlideshow(displayedItems, index)
+        onStartSlideshow(displayedItems, index, hoverPosition)
     }
 
     private func startSlideshow() {
@@ -469,7 +469,7 @@ struct MediaGridView: View {
         } else {
             startIndex = 0
         }
-        onStartSlideshow(displayedItems, startIndex)
+        onStartSlideshow(displayedItems, startIndex, nil)
     }
 
     private func quickLookSelected() {

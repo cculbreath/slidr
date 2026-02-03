@@ -5,13 +5,17 @@ enum ThumbnailSize: String, Codable, CaseIterable, Sendable {
     case medium = "Medium"
     case large = "Large"
 
-    /// Pixel dimensions for thumbnail generation.
-    /// Values are 2x the logical point size to stay sharp on Retina displays.
-    nonisolated var pixelSize: CGFloat {
+    /// Logical point size used for SwiftUI layout (frame sizes, grid items).
+    nonisolated var displaySize: CGFloat {
         switch self {
-        case .small: return 256
-        case .medium: return 512
-        case .large: return 768
+        case .small: return 128
+        case .medium: return 256
+        case .large: return 384
         }
+    }
+
+    /// Pixel dimensions for image generation — 2x displaySize for Retina sharpness.
+    nonisolated var pixelSize: CGFloat {
+        displaySize * 2
     }
 }

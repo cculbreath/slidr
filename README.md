@@ -240,14 +240,6 @@ Contributions are welcome. Here are some guidelines:
 4. Keep commits atomic with descriptive messages
 5. Submit a pull request with a clear description
 
-### Areas for Contribution
-
-- **Tests** — unit and integration tests (none exist yet)
-- **Accessibility** — VoiceOver support, keyboard navigation improvements
-- **Localization** — multi-language support
-- **Performance** — large library optimization
-- **Documentation** — code-level documentation, tutorials
-
 ## License
 
 MIT License — Copyright (c) 2025-2026 Christopher Culbreath

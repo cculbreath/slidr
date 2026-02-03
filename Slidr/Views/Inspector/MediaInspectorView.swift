@@ -9,12 +9,21 @@ struct MediaInspectorView: View {
     @State private var isCopyingToLibrary = false
     @State private var showCopySuccess = false
     @State private var newTag: String = ""
+    @State private var editedTitle: String = ""
+    @State private var editedSummary: String = ""
+    @FocusState private var isTitleFocused: Bool
+    @FocusState private var isSummaryFocused: Bool
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 // Header with filename and type
                 headerSection
+
+                Divider()
+
+                // Title
+                titleSection
 
                 Divider()
 
@@ -36,12 +45,10 @@ struct MediaInspectorView: View {
                 // Production type
                 productionSection
 
-                if item.hasSummary {
-                    Divider()
+                Divider()
 
-                    // AI Summary
-                    summarySection
-                }
+                // Summary
+                summarySection
 
                 if item.isVideo {
                     Divider()
@@ -222,6 +229,36 @@ struct MediaInspectorView: View {
         }
     }
 
+    // MARK: - Title Section
+
+    private var titleSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Title")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            TextField("Add title...", text: $editedTitle)
+                .textFieldStyle(.roundedBorder)
+                .focused($isTitleFocused)
+        }
+        .onAppear {
+            editedTitle = item.title ?? ""
+        }
+        .onChange(of: item.title) { _, newValue in
+            let incoming = newValue ?? ""
+            if incoming != editedTitle {
+                editedTitle = incoming
+            }
+        }
+        .onChange(of: isTitleFocused) { _, focused in
+            if !focused {
+                let trimmed = editedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                item.title = trimmed.isEmpty ? nil : trimmed
+            }
+        }
+    }
+
     // MARK: - Summary Section
 
     private var summarySection: some View {
@@ -231,9 +268,38 @@ struct MediaInspectorView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
 
-            Text(item.displaySummary)
+            TextEditor(text: $editedSummary)
                 .font(.body)
-                .textSelection(.enabled)
+                .frame(minHeight: 60, maxHeight: 120)
+                .scrollContentBackground(.hidden)
+                .padding(8)
+                .background(Color(nsColor: .textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .focused($isSummaryFocused)
+                .overlay(alignment: .topLeading) {
+                    if editedSummary.isEmpty && !isSummaryFocused {
+                        Text("Add summary...")
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 16)
+                            .allowsHitTesting(false)
+                    }
+                }
+        }
+        .onAppear {
+            editedSummary = item.summary ?? ""
+        }
+        .onChange(of: item.summary) { _, newValue in
+            let incoming = newValue ?? ""
+            if incoming != editedSummary {
+                editedSummary = incoming
+            }
+        }
+        .onChange(of: isSummaryFocused) { _, focused in
+            if !focused {
+                let trimmed = editedSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+                item.summary = trimmed.isEmpty ? nil : trimmed
+            }
         }
     }
 

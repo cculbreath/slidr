@@ -31,6 +31,7 @@ final class MediaItem {
 
     // MARK: - User Data
     var caption: String?
+    var title: String?
     var isFavorite: Bool
     var rating: Int?
     var tags: [String]

@@ -32,6 +32,7 @@ final class SmoothScrubber {
     private var statusObservation: NSKeyValueObservation?
     private var pendingSeekTime: CMTime?
     private var initialSeekTime: CMTime?
+    private var initialSeekFraction: Double?
     private var isSeekInProgress = false
 
     // MARK: - Computed Properties
@@ -78,10 +79,15 @@ final class SmoothScrubber {
                     }
                 }
 
-                // Execute any queued initial seek (e.g. randomized clip start)
+                // Execute any queued initial seek (e.g. randomized clip start or grid hover position)
                 if let seekTime = self?.initialSeekTime {
                     self?.initialSeekTime = nil
+                    self?.initialSeekFraction = nil
                     self?.seek(to: seekTime)
+                } else if let fraction = self?.initialSeekFraction, let dur = self?.duration, dur.seconds > 0 {
+                    self?.initialSeekFraction = nil
+                    let targetTime = CMTime(seconds: dur.seconds * fraction, preferredTimescale: 600)
+                    self?.seek(to: targetTime)
                 }
             }
         }
@@ -107,6 +113,7 @@ final class SmoothScrubber {
         isSeeking = false
         isSeekInProgress = false
         pendingSeekTime = nil
+        initialSeekFraction = nil
         clipStartSeconds = 0
         clipDurationSeconds = nil
     }
@@ -126,6 +133,12 @@ final class SmoothScrubber {
         initialSeekTime = nil
         clipStartSeconds = 0
         clipDurationSeconds = nil
+    }
+
+    /// Queue a seek to a fraction (0.0–1.0) of the video duration.
+    /// Executed once a player attaches and its duration is loaded.
+    func setInitialSeekFraction(_ fraction: Double) {
+        initialSeekFraction = max(0, min(1, fraction))
     }
 
     // MARK: - Seeking (Chase Pattern)

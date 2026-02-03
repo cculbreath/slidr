@@ -305,8 +305,8 @@ struct ContentView: View {
 
     // MARK: - Slideshow
 
-    private func startSlideshow(items: [MediaItem], startIndex: Int) {
-        slideshowViewModel.start(with: items, startingAt: startIndex)
+    private func startSlideshow(items: [MediaItem], startIndex: Int, seekFraction: Double? = nil) {
+        slideshowViewModel.start(with: items, startingAt: startIndex, seekFraction: seekFraction)
 
         let settings = settingsQuery.first
         let screens = NSScreen.screens

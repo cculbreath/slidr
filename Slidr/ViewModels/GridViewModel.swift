@@ -198,7 +198,7 @@ final class GridViewModel {
     }
 
     func columnCount(for containerWidth: CGFloat) -> Int {
-        let itemWidth = thumbnailSize.pixelSize + 8
+        let itemWidth = thumbnailSize.displaySize + 8
         return max(1, Int(containerWidth / itemWidth))
     }
 
@@ -219,7 +219,7 @@ final class GridViewModel {
     // MARK: - Thumbnail Size
 
     var gridColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: thumbnailSize.pixelSize, maximum: thumbnailSize.pixelSize * 1.5), spacing: 8)]
+        [GridItem(.adaptive(minimum: thumbnailSize.displaySize, maximum: thumbnailSize.displaySize * 1.5), spacing: 8)]
     }
 }
 
