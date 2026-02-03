@@ -15,6 +15,8 @@ actor ThumbnailCache {
     /// which avoids constant re-reads from encrypted vault sparse bundles.
     private let maxMemoryCacheSize = 2000
     private let jpegQuality: CGFloat = 0.8
+    /// Fixed pixel size for scrub thumbnails — large enough for the biggest grid size on Retina.
+    private let scrubPixelSize: CGFloat = 768
 
     init(cacheDirectory: URL) {
         self.cacheDirectory = cacheDirectory
@@ -131,14 +133,14 @@ actor ThumbnailCache {
 
     // MARK: - Scrub Thumbnail Disk Cache
 
-    func cachedScrubThumbnails(forHash hash: String, count: Int) -> [NSImage]? {
+    func cachedScrubThumbnails(forHash hash: String, count: Int) -> (images: [NSImage], isComplete: Bool) {
         var images: [NSImage] = []
         for i in 0..<count {
             let path = cacheDirectory.appendingPathComponent("\(hash)-scrub-\(i).jpg")
-            guard let image = NSImage(contentsOf: path) else { return nil }
+            guard let image = NSImage(contentsOf: path) else { break }
             images.append(image)
         }
-        return images
+        return (images, images.count == count)
     }
 
     func hasScrubThumbnails(forHash hash: String, count: Int) -> Bool {
@@ -148,16 +150,17 @@ actor ThumbnailCache {
         return fm.fileExists(atPath: firstPath.path) && fm.fileExists(atPath: lastPath.path)
     }
 
-    func videoScrubThumbnails(for item: MediaItem, count: Int, size: ThumbnailSize, libraryRoot: URL) async throws -> [NSImage] {
+    func videoScrubThumbnails(for item: MediaItem, count: Int, libraryRoot: URL) async throws -> [NSImage] {
         guard item.isVideo else {
             throw ThumbnailError.invalidMedia
         }
 
         let hash = item.contentHash
 
-        // Check disk cache first
-        if let cached = cachedScrubThumbnails(forHash: hash, count: count) {
-            return cached
+        // Check disk cache — return partial results if available
+        let cached = cachedScrubThumbnails(forHash: hash, count: count)
+        if cached.isComplete {
+            return cached.images
         }
 
         let fileURL = libraryRoot.appendingPathComponent(item.relativePath)
@@ -165,7 +168,9 @@ actor ThumbnailCache {
             throw ThumbnailError.fileNotFound
         }
 
-        var thumbnails: [NSImage] = []
+        // Start generating from where the cache left off
+        let startIndex = cached.images.count
+        var thumbnails = cached.images
         var usedFFmpeg = false
 
         // Try AVFoundation first
@@ -173,19 +178,23 @@ actor ThumbnailCache {
             let asset = AVURLAsset(url: fileURL)
             let generator = AVAssetImageGenerator(asset: asset)
             generator.appliesPreferredTrackTransform = true
-            generator.maximumSize = CGSize(width: size.pixelSize, height: size.pixelSize)
+            generator.maximumSize = CGSize(width: scrubPixelSize, height: scrubPixelSize)
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
 
             let duration = try await asset.load(.duration)
-            let interval = duration.seconds / Double(count + 1)
+            let durationSeconds = duration.seconds
+            guard durationSeconds > 0 else { return cached.images }
 
-            for i in 1...count {
-                let time = CMTime(seconds: interval * Double(i), preferredTimescale: duration.timescale)
+            for i in startIndex..<count {
+                let fraction = Double(i) / Double(max(count - 1, 1))
+                let time = CMTime(seconds: fraction * durationSeconds, preferredTimescale: 600)
                 do {
                     let (cgImage, _) = try await generator.image(at: time)
                     let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
                     thumbnails.append(image)
 
-                    let diskPath = cacheDirectory.appendingPathComponent("\(hash)-scrub-\(i - 1).jpg")
+                    let diskPath = cacheDirectory.appendingPathComponent("\(hash)-scrub-\(i).jpg")
                     saveThumbnailToDisk(image, to: diskPath)
                 } catch {
                     Self.logger.warning("Failed to generate scrub thumbnail at \(time.seconds)s: \(error.localizedDescription)")
@@ -194,7 +203,7 @@ actor ThumbnailCache {
         } catch {
             Self.logger.warning("AVFoundation scrub thumbnails failed for \(fileURL.lastPathComponent): \(error.localizedDescription), trying ffmpeg")
             usedFFmpeg = true
-            thumbnails = await FFmpegHelper.extractFrames(from: fileURL, count: count, thumbnailSize: size.pixelSize)
+            thumbnails = await FFmpegHelper.extractFrames(from: fileURL, count: count, thumbnailSize: scrubPixelSize)
             for (i, image) in thumbnails.enumerated() {
                 let diskPath = cacheDirectory.appendingPathComponent("\(hash)-scrub-\(i).jpg")
                 saveThumbnailToDisk(image, to: diskPath)
@@ -214,7 +223,6 @@ actor ThumbnailCache {
         count: Int,
         progress: (@MainActor (Int, Int) -> Void)? = nil
     ) async -> Set<String> {
-        let pixelSize = ThumbnailSize.medium.pixelSize
         var generated = 0
         var failedHashes: Set<String> = []
         let total = items.count
@@ -237,24 +245,31 @@ actor ThumbnailCache {
                 let asset = AVURLAsset(url: item.fileURL)
                 let generator = AVAssetImageGenerator(asset: asset)
                 generator.appliesPreferredTrackTransform = true
-                generator.maximumSize = CGSize(width: pixelSize, height: pixelSize)
+                generator.maximumSize = CGSize(width: scrubPixelSize, height: scrubPixelSize)
+                generator.requestedTimeToleranceBefore = .zero
+                generator.requestedTimeToleranceAfter = .zero
 
                 let duration = try await asset.load(.duration)
-                let interval = duration.seconds / Double(count + 1)
+                let durationSeconds = duration.seconds
+                guard durationSeconds > 0 else {
+                    await progress?(index + 1, total)
+                    continue
+                }
 
-                for i in 1...count {
-                    let time = CMTime(seconds: interval * Double(i), preferredTimescale: duration.timescale)
+                for i in 0..<count {
+                    let fraction = Double(i) / Double(max(count - 1, 1))
+                    let time = CMTime(seconds: fraction * durationSeconds, preferredTimescale: 600)
                     let (cgImage, _) = try await generator.image(at: time)
                     let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
 
-                    let diskPath = cacheDirectory.appendingPathComponent("\(item.contentHash)-scrub-\(i - 1).jpg")
+                    let diskPath = cacheDirectory.appendingPathComponent("\(item.contentHash)-scrub-\(i).jpg")
                     saveThumbnailToDisk(image, to: diskPath)
                 }
                 succeeded = true
             } catch {
                 Self.logger.warning("AVFoundation pre-generate failed for \(item.filename): \(error.localizedDescription), trying ffmpeg")
 
-                let frames = await FFmpegHelper.extractFrames(from: item.fileURL, count: count, thumbnailSize: pixelSize)
+                let frames = await FFmpegHelper.extractFrames(from: item.fileURL, count: count, thumbnailSize: scrubPixelSize)
                 if !frames.isEmpty {
                     for (i, image) in frames.enumerated() {
                         let diskPath = cacheDirectory.appendingPathComponent("\(item.contentHash)-scrub-\(i).jpg")

@@ -153,8 +153,7 @@ struct VideoHoverView: View {
         do {
             scrubThumbnails = try await library.videoScrubThumbnails(
                 for: item,
-                count: scrubThumbnailCount,
-                size: size
+                count: scrubThumbnailCount
             )
         } catch {
             scrubThumbnails = []

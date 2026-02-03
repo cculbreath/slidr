@@ -391,8 +391,7 @@ struct SlideshowView: View {
             do {
                 uiState.scrubThumbnails = try await library.videoScrubThumbnails(
                     for: item,
-                    count: count,
-                    size: .large
+                    count: count
                 )
             } catch {
                 uiState.scrubThumbnails = []

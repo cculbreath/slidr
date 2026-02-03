@@ -238,9 +238,9 @@ final class MediaLibrary {
         return try await thumbnailCache.thumbnail(for: item, size: size, libraryRoot: root)
     }
 
-    func videoScrubThumbnails(for item: MediaItem, count: Int, size: ThumbnailSize) async throws -> [NSImage] {
+    func videoScrubThumbnails(for item: MediaItem, count: Int) async throws -> [NSImage] {
         let root = (item.storageLocation == .external) ? (externalLibraryRoot ?? libraryRoot) : libraryRoot
-        return try await thumbnailCache.videoScrubThumbnails(for: item, count: count, size: size, libraryRoot: root)
+        return try await thumbnailCache.videoScrubThumbnails(for: item, count: count, libraryRoot: root)
     }
 
     // MARK: - Scrub Thumbnail Generation
