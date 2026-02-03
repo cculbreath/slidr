@@ -34,6 +34,10 @@ struct LocateExternalLibraryKey: FocusedValueKey {
     typealias Value = () -> Void
 }
 
+struct ImportAudioCaptionsKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
 struct NewPlaylistKey: FocusedValueKey {
     typealias Value = () -> Void
 }
@@ -228,6 +232,10 @@ struct SlideshowControlsModeKey: FocusedValueKey {
     typealias Value = Binding<SlideshowControlsMode>
 }
 
+struct PlayAudioCaptionsKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
 // MARK: - AI Binding Keys
 
 struct AIAutoProcessKey: FocusedValueKey {
@@ -314,6 +322,11 @@ extension FocusedValues {
     var locateExternalLibrary: (() -> Void)? {
         get { self[LocateExternalLibraryKey.self] }
         set { self[LocateExternalLibraryKey.self] = newValue }
+    }
+
+    var importAudioCaptionsAction: (() -> Void)? {
+        get { self[ImportAudioCaptionsKey.self] }
+        set { self[ImportAudioCaptionsKey.self] = newValue }
     }
 
     var newPlaylist: (() -> Void)? {
@@ -549,6 +562,11 @@ extension FocusedValues {
     var slideshowControlsMode: Binding<SlideshowControlsMode>? {
         get { self[SlideshowControlsModeKey.self] }
         set { self[SlideshowControlsModeKey.self] = newValue }
+    }
+
+    var playAudioCaptions: Binding<Bool>? {
+        get { self[PlayAudioCaptionsKey.self] }
+        set { self[PlayAudioCaptionsKey.self] = newValue }
     }
 
     // AI bindings

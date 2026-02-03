@@ -1,6 +1,8 @@
 /// SlidrSchemaV15 — Current schema version
-/// Adds: filterSources ([String]?) on Playlist for source-based filtering
 /// References live model definitions (MediaItem, Playlist, AppSettings).
+///
+/// V16 fields (imageText, audioCaptionRelativePath, playAudioCaptionsRaw)
+/// are additive optional properties handled by automatic lightweight migration.
 
 import SwiftData
 

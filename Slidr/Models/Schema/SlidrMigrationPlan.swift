@@ -6,6 +6,11 @@
 /// Migration chain: V12 → V13 → V14 → V15
 ///
 /// All migrations in this chain are lightweight (additive optional fields).
+///
+/// NOTE: This migration plan is retained for reference but is not currently
+/// used in ModelContainer creation. Additive optional properties on the
+/// live models (imageText, audioCaptionRelativePath, playAudioCaptionsRaw)
+/// are handled by SwiftData's automatic lightweight migration.
 
 import SwiftData
 
@@ -30,7 +35,7 @@ enum SlidrMigrationPlan: SchemaMigrationPlan {
         toVersion: SlidrSchemaV14.self
     )
 
-    // V14 -> V15: Lightweight migration for filterSources on Playlist
+    // V14 -> V15: Lightweight migration for filterSources on Playlist, slideshowControlsModeRaw on AppSettings
     static let migrateV14toV15 = MigrationStage.lightweight(
         fromVersion: SlidrSchemaV14.self,
         toVersion: SlidrSchemaV15.self

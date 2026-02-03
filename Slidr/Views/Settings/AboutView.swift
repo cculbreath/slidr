@@ -40,7 +40,7 @@ struct AboutView: View {
 
             Spacer()
 
-            Text("\u{00A9} 2025 Christopher Culbreath. All rights reserved.")
+            Text("\u{00A9} 2025-2026 Christopher Culbreath. All rights reserved.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }

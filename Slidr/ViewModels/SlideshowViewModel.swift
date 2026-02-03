@@ -42,15 +42,20 @@ final class SlideshowViewModel {
     var isPlaying: Bool = false
     var loop: Bool = true
     var videoPlayDuration: VideoPlayDuration = .fixed(30)
+    var lastLimitedDuration: VideoPlayDuration = .fixed(30)
     var randomizeClipLocation: Bool = false
     var playFullGIF: Bool = false
     var showCaptions: Bool = false
     var showSubtitles: Bool = false
+    var playAudioCaptions: Bool = false
 
     // MARK: - Video Configuration
     var volume: Float = 1.0
     var isMuted: Bool = false
     let scrubber = SmoothScrubber()
+
+    // MARK: - Audio Caption Playback
+    private var audioCaptionPlayer: AVAudioPlayer?
 
     // MARK: - Playback Mode
     var isRandomMode: Bool = false
@@ -92,7 +97,9 @@ final class SlideshowViewModel {
     }
 
     var currentItemHasAudio: Bool {
-        currentItem?.hasAudio ?? false
+        if currentItem?.hasAudio ?? false { return true }
+        if playAudioCaptions, currentItem?.hasAudioCaption ?? false { return true }
+        return false
     }
 
     var hasNext: Bool {
@@ -114,6 +121,8 @@ final class SlideshowViewModel {
         self.items = items
         self.currentIndex = max(0, min(index, items.count - 1))
 
+        playAudioCaptionIfNeeded()
+
         if isPlaying {
             scheduleNextAdvance()
         }
@@ -125,6 +134,7 @@ final class SlideshowViewModel {
         timerCancellable?.cancel()
         timerCancellable = nil
         scrubber.detach()
+        stopAudioCaption()
         items = []
         currentIndex = 0
         resetTimerProgress()
@@ -141,6 +151,7 @@ final class SlideshowViewModel {
     func next() {
         timerCancellable?.cancel()
         resetTimerProgress()
+        stopAudioCaption()
 
         let count = activeItems.count
         if currentIndex < count - 1 {
@@ -148,6 +159,8 @@ final class SlideshowViewModel {
         } else if loop {
             currentIndex = 0
         }
+
+        playAudioCaptionIfNeeded()
 
         if isPlaying {
             scheduleNextAdvance()
@@ -159,6 +172,7 @@ final class SlideshowViewModel {
     func previous() {
         timerCancellable?.cancel()
         resetTimerProgress()
+        stopAudioCaption()
 
         let count = activeItems.count
         if currentIndex > 0 {
@@ -166,6 +180,8 @@ final class SlideshowViewModel {
         } else if loop {
             currentIndex = count - 1
         }
+
+        playAudioCaptionIfNeeded()
 
         if isPlaying {
             scheduleNextAdvance()
@@ -176,7 +192,9 @@ final class SlideshowViewModel {
 
     func goTo(index: Int) {
         timerCancellable?.cancel()
+        stopAudioCaption()
         currentIndex = max(0, min(index, activeItems.count - 1))
+        playAudioCaptionIfNeeded()
 
         if isPlaying {
             scheduleNextAdvance()
@@ -219,6 +237,15 @@ final class SlideshowViewModel {
         isMuted.toggle()
     }
 
+    func toggleVideoPlayDuration() {
+        if videoPlayDuration.isFullVideo {
+            videoPlayDuration = lastLimitedDuration
+        } else {
+            lastLimitedDuration = videoPlayDuration
+            videoPlayDuration = .fullVideo
+        }
+    }
+
     // MARK: - Video Seeking
 
     func seekVideo(by step: SeekStep, forward: Bool) {
@@ -242,7 +269,7 @@ final class SlideshowViewModel {
     private func scheduleNextAdvance() {
         guard let item = currentItem else { return }
 
-        let duration: TimeInterval
+        var duration: TimeInterval
 
         switch item.mediaType {
         case .image:
@@ -252,6 +279,9 @@ final class SlideshowViewModel {
                 duration = max(gifLoopDuration, slideDuration)
             } else {
                 duration = slideDuration
+            }
+            if let audioDuration = audioCaptionPlayer?.duration, audioDuration > 0 {
+                duration = max(duration, audioDuration + 0.5)
             }
         case .video:
             configureClipRegion(for: item)
@@ -311,6 +341,9 @@ final class SlideshowViewModel {
         loop = settings.loopSlideshow
         isRandomMode = settings.shuffleSlideshow
         videoPlayDuration = settings.videoPlayDuration
+        if !settings.videoPlayDuration.isFullVideo {
+            lastLimitedDuration = settings.videoPlayDuration
+        }
         randomizeClipLocation = settings.randomizeClipLocation
         playFullGIF = settings.playFullGIF
         volume = settings.defaultVolume
@@ -318,6 +351,7 @@ final class SlideshowViewModel {
         showCaptions = settings.showCaptions
         showSubtitles = settings.showSubtitles
         showTimerBar = settings.showTimerBar
+        playAudioCaptions = settings.playAudioCaptions
     }
 
     func persistToSettings() {
@@ -333,6 +367,7 @@ final class SlideshowViewModel {
         settings.showCaptions = showCaptions
         settings.showSubtitles = showSubtitles
         settings.showTimerBar = showTimerBar
+        settings.playAudioCaptions = playAudioCaptions
     }
 
     func configure(library: MediaLibrary) {
@@ -412,5 +447,37 @@ final class SlideshowViewModel {
 
     func decreaseVolume() {
         volume = max(0.0, volume - 0.1)
+    }
+
+    func syncVolumeToAudioCaption() {
+        audioCaptionPlayer?.volume = isMuted ? 0 : volume
+    }
+
+    // MARK: - Audio Caption Playback
+
+    func playAudioCaptionIfNeeded() {
+        guard FeatureFlags.audioCaptions,
+              playAudioCaptions,
+              let item = currentItem,
+              !item.isVideo,
+              let audioPath = item.audioCaptionRelativePath,
+              let library else { return }
+
+        let audioURL = library.libraryRoot.appendingPathComponent(audioPath)
+        guard FileManager.default.fileExists(atPath: audioURL.path) else { return }
+
+        do {
+            let player = try AVAudioPlayer(contentsOf: audioURL)
+            player.volume = isMuted ? 0 : volume
+            player.play()
+            audioCaptionPlayer = player
+        } catch {
+            // Silently fail — audio caption just won't play
+        }
+    }
+
+    func stopAudioCaption() {
+        audioCaptionPlayer?.stop()
+        audioCaptionPlayer = nil
     }
 }

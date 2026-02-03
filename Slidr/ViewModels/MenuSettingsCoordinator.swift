@@ -75,6 +75,10 @@ final class MenuSettingsCoordinator {
         didSet { settings?.showCaptions = showSlideshowCaptions }
     }
 
+    var playAudioCaptions: Bool = false {
+        didSet { settings?.playAudioCaptions = playAudioCaptions }
+    }
+
     // MARK: - Captions
 
     var captionPosition: CaptionPosition = .bottom {
@@ -151,6 +155,7 @@ final class MenuSettingsCoordinator {
         showTimerBar = settings.showTimerBar
         slideshowControlsMode = settings.slideshowControlsMode
         showSlideshowCaptions = settings.showCaptions
+        playAudioCaptions = settings.playAudioCaptions
         captionPosition = settings.captionPosition
         captionFontSize = settings.captionFontSize
         captionOpacity = settings.captionBackgroundOpacity

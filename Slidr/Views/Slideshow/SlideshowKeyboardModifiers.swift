@@ -208,6 +208,9 @@ struct ExtraNavigationKeys: ViewModifier {
         case KeyEquivalent("t"):
             viewModel.showTimerBar.toggle()
             return .handled
+        case KeyEquivalent("v"):
+            viewModel.toggleVideoPlayDuration()
+            return .handled
         case KeyEquivalent("l"):
             viewModel.next()
             return .handled

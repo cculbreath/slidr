@@ -166,6 +166,11 @@ final class AppSettings {
         set { groqModelRaw = newValue }
     }
 
+    var playAudioCaptions: Bool {
+        get { playAudioCaptionsRaw ?? false }
+        set { playAudioCaptionsRaw = newValue }
+    }
+
     // MARK: - Verification
     var verifyFilesOnLaunch: Bool
     var removeOrphanedThumbnails: Bool
@@ -174,6 +179,7 @@ final class AppSettings {
     // MARK: - Audio
     var defaultVolume: Float
     var muteByDefault: Bool
+    var playAudioCaptionsRaw: Bool?
 
     // MARK: - AI Processing
     var aiAutoProcessOnImportRaw: Bool?

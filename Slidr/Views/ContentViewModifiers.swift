@@ -6,6 +6,7 @@ struct ActionFocusedValuesModifier: ViewModifier {
     let toggleInspector: () -> Void
     let importFiles: () -> Void
     let importSubtitles: () -> Void
+    let importAudioCaptions: () -> Void
     let quickLook: () -> Void
     let locateExternalLibrary: () -> Void
     let newPlaylist: () -> Void
@@ -17,6 +18,7 @@ struct ActionFocusedValuesModifier: ViewModifier {
             .focusedSceneValue(\.toggleInspector, toggleInspector)
             .focusedSceneValue(\.importFilesAction, importFiles)
             .focusedSceneValue(\.importSubtitlesAction, importSubtitles)
+            .focusedSceneValue(\.importAudioCaptionsAction, importAudioCaptions)
             .focusedSceneValue(\.quickLook, quickLook)
             .focusedSceneValue(\.locateExternalLibrary, locateExternalLibrary)
             .focusedSceneValue(\.newPlaylist, newPlaylist)
@@ -84,6 +86,7 @@ struct SlideshowFocusedValuesModifier: ViewModifier {
             .focusedSceneValue(\.showTimerBar, $coordinator.showTimerBar)
             .focusedSceneValue(\.slideshowControlsMode, $coordinator.slideshowControlsMode)
             .focusedSceneValue(\.showSlideshowCaptions, $coordinator.showSlideshowCaptions)
+            .focusedSceneValue(\.playAudioCaptions, $coordinator.playAudioCaptions)
             .focusedSceneValue(\.captionPositionMenu, $coordinator.captionPosition)
             .focusedSceneValue(\.captionFontSizeMenu, $coordinator.captionFontSize)
             .focusedSceneValue(\.captionOpacityMenu, $coordinator.captionOpacity)

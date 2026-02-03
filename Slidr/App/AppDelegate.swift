@@ -44,16 +44,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let hostingView = NSHostingView(rootView: content)
         window.contentView = hostingView
         window.level = .screenSaver
-        window.collectionBehavior = [.fullScreenPrimary, .canJoinAllSpaces]
+        window.collectionBehavior = [.canJoinAllSpaces]
         window.backgroundColor = .black
         window.isOpaque = true
         window.hasShadow = false
         window.setFrame(screen.frame, display: true)
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(hostingView)
-        if !window.styleMask.contains(.fullScreen) {
-            window.toggleFullScreen(nil)
-        }
         return window
     }
 

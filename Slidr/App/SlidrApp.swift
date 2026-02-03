@@ -267,7 +267,6 @@ final class AppLauncher {
         do {
             return try ModelContainer(
                 for: schema,
-                migrationPlan: SlidrMigrationPlan.self,
                 configurations: config
             )
         } catch {

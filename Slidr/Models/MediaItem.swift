@@ -42,6 +42,10 @@ final class MediaItem {
     var transcriptText: String?
     var transcriptRelativePath: String?
 
+    // MARK: - Image Text & Audio Captions
+    var imageText: String?
+    var audioCaptionRelativePath: String?
+
     // MARK: - Status
     var status: MediaStatus
     var hasThumbnailErrorRaw: Bool?
@@ -89,6 +93,8 @@ final class MediaItem {
     var isVideo: Bool { mediaType == .video }
     var isAnimated: Bool { mediaType == .gif }
     var hasTranscript: Bool { transcriptRelativePath != nil }
+    var hasImageText: Bool { !(imageText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) }
+    var hasAudioCaption: Bool { audioCaptionRelativePath != nil }
 
     /// Returns the filename stripped of leading numbers and file extension
     /// e.g., "54526658 Girlfriend.gif" → "Girlfriend"

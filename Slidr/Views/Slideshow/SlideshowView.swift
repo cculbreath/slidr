@@ -51,7 +51,7 @@ struct SlideshowView: View {
             .modifier(CaptionKeys(viewModel: viewModel))
             .modifier(RatingKeys(viewModel: viewModel, uiState: uiState))
             .modifier(ExtraNavigationKeys(viewModel: viewModel, uiState: uiState))
-            .modifier(SlideshowPersistenceModifier(viewModel: viewModel, uiState: uiState, settings: settings, startVideoCaptionTimer: startVideoCaptionTimer, loadTranscriptCues: loadTranscriptCues, setFocused: { isFocused = true }))
+            .modifier(SlideshowPersistenceModifier(viewModel: viewModel, uiState: uiState, settings: settings, library: library, startVideoCaptionTimer: startVideoCaptionTimer, loadTranscriptCues: loadTranscriptCues, setFocused: { isFocused = true }))
             .modifier(SlideshowMenuSyncModifier(viewModel: viewModel, settings: settings))
             .modifier(SlideshowUIObserverModifier(uiState: uiState))
     }
@@ -418,6 +418,7 @@ private struct SlideshowPersistenceModifier: ViewModifier {
     @Bindable var viewModel: SlideshowViewModel
     let uiState: SlideshowUIState
     let settings: AppSettings?
+    let library: MediaLibrary
     let startVideoCaptionTimer: () -> Void
     let loadTranscriptCues: () -> Void
     let setFocused: () -> Void
@@ -428,6 +429,7 @@ private struct SlideshowPersistenceModifier: ViewModifier {
                 if let settings {
                     viewModel.configure(settings: settings)
                 }
+                viewModel.configure(library: library)
                 loadTranscriptCues()
                 DispatchQueue.main.async { setFocused() }
             }
@@ -436,8 +438,14 @@ private struct SlideshowPersistenceModifier: ViewModifier {
             .onChange(of: viewModel.randomizeClipLocation) { _, _ in viewModel.persistToSettings() }
             .onChange(of: viewModel.playFullGIF) { _, _ in viewModel.persistToSettings() }
             .onChange(of: viewModel.loop) { _, _ in viewModel.persistToSettings() }
-            .onChange(of: viewModel.volume) { _, _ in viewModel.persistToSettings() }
-            .onChange(of: viewModel.isMuted) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.volume) { _, _ in
+                viewModel.persistToSettings()
+                viewModel.syncVolumeToAudioCaption()
+            }
+            .onChange(of: viewModel.isMuted) { _, _ in
+                viewModel.persistToSettings()
+                viewModel.syncVolumeToAudioCaption()
+            }
             .onChange(of: viewModel.isRandomMode) { _, _ in viewModel.persistToSettings() }
             .onChange(of: viewModel.showTimerBar) { _, _ in viewModel.persistToSettings() }
             .onChange(of: viewModel.currentIndex) { _, _ in
@@ -445,6 +453,14 @@ private struct SlideshowPersistenceModifier: ViewModifier {
                 loadTranscriptCues()
             }
             .onChange(of: viewModel.showSubtitles) { _, _ in viewModel.persistToSettings() }
+            .onChange(of: viewModel.playAudioCaptions) { _, newValue in
+                viewModel.persistToSettings()
+                if newValue {
+                    viewModel.playAudioCaptionIfNeeded()
+                } else {
+                    viewModel.stopAudioCaption()
+                }
+            }
             .onChange(of: viewModel.showCaptions) { _, newValue in
                 viewModel.persistToSettings()
                 if newValue {
@@ -501,6 +517,11 @@ private struct SlideshowMenuSyncModifier: ViewModifier {
             .onChange(of: settings?.defaultImageDuration) { _, newValue in
                 if let newValue, newValue != viewModel.slideDuration {
                     viewModel.slideDuration = newValue
+                }
+            }
+            .onChange(of: settings?.playAudioCaptions) { _, newValue in
+                if let newValue, newValue != viewModel.playAudioCaptions {
+                    viewModel.playAudioCaptions = newValue
                 }
             }
     }

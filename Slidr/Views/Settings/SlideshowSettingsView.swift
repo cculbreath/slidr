@@ -64,7 +64,7 @@ struct SlideshowSettingsView: View {
 
                     HStack {
                         Text("Font size")
-                        Slider(value: $settings.captionFontSize, in: 10...32)
+                        Slider(value: $settings.captionFontSize, in: 10...80)
                         Text("\(Int(settings.captionFontSize))pt")
                             .frame(width: 40)
                     }

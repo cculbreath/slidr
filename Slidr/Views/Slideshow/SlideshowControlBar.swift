@@ -33,14 +33,11 @@ struct SlideshowControlBar: View {
             // Group 5: Fullscreen
             fullscreenButton
 
-            // Volume (only when current item has audio)
-            if viewModel.currentItemHasAudio {
-                Divider().frame(height: 28)
-                VolumeSlider(
-                    volume: $viewModel.volume,
-                    isMuted: $viewModel.isMuted
-                )
-            }
+            Divider().frame(height: 28)
+            VolumeSlider(
+                volume: $viewModel.volume,
+                isMuted: $viewModel.isMuted
+            )
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 20)

@@ -26,6 +26,7 @@ struct ContentView: View {
     @State private var transcriptSeekAction: ((TimeInterval) -> Void)?
     @State private var pendingTranscriptSeek: TimeInterval?
     @State private var aiStatusWindow: AIStatusWindowController?
+    @State private var audioCaptionImportAlert: String?
 
     var body: some View {
         ZStack {
@@ -60,6 +61,14 @@ struct ContentView: View {
         } message: {
             Text(subtitleImportAlert ?? "")
         }
+        .alert("Audio Caption Import", isPresented: Binding(
+            get: { audioCaptionImportAlert != nil },
+            set: { if !$0 { audioCaptionImportAlert = nil } }
+        )) {
+            Button("OK") { audioCaptionImportAlert = nil }
+        } message: {
+            Text(audioCaptionImportAlert ?? "")
+        }
     }
 
     private var allTags: [String] {
@@ -79,6 +88,7 @@ struct ContentView: View {
                 toggleInspector: { showInspector.toggle() },
                 importFiles: { importFiles() },
                 importSubtitles: { importSubtitles() },
+                importAudioCaptions: { importAudioCaptions() },
                 quickLook: { togglePreview() },
                 locateExternalLibrary: { library.locateExternalLibrary() },
                 newPlaylist: { sidebarViewModel.createPlaylist() },
@@ -118,6 +128,11 @@ struct ContentView: View {
             .allowsHitTesting(!showSlideshow)
             .onChange(of: showSlideshow) { _, isSlideshow in
                 toolbarCoordinator.toolbar.isVisible = !isSlideshow
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
+                if showSlideshow {
+                    toolbarCoordinator.toolbar.isVisible = false
+                }
             }
             .onAppear {
                 sidebarViewModel.configure(with: playlistService)
@@ -319,6 +334,10 @@ struct ContentView: View {
                 ) : nil,
                 controlScreen: showControlPanel ? mainScreen : nil
             )
+
+            if !slideshowViewModel.isPlaying {
+                slideshowViewModel.togglePlayback()
+            }
         } else {
             showSlideshow = true
         }
@@ -407,6 +426,29 @@ struct ContentView: View {
             }
 
             subtitleImportAlert = message
+        }
+    }
+
+    private func importAudioCaptions() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.message = "Select folder containing captions_only.json and audio/ subdirectory"
+
+        guard panel.runModal() == .OK, let folderURL = panel.url else { return }
+
+        Task {
+            let importer = CaptionAudioImporter(
+                modelContext: modelContext,
+                libraryRoot: library.libraryRoot
+            )
+            do {
+                let result = try await importer.importFromFolder(folderURL)
+                audioCaptionImportAlert = "Matched \(result.captionsMatched) captions, copied \(result.audioFilesCopied) audio files. \(result.itemsNotFound) items not found in library."
+            } catch {
+                audioCaptionImportAlert = "Import failed: \(error.localizedDescription)"
+            }
         }
     }
 

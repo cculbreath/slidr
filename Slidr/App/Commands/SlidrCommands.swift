@@ -47,6 +47,7 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.toggleInspector) var toggleInspector
     @FocusedValue(\.importFilesAction) var importFiles
     @FocusedValue(\.importSubtitlesAction) var importSubtitles
+    @FocusedValue(\.importAudioCaptionsAction) var importAudioCaptions
     @FocusedValue(\.locateExternalLibrary) var locateExternalLibrary
     @FocusedValue(\.newPlaylist) var newPlaylist
     @FocusedValue(\.newSmartPlaylist) var newSmartPlaylist
@@ -99,6 +100,7 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.subtitleFontSize) var subtitleFontSize
     @FocusedValue(\.subtitleOpacity) var subtitleOpacity
     @FocusedValue(\.slideshowControlsMode) var slideshowControlsMode
+    @FocusedValue(\.playAudioCaptions) var playAudioCaptions
 
     // MARK: - AI FocusedValues
     @FocusedValue(\.aiAutoProcess) var aiAutoProcess
@@ -195,6 +197,12 @@ struct SlidrCommands: Commands {
 
             Button("Import Subtitles...") {
                 importSubtitles?()
+            }
+
+            if FeatureFlags.audioCaptions {
+                Button("Import Audio Captions...") {
+                    importAudioCaptions?()
+                }
             }
 
             Menu("Import Destination") {
@@ -671,6 +679,14 @@ struct SlidrCommands: Commands {
             captionsMenu
 
             subtitlesMenu
+
+            if FeatureFlags.audioCaptions {
+                Divider()
+
+                if let playAudioCaptions {
+                    Toggle("Play Audio Captions", isOn: playAudioCaptions)
+                }
+            }
         }
     }
 
