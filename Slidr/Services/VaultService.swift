@@ -104,6 +104,15 @@ actor VaultService {
             throw VaultError.vaultNotFound(config.bundlePath)
         }
 
+        // Check if this sparse bundle is already attached (e.g. previous session
+        // didn't unmount cleanly). Reuse the existing mount point instead of
+        // trying hdiutil attach again, which would fail with "no mountable filesystems".
+        if let existingMount = await Self.findMountPoint(for: config.bundlePath) {
+            Logger.vault.info("Vault '\(config.name)' already mounted at \(existingMount.path)")
+            mountedVaults[vaultID] = existingMount
+            return existingMount
+        }
+
         let mountPoint = try await runHdiutilAttach(bundleURL: bundleURL, password: password)
         mountedVaults[vaultID] = mountPoint
         Logger.vault.info("Mounted vault '\(config.name)' at \(mountPoint.path)")

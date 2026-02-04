@@ -227,6 +227,9 @@ actor ThumbnailCache {
         var failedHashes: Set<String> = []
         let total = items.count
 
+        // Report total immediately so the UI can show progress
+        await progress?(0, total)
+
         for (index, item) in items.enumerated() {
             if hasScrubThumbnails(forHash: item.contentHash, count: count) {
                 await progress?(index + 1, total)

@@ -558,18 +558,21 @@ struct ContentView: View {
     }
 
     private func aiTagSelected() {
-        guard let item = firstSelectedItem(), let settings = settingsQuery.first else { return }
-        Task { await aiCoordinator.tagItem(item, settings: settings, allTags: allTags, library: library, modelContext: modelContext) }
+        let items = selectedItems()
+        guard !items.isEmpty, let settings = settingsQuery.first else { return }
+        Task { await aiCoordinator.tagItems(items, settings: settings, allTags: allTags, library: library, modelContext: modelContext) }
     }
 
     private func aiSummarizeSelected() {
-        guard let item = firstSelectedItem(), let settings = settingsQuery.first else { return }
-        Task { await aiCoordinator.summarizeItem(item, settings: settings, library: library, modelContext: modelContext) }
+        let items = selectedItems()
+        guard !items.isEmpty, let settings = settingsQuery.first else { return }
+        Task { await aiCoordinator.summarizeItems(items, settings: settings, library: library, modelContext: modelContext) }
     }
 
     private func aiTranscribeSelected() {
-        guard let item = firstSelectedItem(), let settings = settingsQuery.first else { return }
-        Task { await aiCoordinator.transcribeItem(item, settings: settings, modelContext: modelContext, library: library) }
+        let items = selectedItems()
+        guard !items.isEmpty, let settings = settingsQuery.first else { return }
+        Task { await aiCoordinator.transcribeItems(items, settings: settings, library: library, modelContext: modelContext) }
     }
 
     private func aiProcessUntagged() {

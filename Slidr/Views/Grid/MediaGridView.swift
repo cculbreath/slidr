@@ -361,6 +361,14 @@ struct MediaGridView: View {
         .contextMenu { thumbnailContextMenu(for: item) }
     }
 
+    private var isMultiSelection: Bool {
+        viewModel.selectedItems.count > 1
+    }
+
+    private func isPartOfMultiSelection(_ item: MediaItem) -> Bool {
+        isMultiSelection && viewModel.selectedItems.contains(item.id)
+    }
+
     @ViewBuilder
     private func thumbnailContextMenu(for item: MediaItem) -> some View {
         Button("Show in Finder") { showInFinder(item) }
@@ -376,24 +384,24 @@ struct MediaGridView: View {
         Divider()
 
         Menu("Intelligence") {
-            Button("Process with AI") {
+            Button(isPartOfMultiSelection(item) ? "Process Selected with AI" : "Process with AI") {
                 aiProcess(item)
             }
 
             Divider()
 
-            Button("Tag with AI") {
+            Button(isPartOfMultiSelection(item) ? "Tag Selected with AI" : "Tag with AI") {
                 aiTag(item)
             }
 
-            Button("Summarize with AI") {
+            Button(isPartOfMultiSelection(item) ? "Summarize Selected with AI" : "Summarize with AI") {
                 aiSummarize(item)
             }
 
-            Button("Transcribe") {
+            Button(isPartOfMultiSelection(item) ? "Transcribe Selected" : "Transcribe") {
                 aiTranscribe(item)
             }
-            .disabled(!item.isVideo || item.hasAudio != true)
+            .disabled(!isPartOfMultiSelection(item) && (!item.isVideo || item.hasAudio != true))
         }
 
         Divider()
@@ -615,31 +623,43 @@ struct MediaGridView: View {
 
     // MARK: - AI Context Menu Actions
 
+    /// Returns selected items if the clicked item is part of the selection, otherwise just the clicked item.
+    private func effectiveItems(for item: MediaItem) -> [MediaItem] {
+        if viewModel.selectedItems.contains(item.id), viewModel.selectedItems.count > 1 {
+            return displayedItems.filter { viewModel.selectedItems.contains($0.id) }
+        }
+        return [item]
+    }
+
     private func aiProcess(_ item: MediaItem) {
         guard let settings else { return }
+        let items = effectiveItems(for: item)
         Task {
-            await aiCoordinator.processItems([item], settings: settings, allTags: allTags, library: library, modelContext: modelContext)
+            await aiCoordinator.processItems(items, settings: settings, allTags: allTags, library: library, modelContext: modelContext)
         }
     }
 
     private func aiTag(_ item: MediaItem) {
         guard let settings else { return }
+        let items = effectiveItems(for: item)
         Task {
-            await aiCoordinator.tagItem(item, settings: settings, allTags: allTags, library: library, modelContext: modelContext)
+            await aiCoordinator.tagItems(items, settings: settings, allTags: allTags, library: library, modelContext: modelContext)
         }
     }
 
     private func aiSummarize(_ item: MediaItem) {
         guard let settings else { return }
+        let items = effectiveItems(for: item)
         Task {
-            await aiCoordinator.summarizeItem(item, settings: settings, library: library, modelContext: modelContext)
+            await aiCoordinator.summarizeItems(items, settings: settings, library: library, modelContext: modelContext)
         }
     }
 
     private func aiTranscribe(_ item: MediaItem) {
         guard let settings else { return }
+        let items = effectiveItems(for: item)
         Task {
-            await aiCoordinator.transcribeItem(item, settings: settings, modelContext: modelContext, library: library)
+            await aiCoordinator.transcribeItems(items, settings: settings, library: library, modelContext: modelContext)
         }
     }
 

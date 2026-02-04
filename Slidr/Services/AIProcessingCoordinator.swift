@@ -134,110 +134,99 @@ final class AIProcessingCoordinator {
         isProcessing = false
     }
 
-    // MARK: - Single-Item Operations
+    // MARK: - Tag-Only (Batch)
 
-    func tagItem(_ item: MediaItem, settings: AppSettings, allTags: [String], library: MediaLibrary, modelContext: ModelContext) async {
+    func tagItems(_ items: [MediaItem], settings: AppSettings, allTags: [String], library: MediaLibrary, modelContext: ModelContext) async {
+        guard !items.isEmpty else { return }
+
         guard let xaiKey = KeychainService.load(key: KeychainService.xaiAPIKeyName) else {
             Self.logger.warning("No xAI API key configured")
             return
         }
 
         isProcessing = true
-        currentItem = item
-        currentOperation = "Tagging"
-        totalCount = 1
         processedCount = 0
+        totalCount = items.count
         errors = []
+        cancelled = false
 
-        do {
-            try await tagItem(item, xaiKey: xaiKey, settings: settings, allTags: allTags, library: library, modelContext: modelContext)
-            operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Tag", status: .success))
-        } catch {
-            Self.logger.error("Tagging failed for \(item.originalFilename): \(self.describeError(error))")
-            errors = [(item, error)]
-            operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Tag", status: .failure(describeError(error))))
-        }
+        for item in items {
+            guard !cancelled else { break }
+            currentItem = item
+            currentOperation = "Tagging"
 
-        processedCount = 1
-        currentItem = nil
-        currentOperation = ""
-        isProcessing = false
-    }
-
-    func summarizeItem(_ item: MediaItem, settings: AppSettings, library: MediaLibrary, modelContext: ModelContext) async {
-        guard let xaiKey = KeychainService.load(key: KeychainService.xaiAPIKeyName) else { return }
-
-        isProcessing = true
-        currentItem = item
-        currentOperation = "Summarizing"
-        totalCount = 1
-        processedCount = 0
-        errors = []
-
-        do {
-            let url = library.absoluteURL(for: item)
-            let imageData: Data
-
-            if item.isVideo {
-                guard let sheet = try await contactSheetGenerator.generateOverviewSheet(from: url, mediaType: .video) else {
-                    throw AITaggingError.contactSheetFailed
-                }
-                imageData = sheet
-            } else if item.isAnimated {
-                guard let sheet = try await contactSheetGenerator.generateOverviewSheet(from: url, mediaType: .gif) else {
-                    throw AITaggingError.contactSheetFailed
-                }
-                imageData = sheet
-            } else {
-                guard let sheet = try await contactSheetGenerator.generateOverviewSheet(from: url, mediaType: .image) else {
-                    throw AITaggingError.contactSheetFailed
-                }
-                imageData = sheet
+            do {
+                try await tagItem(item, xaiKey: xaiKey, settings: settings, allTags: allTags, library: library, modelContext: modelContext)
+                operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Tag", status: .success))
+            } catch {
+                Self.logger.error("Tagging failed for \(item.originalFilename): \(self.describeError(error))")
+                errors.append((item, error))
+                operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Tag", status: .failure(describeError(error))))
             }
 
-            let summary = try await taggingService.summarize(imageData: imageData, model: settings.aiModel, apiKey: xaiKey)
-            item.summary = summary
-            try modelContext.save()
-            operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Summarize", status: .success))
-        } catch {
-            Self.logger.error("Summarization failed for \(item.originalFilename): \(self.describeError(error))")
-            errors = [(item, error)]
-            operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Summarize", status: .failure(describeError(error))))
+            processedCount += 1
         }
 
-        processedCount = 1
         currentItem = nil
         currentOperation = ""
         isProcessing = false
     }
 
-    func transcribeItem(_ item: MediaItem, settings: AppSettings, modelContext: ModelContext, library: MediaLibrary) async {
-        guard let groqKey = KeychainService.load(key: KeychainService.groqAPIKeyName) else { return }
-        guard item.isVideo, item.hasAudio == true else { return }
+    // MARK: - Summarize-Only (Batch)
 
-        isProcessing = true
-        currentItem = item
-        currentOperation = "Transcribing"
-        totalCount = 1
-        processedCount = 0
-        errors = []
+    func summarizeItems(_ items: [MediaItem], settings: AppSettings, library: MediaLibrary, modelContext: ModelContext) async {
+        guard !items.isEmpty else { return }
 
-        do {
-            let url = library.absoluteURL(for: item)
-            let audioURL = try await transcriptionService.extractAudio(from: url)
-            defer { try? FileManager.default.removeItem(at: audioURL) }
-
-            let result = try await transcriptionService.transcribe(audioURL: audioURL, model: settings.groqModel, apiKey: groqKey)
-            item.transcriptText = result.text
-            try modelContext.save()
-            operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Transcribe", status: .success))
-        } catch {
-            Self.logger.error("Transcription failed for \(item.originalFilename): \(self.describeError(error))")
-            errors = [(item, error)]
-            operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Transcribe", status: .failure(describeError(error))))
+        guard let xaiKey = KeychainService.load(key: KeychainService.xaiAPIKeyName) else {
+            Self.logger.warning("No xAI API key configured")
+            return
         }
 
-        processedCount = 1
+        isProcessing = true
+        processedCount = 0
+        totalCount = items.count
+        errors = []
+        cancelled = false
+
+        for item in items {
+            guard !cancelled else { break }
+            currentItem = item
+            currentOperation = "Summarizing"
+
+            do {
+                let url = library.absoluteURL(for: item)
+                let imageData: Data
+
+                if item.isVideo {
+                    guard let sheet = try await contactSheetGenerator.generateOverviewSheet(from: url, mediaType: .video) else {
+                        throw AITaggingError.contactSheetFailed
+                    }
+                    imageData = sheet
+                } else if item.isAnimated {
+                    guard let sheet = try await contactSheetGenerator.generateOverviewSheet(from: url, mediaType: .gif) else {
+                        throw AITaggingError.contactSheetFailed
+                    }
+                    imageData = sheet
+                } else {
+                    guard let sheet = try await contactSheetGenerator.generateOverviewSheet(from: url, mediaType: .image) else {
+                        throw AITaggingError.contactSheetFailed
+                    }
+                    imageData = sheet
+                }
+
+                let summary = try await taggingService.summarize(imageData: imageData, model: settings.aiModel, apiKey: xaiKey)
+                item.summary = summary
+                try modelContext.save()
+                operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Summarize", status: .success))
+            } catch {
+                Self.logger.error("Summarization failed for \(item.originalFilename): \(self.describeError(error))")
+                errors.append((item, error))
+                operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Summarize", status: .failure(describeError(error))))
+            }
+
+            processedCount += 1
+        }
+
         currentItem = nil
         currentOperation = ""
         isProcessing = false

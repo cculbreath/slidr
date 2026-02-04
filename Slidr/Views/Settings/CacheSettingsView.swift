@@ -75,9 +75,15 @@ struct CacheSettingsView: View {
                 if isRegenerating {
                     VStack(alignment: .leading, spacing: 4) {
                         ProgressView(value: regenProgress)
-                        Text("Processing \(regenCurrent) of \(regenTotal) videos...")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        if regenTotal > 0 {
+                            Text("Processing \(regenCurrent) of \(regenTotal) videos...")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Preparing...")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 } else {
                     HStack {
