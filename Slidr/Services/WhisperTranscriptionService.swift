@@ -2,6 +2,11 @@ import AVFoundation
 import Foundation
 import OSLog
 
+struct TranscriptionResult: Sendable {
+    let text: String
+    let srtContent: String
+}
+
 actor WhisperTranscriptionService {
     private static let logger = Logger(subsystem: "com.physicscloud.slidr", category: "Transcription")
     private let endpoint = URL(string: "https://api.groq.com/openai/v1/audio/transcriptions")!
@@ -13,10 +18,6 @@ actor WhisperTranscriptionService {
         config.timeoutIntervalForResource = 600
         return URLSession(configuration: config)
     }()
-
-    struct TranscriptionResult: Sendable {
-        let text: String
-    }
 
     // MARK: - Transcribe
 
@@ -48,7 +49,7 @@ actor WhisperTranscriptionService {
         body.append(Data("\(model)\r\n".utf8))
         body.append(Data("--\(boundary)\r\n".utf8))
         body.append(Data("Content-Disposition: form-data; name=\"response_format\"\r\n\r\n".utf8))
-        body.append(Data("text\r\n".utf8))
+        body.append(Data("srt\r\n".utf8))
         body.append(Data("--\(boundary)--\r\n".utf8))
 
         request.httpBody = body
@@ -67,10 +68,12 @@ actor WhisperTranscriptionService {
             throw TranscriptionError.apiError(statusCode: httpResponse.statusCode, body: responseBody)
         }
 
-        let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        Self.logger.info("Transcription complete: \(text.prefix(100))...")
+        let srtContent = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let plainText = Self.extractPlainTextFromSRT(srtContent)
 
-        return TranscriptionResult(text: text)
+        Self.logger.info("Transcription complete (\(srtContent.count) chars SRT): \(plainText.prefix(100))...")
+
+        return TranscriptionResult(text: plainText, srtContent: srtContent)
     }
 
     // MARK: - Audio Extraction
@@ -159,6 +162,23 @@ actor WhisperTranscriptionService {
 
     // MARK: - Helpers
 
+    private static func extractPlainTextFromSRT(_ srt: String) -> String {
+        let blocks = srt.replacingOccurrences(of: "\r\n", with: "\n")
+            .components(separatedBy: "\n\n")
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+        var textParts: [String] = []
+        for block in blocks {
+            let lines = block.components(separatedBy: "\n")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            guard let timestampIdx = lines.firstIndex(where: { $0.contains(" --> ") }) else { continue }
+            let textLines = lines[(timestampIdx + 1)...]
+            textParts.append(contentsOf: textLines)
+        }
+        return textParts.joined(separator: " ")
+    }
+
     private func mimeType(for url: URL) -> String {
         switch url.pathExtension.lowercased() {
         case "m4a": return "audio/mp4"
@@ -181,6 +201,7 @@ enum TranscriptionError: LocalizedError {
     case invalidResponse
     case apiError(statusCode: Int, body: String)
     case fileTooLarge(sizeMB: Int, limitMB: Int)
+    case noAPIKey(provider: String)
 
     var errorDescription: String? {
         switch self {
@@ -195,8 +216,9 @@ enum TranscriptionError: LocalizedError {
         case .apiError(let statusCode, let body):
             return "Transcription API error (\(statusCode)): \(body)"
         case .fileTooLarge(let sizeMB, let limitMB):
-            return "Audio file too large (\(sizeMB)MB). Groq limit is \(limitMB)MB."
+            return "Audio file too large (\(sizeMB)MB). Limit is \(limitMB)MB."
+        case .noAPIKey(let provider):
+            return "No API key configured for \(provider)"
         }
     }
 }
-

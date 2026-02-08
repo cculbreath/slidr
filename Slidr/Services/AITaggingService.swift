@@ -71,7 +71,7 @@ final class AITaggingService {
 
         let base64Overview = overviewData.base64EncodedString()
         let systemPrompt = buildSystemPrompt(tagMode: tagMode, existingTags: existingTags, transcript: transcript)
-        let tools = buildVideoTools()
+        let tools = buildVideoTools(tagMode: tagMode, existingTags: existingTags)
 
         var messages: [ChatCompletionParameters.Message] = [
             .init(role: .system, content: .text(systemPrompt)),
@@ -263,8 +263,15 @@ final class AITaggingService {
 
     // MARK: - Tool Definitions
 
-    private func buildVideoTools() -> [ChatCompletionParameters.Tool] {
-        [
+    private func buildVideoTools(tagMode: AITagMode, existingTags: [String]?) -> [ChatCompletionParameters.Tool] {
+        let tagsSchema: JSONSchema
+        if tagMode == .constrainToExisting, let existing = existingTags, !existing.isEmpty {
+            tagsSchema = .init(type: .array, items: .init(type: .string, enum: existing.map { .init($0) }))
+        } else {
+            tagsSchema = .init(type: .array, items: .init(type: .string))
+        }
+
+        return [
             .init(function: .init(
                 name: "range_zoom",
                 strict: nil,
@@ -292,17 +299,18 @@ final class AITaggingService {
             )),
             .init(function: .init(
                 name: "submit_tags",
-                strict: nil,
+                strict: true,
                 description: "Submit your final analysis with tags, summary, production source, and confidence.",
                 parameters: .init(
                     type: .object,
                     properties: [
-                        "tags": .init(type: .array, items: .init(type: .string)),
+                        "tags": tagsSchema,
                         "summary": .init(type: .string),
                         "production_source": .init(type: .string, enum: ["studio", "creator", "homemade", "unknown"].map { .init($0) }),
                         "confidence": .init(type: .number),
                     ],
-                    required: ["tags", "summary", "production_source", "confidence"]
+                    required: ["tags", "summary", "production_source", "confidence"],
+                    additionalProperties: false
                 )
             )),
         ]

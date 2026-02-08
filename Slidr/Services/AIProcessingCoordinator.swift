@@ -23,7 +23,10 @@ final class AIProcessingCoordinator {
 
     let taggingService = AITaggingService()
     let transcriptionService = WhisperTranscriptionService()
+    let mistralTranscriptionService = MistralTranscriptionService()
     let contactSheetGenerator = ContactSheetGenerator()
+
+    var transcriptStore: TranscriptStore?
 
     var isProcessing = false
     var currentItem: MediaItem?
@@ -45,7 +48,6 @@ final class AIProcessingCoordinator {
         guard !items.isEmpty else { return }
 
         let xaiKey = KeychainService.load(key: KeychainService.xaiAPIKeyName)
-        let groqKey = KeychainService.load(key: KeychainService.groqAPIKeyName)
 
         guard xaiKey != nil else {
             Self.logger.warning("No xAI API key configured, skipping AI processing")
@@ -63,10 +65,10 @@ final class AIProcessingCoordinator {
             currentItem = item
 
             // Step 1: Transcribe if video with audio (independent of tagging)
-            if let groqKey, item.isVideo, item.hasAudio == true, item.transcriptText == nil {
+            if item.isVideo, item.hasAudio == true, item.transcriptText == nil {
                 currentOperation = "Transcribing"
                 do {
-                    try await transcribeItem(item, groqKey: groqKey, model: settings.groqModel, library: library, modelContext: modelContext)
+                    try await transcribeItem(item, settings: settings, library: library, modelContext: modelContext)
                     operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Transcribe", status: .success))
                 } catch {
                     Self.logger.error("Transcription failed for \(item.originalFilename): \(self.describeError(error))")
@@ -101,8 +103,15 @@ final class AIProcessingCoordinator {
     func transcribeItems(_ items: [MediaItem], settings: AppSettings, library: MediaLibrary, modelContext: ModelContext) async {
         guard !items.isEmpty else { return }
 
-        guard let groqKey = KeychainService.load(key: KeychainService.groqAPIKeyName) else {
-            Self.logger.warning("No Groq API key configured, skipping transcription")
+        let hasKey: Bool
+        switch settings.transcriptionProvider {
+        case .groqWhisper:
+            hasKey = KeychainService.exists(key: KeychainService.groqAPIKeyName)
+        case .mistral:
+            hasKey = KeychainService.exists(key: KeychainService.mistralAPIKeyName)
+        }
+        guard hasKey else {
+            Self.logger.warning("No API key configured for \(settings.transcriptionProvider.displayName), skipping transcription")
             return
         }
 
@@ -118,7 +127,7 @@ final class AIProcessingCoordinator {
             currentOperation = "Transcribing"
 
             do {
-                try await transcribeItem(item, groqKey: groqKey, model: settings.groqModel, library: library, modelContext: modelContext)
+                try await transcribeItem(item, settings: settings, library: library, modelContext: modelContext)
                 operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Transcribe", status: .success))
             } catch {
                 Self.logger.error("Transcription failed for \(item.originalFilename): \(self.describeError(error))")
@@ -255,7 +264,7 @@ final class AIProcessingCoordinator {
 
     // MARK: - Internal Helpers
 
-    private func transcribeItem(_ item: MediaItem, groqKey: String, model: String, library: MediaLibrary, modelContext: ModelContext) async throws {
+    private func transcribeItem(_ item: MediaItem, settings: AppSettings, library: MediaLibrary, modelContext: ModelContext) async throws {
         guard item.transcriptText == nil else { return }
 
         let url = library.absoluteURL(for: item)
@@ -267,8 +276,32 @@ final class AIProcessingCoordinator {
         let audioSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int) ?? 0
         Self.logger.info("Audio extracted: \(audioURL.lastPathComponent) (\(audioSize / 1_048_576)MB)")
 
-        let result = try await transcriptionService.transcribe(audioURL: audioURL, model: model, apiKey: groqKey)
-        item.transcriptText = result.text
+        let result: TranscriptionResult
+        switch settings.transcriptionProvider {
+        case .groqWhisper:
+            guard let apiKey = KeychainService.load(key: KeychainService.groqAPIKeyName) else {
+                throw TranscriptionError.noAPIKey(provider: "Groq")
+            }
+            result = try await transcriptionService.transcribe(audioURL: audioURL, model: settings.groqModel, apiKey: apiKey)
+        case .mistral:
+            guard let apiKey = KeychainService.load(key: KeychainService.mistralAPIKeyName) else {
+                throw TranscriptionError.noAPIKey(provider: "Mistral")
+            }
+            result = try await mistralTranscriptionService.transcribe(audioURL: audioURL, model: settings.mistralModel, apiKey: apiKey)
+        }
+
+        // Save SRT file via TranscriptStore for timed subtitle display
+        if let transcriptStore, !result.srtContent.isEmpty {
+            let storeResult = try await transcriptStore.saveTranscript(
+                srtContent: result.srtContent,
+                forContentHash: item.contentHash
+            )
+            item.transcriptText = storeResult.plainText
+            item.transcriptRelativePath = storeResult.relativePath
+        } else {
+            item.transcriptText = result.text
+        }
+
         try modelContext.save()
 
         Self.logger.info("Transcribed \(item.originalFilename): \(result.text.prefix(80))...")

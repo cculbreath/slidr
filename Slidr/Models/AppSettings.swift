@@ -166,6 +166,16 @@ final class AppSettings {
         set { groqModelRaw = newValue }
     }
 
+    var transcriptionProvider: TranscriptionProvider {
+        get { transcriptionProviderRaw.flatMap { TranscriptionProvider(rawValue: $0) } ?? .groqWhisper }
+        set { transcriptionProviderRaw = newValue.rawValue }
+    }
+
+    var mistralModel: String {
+        get { mistralModelRaw ?? "voxtral-mini-latest" }
+        set { mistralModelRaw = newValue }
+    }
+
     var playAudioCaptions: Bool {
         get { playAudioCaptionsRaw ?? false }
         set { playAudioCaptionsRaw = newValue }
@@ -187,6 +197,8 @@ final class AppSettings {
     var aiModelRaw: String?
     var aiTagModeRaw: String?
     var groqModelRaw: String?
+    var transcriptionProviderRaw: String?
+    var mistralModelRaw: String?
 
     // MARK: - Initialization
     init() {

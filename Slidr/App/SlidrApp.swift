@@ -238,6 +238,7 @@ final class AppLauncher {
         )
         let hoverVideoPlayer = HoverVideoPlayer()
         let aiCoordinator = AIProcessingCoordinator()
+        aiCoordinator.transcriptStore = transcriptStore
 
         return AppContainer(
             modelContainer: modelContainer,

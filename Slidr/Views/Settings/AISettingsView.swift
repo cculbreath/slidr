@@ -5,12 +5,16 @@ struct AISettingsView: View {
 
     @State private var xaiKeyInput = ""
     @State private var groqKeyInput = ""
+    @State private var mistralKeyInput = ""
     @State private var hasXAIKey = false
     @State private var hasGroqKey = false
+    @State private var hasMistralKey = false
     @State private var xaiTestStatus: KeyTestStatus = .idle
     @State private var groqTestStatus: KeyTestStatus = .idle
+    @State private var mistralTestStatus: KeyTestStatus = .idle
     @State private var xaiModels: [String] = []
     @State private var groqModels: [String] = []
+    @State private var mistralModels: [String] = []
 
     var body: some View {
         Form {
@@ -22,6 +26,7 @@ struct AISettingsView: View {
         .onAppear {
             hasXAIKey = KeychainService.exists(key: KeychainService.xaiAPIKeyName)
             hasGroqKey = KeychainService.exists(key: KeychainService.groqAPIKeyName)
+            hasMistralKey = KeychainService.exists(key: KeychainService.mistralAPIKeyName)
         }
     }
 
@@ -94,6 +99,39 @@ struct AISettingsView: View {
 
                 keyTestStatusView(status: groqTestStatus)
             }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    TextField("Mistral API Key", text: $mistralKeyInput)
+                        .textFieldStyle(.roundedBorder)
+
+                    if hasMistralKey {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    }
+
+                    Button("Save") {
+                        saveMistralKey()
+                    }
+                    .disabled(mistralKeyInput.isEmpty)
+
+                    if hasMistralKey {
+                        Button("Test") {
+                            testMistralKey()
+                        }
+                        .disabled(mistralTestStatus == .testing)
+
+                        Button("Clear") {
+                            KeychainService.delete(key: KeychainService.mistralAPIKeyName)
+                            hasMistralKey = false
+                            mistralTestStatus = .idle
+                            mistralModels = []
+                        }
+                    }
+                }
+
+                keyTestStatusView(status: mistralTestStatus)
+            }
         }
     }
 
@@ -118,6 +156,15 @@ struct AISettingsView: View {
                 }
             }
 
+            Picker("Transcription Provider", selection: Binding(
+                get: { settings.transcriptionProvider },
+                set: { settings.transcriptionProvider = $0 }
+            )) {
+                ForEach(TranscriptionProvider.allCases, id: \.self) { provider in
+                    Text(provider.displayName).tag(provider)
+                }
+            }
+
             if groqModels.isEmpty {
                 TextField("Groq Whisper Model", text: Binding(
                     get: { settings.groqModel },
@@ -130,6 +177,23 @@ struct AISettingsView: View {
                     set: { settings.groqModel = $0 }
                 )) {
                     ForEach(groqModels, id: \.self) { model in
+                        Text(model).tag(model)
+                    }
+                }
+            }
+
+            if mistralModels.isEmpty {
+                TextField("Mistral Voxtral Model", text: Binding(
+                    get: { settings.mistralModel },
+                    set: { settings.mistralModel = $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+            } else {
+                Picker("Mistral Voxtral Model", selection: Binding(
+                    get: { settings.mistralModel },
+                    set: { settings.mistralModel = $0 }
+                )) {
+                    ForEach(mistralModels, id: \.self) { model in
                         Text(model).tag(model)
                     }
                 }
@@ -251,6 +315,31 @@ struct AISettingsView: View {
         testGroqKey()
     }
 
+    private func saveMistralKey() {
+        let trimmed = mistralKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            try KeychainService.save(key: KeychainService.mistralAPIKeyName, value: trimmed)
+        } catch {
+            mistralTestStatus = .failure("Keychain save failed: \(error.localizedDescription)")
+            return
+        }
+
+        guard let readBack = KeychainService.load(key: KeychainService.mistralAPIKeyName) else {
+            mistralTestStatus = .failure("Key saved but could not be read back from keychain")
+            return
+        }
+
+        if readBack != trimmed {
+            mistralTestStatus = .failure("Keychain roundtrip mismatch: saved \(trimmed.count) chars, read \(readBack.count) chars")
+            return
+        }
+
+        mistralKeyInput = ""
+        hasMistralKey = true
+        testMistralKey()
+    }
+
     // MARK: - API Testing
 
     private func testXAIKey() {
@@ -304,9 +393,56 @@ struct AISettingsView: View {
         }
     }
 
+    private func testMistralKey() {
+        guard let apiKey = KeychainService.load(key: KeychainService.mistralAPIKeyName) else {
+            mistralTestStatus = .failure("No key found in keychain")
+            return
+        }
+
+        let keyInfo = "(\(apiKey.count) chars, prefix: \(String(apiKey.prefix(8)))...)"
+        mistralTestStatus = .testing
+
+        Task {
+            do {
+                let models = try await fetchMistralModels(apiKey: apiKey)
+                let voxtralModels = models.filter { $0.contains("voxtral") }
+                mistralModels = voxtralModels.isEmpty ? models.sorted() : voxtralModels.sorted()
+                mistralTestStatus = .success("Connected - \(models.count) models (\(voxtralModels.count) voxtral)")
+            } catch let error as KeyTestError {
+                mistralTestStatus = .failure("\(error.message) \(keyInfo)")
+            } catch {
+                mistralTestStatus = .failure("\(error.localizedDescription) \(keyInfo)")
+            }
+        }
+    }
+
     private func fetchModels(endpoint: URL, apiKey: String) async throws -> [String] {
         var request = URLRequest(url: endpoint)
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 15
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw KeyTestError(message: "Invalid response")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw KeyTestError(message: "HTTP \(httpResponse.statusCode): \(body.prefix(200))")
+        }
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let modelsArray = json["data"] as? [[String: Any]] else {
+            throw KeyTestError(message: "Unexpected response format")
+        }
+
+        return modelsArray.compactMap { $0["id"] as? String }
+    }
+
+    private func fetchMistralModels(apiKey: String) async throws -> [String] {
+        var request = URLRequest(url: URL(string: "https://api.mistral.ai/v1/models")!)
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.timeoutInterval = 15
 
         let (data, response) = try await URLSession.shared.data(for: request)

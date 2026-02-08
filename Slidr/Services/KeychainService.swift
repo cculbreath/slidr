@@ -4,6 +4,7 @@ import Security
 struct KeychainService {
     static let xaiAPIKeyName = "com.physicscloud.slidr.xai-api-key"
     static let groqAPIKeyName = "com.physicscloud.slidr.groq-api-key"
+    static let mistralAPIKeyName = "com.physicscloud.slidr.mistral-api-key"
 
     enum KeychainError: LocalizedError {
         case saveFailed(OSStatus)
