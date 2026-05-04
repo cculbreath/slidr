@@ -10,6 +10,7 @@ struct VideoPlayerView: View {
     @Binding var isMuted: Bool
     let scrubber: SmoothScrubber
     let onVideoEnded: () -> Void
+    var loopUntilAdvance: Bool = false
 
     @State private var player: AVPlayer?
     @State private var playerObserver: Any?
@@ -75,12 +76,25 @@ struct VideoPlayerView: View {
         newPlayer.automaticallyWaitsToMinimizeStalling = false
 
         // Observe when video ends
+        let capturedPlayer = newPlayer
         playerObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
             queue: .main
         ) { _ in
-            onVideoEnded()
+            Task { @MainActor in
+                if loopUntilAdvance {
+                    let startSeconds = scrubber.hasClipRegion ? scrubber.clipStartSeconds : 0
+                    let startTime = CMTime(seconds: startSeconds, preferredTimescale: 600)
+                    capturedPlayer.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                        Task { @MainActor in
+                            capturedPlayer.play()
+                        }
+                    }
+                } else {
+                    onVideoEnded()
+                }
+            }
         }
 
         // Observe playback errors

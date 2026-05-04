@@ -45,6 +45,7 @@ enum ToolbarID {
     nonisolated static let productionFilter = NSToolbarItem.Identifier("productionFilter")
     nonisolated static let tagFilter = NSToolbarItem.Identifier("tagFilter")
     nonisolated static let subtitleFilter = NSToolbarItem.Identifier("subtitleFilter")
+    nonisolated static let ratingFilter = NSToolbarItem.Identifier("ratingFilter")
     nonisolated static let advancedFilter = NSToolbarItem.Identifier("advancedFilter")
     nonisolated static let sortOrder = NSToolbarItem.Identifier("sortOrder")
     nonisolated static let inspectorToggle = NSToolbarItem.Identifier("inspector")
@@ -141,6 +142,8 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         _ = vm.productionTypeFilter
         _ = vm.tagFilter
         _ = vm.subtitleFilter
+        _ = vm.ratingFilterEnabled
+        _ = vm.ratingFilter
         _ = vm.advancedFilter
         _ = vm.sortOrder
         _ = vm.sortAscending
@@ -169,6 +172,7 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
             .flexibleSpace,
             ToolbarID.productionFilter,
             ToolbarID.tagFilter,
+            ToolbarID.ratingFilter,
             ToolbarID.advancedFilter,
             ToolbarID.sortOrder,
             ToolbarID.inspectorSeparator,
@@ -193,6 +197,7 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
             ToolbarID.tagFilter,
             ToolbarID.tagPalette,
             ToolbarID.subtitleFilter,
+            ToolbarID.ratingFilter,
             ToolbarID.advancedFilter,
             ToolbarID.sortOrder,
             ToolbarID.inspectorSeparator,
@@ -246,6 +251,8 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
             return makeTagPaletteItem()
         case ToolbarID.subtitleFilter:
             return makeSubtitleFilterItem()
+        case ToolbarID.ratingFilter:
+            return makeRatingFilterItem()
         case ToolbarID.advancedFilter:
             return makeAdvancedFilterItem()
         case ToolbarID.sortOrder:
@@ -439,6 +446,23 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         button.contentTintColor = active ? .controlAccentColor : nil
         item.view = button
         return item
+    }
+
+    private func makeRatingFilterItem() -> NSMenuToolbarItem {
+        let item = NSMenuToolbarItem(itemIdentifier: ToolbarID.ratingFilter)
+        item.label = "Rating"
+        item.paletteLabel = "Rating Filter"
+        item.toolTip = "Filter by star rating"
+        let active = (viewModel?.ratingFilterEnabled ?? false) && !(viewModel?.ratingFilter.isEmpty ?? true)
+        item.image = ratingFilterImage(active: active)
+        item.menu = buildRatingMenu()
+        return item
+    }
+
+    private func ratingFilterImage(active: Bool) -> NSImage {
+        let symbol = active ? "star.fill" : "star"
+        return NSImage(systemSymbolName: symbol, accessibilityDescription: "Rating")!
+            .withSymbolConfiguration(.init(paletteColors: active ? [.controlAccentColor] : [.labelColor]))!
     }
 
     private func makeAdvancedFilterItem() -> NSToolbarItem {
@@ -687,6 +711,13 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
             button.contentTintColor = active ? .controlAccentColor : nil
         }
 
+        // Rating filter
+        if let item = itemCache[ToolbarID.ratingFilter] as? NSMenuToolbarItem {
+            let active = vm.ratingFilterEnabled && !vm.ratingFilter.isEmpty
+            item.image = ratingFilterImage(active: active)
+            item.menu = buildRatingMenu()
+        }
+
         // Advanced filter
         if let item = itemCache[ToolbarID.advancedFilter], let button = item.view as? NSButton {
             let active = vm.advancedFilter != nil
@@ -827,6 +858,36 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
         return menu
     }
 
+    private func buildRatingMenu() -> NSMenu {
+        let menu = NSMenu()
+        let enabled = viewModel?.ratingFilterEnabled ?? false
+        let filter = viewModel?.ratingFilter ?? []
+
+        let allItem = NSMenuItem(title: "All", action: #selector(ratingFilterAllAction), keyEquivalent: "")
+        allItem.target = self
+        allItem.state = enabled ? .off : .on
+        menu.addItem(allItem)
+
+        menu.addItem(.separator())
+
+        let unratedItem = NSMenuItem(title: "Unrated", action: #selector(ratingFilterToggleAction(_:)), keyEquivalent: "")
+        unratedItem.target = self
+        unratedItem.representedObject = 0
+        unratedItem.state = (enabled && filter.contains(0)) ? .on : .off
+        menu.addItem(unratedItem)
+
+        for stars in 1...5 {
+            let title = String(repeating: "\u{2605}", count: stars)
+            let menuItem = NSMenuItem(title: title, action: #selector(ratingFilterToggleAction(_:)), keyEquivalent: "")
+            menuItem.target = self
+            menuItem.representedObject = stars
+            menuItem.state = (enabled && filter.contains(stars)) ? .on : .off
+            menu.addItem(menuItem)
+        }
+
+        return menu
+    }
+
     private func buildSortMenu() -> NSMenu {
         let menu = NSMenu()
         let currentSort = viewModel?.sortOrder ?? .dateImported
@@ -907,6 +968,29 @@ final class GridToolbarCoordinator: NSObject, NSToolbarDelegate {
 
     @objc private func subtitleFilterAction() {
         viewModel?.subtitleFilter.toggle()
+        updateItemStates()
+    }
+
+    @objc private func ratingFilterAllAction() {
+        viewModel?.ratingFilterEnabled = false
+        viewModel?.ratingFilter = []
+        updateItemStates()
+    }
+
+    @objc private func ratingFilterToggleAction(_ sender: NSMenuItem) {
+        guard let stars = sender.representedObject as? Int else { return }
+        guard let vm = viewModel else { return }
+        if !vm.ratingFilterEnabled {
+            vm.ratingFilterEnabled = true
+            vm.ratingFilter = [stars]
+        } else if vm.ratingFilter.contains(stars) {
+            vm.ratingFilter.remove(stars)
+            if vm.ratingFilter.isEmpty {
+                vm.ratingFilterEnabled = false
+            }
+        } else {
+            vm.ratingFilter.insert(stars)
+        }
         updateItemStates()
     }
 

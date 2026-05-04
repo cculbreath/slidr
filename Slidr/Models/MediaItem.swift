@@ -199,4 +199,22 @@ final class MediaItem {
     var displaySource: String {
         source?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
+
+    // MARK: - Table Sort Keys
+
+    var mediaTypeSortKey: String { mediaType.rawValue }
+    var hasTranscriptSortKey: Int { hasTranscript ? 1 : 0 }
+    var isFavoriteSortKey: Int { isFavorite ? 1 : 0 }
+    var tagsSortKey: String { tags.joined(separator: ", ") }
+    var captionSortKey: String { caption ?? "" }
+    var summarySortKey: String { summary ?? "" }
+    var durationSortKey: Double { duration ?? -1 }
+    var sourceSortKey: String { source ?? "" }
+    var productionSortKey: String { production?.rawValue ?? "" }
+    var dimensionsSortKey: Int { (width ?? 0) * (height ?? 0) }
+    var frameRateSortKey: Double { frameRate ?? -1 }
+    var hasAudioSortKey: Int { hasAudio == true ? 1 : (hasAudio == false ? 0 : -1) }
+    var frameCountSortKey: Int { frameCount ?? -1 }
+    var storageLocationSortKey: String { storageLocation.rawValue }
+    var statusSortKey: String { status.rawValue }
 }

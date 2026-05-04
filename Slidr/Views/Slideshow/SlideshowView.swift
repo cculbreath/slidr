@@ -226,7 +226,8 @@ struct SlideshowView: View {
                 volume: $viewModel.volume,
                 isMuted: $viewModel.isMuted,
                 scrubber: viewModel.scrubber,
-                onVideoEnded: { viewModel.onVideoEnded() }
+                onVideoEnded: { viewModel.onVideoEnded() },
+                loopUntilAdvance: !viewModel.videoPlayDuration.isFullVideo
             )
         } else if item.isAnimated {
             AsyncAnimatedGIFView(item: item)

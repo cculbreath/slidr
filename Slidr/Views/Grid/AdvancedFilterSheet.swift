@@ -134,6 +134,7 @@ struct AdvancedFilterSheet: View {
     @ViewBuilder
     private func valueInput(at index: Int) -> some View {
         let field = filter.rules[index].field
+        let condition = filter.rules[index].condition
         switch field {
         case .tag:
             TextField("Tag", text: stringValueBinding(at: index))
@@ -173,13 +174,17 @@ struct AdvancedFilterSheet: View {
             }
 
         case .rating:
-            Picker("", selection: ratingValueBinding(at: index)) {
-                ForEach(1...5, id: \.self) { stars in
-                    Text(String(repeating: "\u{2605}", count: stars)).tag(stars)
+            if condition == .hasValue || condition == .doesNotHaveValue {
+                Color.clear.frame(width: 0, height: 0)
+            } else {
+                Picker("", selection: ratingValueBinding(at: index)) {
+                    ForEach(1...5, id: \.self) { stars in
+                        Text(String(repeating: "\u{2605}", count: stars)).tag(stars)
+                    }
                 }
+                .labelsHidden()
+                .frame(width: 100)
             }
-            .labelsHidden()
-            .frame(width: 100)
 
         case .hasTranscript, .hasCaption:
             Text("Yes")
@@ -192,7 +197,7 @@ struct AdvancedFilterSheet: View {
 
     private var footer: some View {
         HStack {
-            Button("Save as Smart Playlist\u{2026}") {
+            Button("Save as Playlist\u{2026}") {
                 playlistName = "Filtered Playlist"
                 showSavePlaylist = true
             }
@@ -222,7 +227,7 @@ struct AdvancedFilterSheet: View {
 
     private var savePlaylistSheet: some View {
         VStack(spacing: 16) {
-            Text("Save as Smart Playlist")
+            Text("Save as Playlist")
                 .font(.headline)
 
             TextField("Playlist name", text: $playlistName)
@@ -236,7 +241,7 @@ struct AdvancedFilterSheet: View {
                 .keyboardShortcut(.cancelAction)
 
                 Button("Save") {
-                    let playlist = playlistService.createPlaylist(name: playlistName, type: .smart)
+                    let playlist = playlistService.createPlaylist(name: playlistName, type: .manual)
                     filter.applyToPlaylist(playlist)
                     playlistService.updatePlaylist(playlist)
                     showSavePlaylist = false

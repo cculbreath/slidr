@@ -84,6 +84,13 @@ struct TranscriptParser {
 
     /// Binary search for the active cue at a given time.
     static func activeCue(at time: TimeInterval, in cues: [TranscriptCue]) -> TranscriptCue? {
+        guard let idx = activeCueArrayIndex(at: time, in: cues) else { return nil }
+        return cues[idx]
+    }
+
+    /// Binary search for the array index of the active cue at a given time.
+    /// Returns the position within `cues`, not the cue's own (potentially 1-based) `index` field.
+    static func activeCueArrayIndex(at time: TimeInterval, in cues: [TranscriptCue]) -> Int? {
         guard !cues.isEmpty else { return nil }
 
         var low = 0
@@ -98,7 +105,7 @@ struct TranscriptParser {
             } else if time > cue.endTime {
                 low = mid + 1
             } else {
-                return cue
+                return mid
             }
         }
 

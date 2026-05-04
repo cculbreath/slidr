@@ -10,172 +10,19 @@ struct MediaListView: View {
     @Environment(MediaLibrary.self) private var library
     @Environment(PlaylistService.self) private var playlistService
     @SceneStorage("listColumnCustomization") private var columnCustomization: TableColumnCustomization<MediaItem>
+    @State private var sortOrder: [KeyPathComparator<MediaItem>] = [
+        KeyPathComparator(\MediaItem.importDate, order: .reverse)
+    ]
 
-    private var displayedItems: [MediaItem] { viewModel.filteredItems(items) }
+    private var displayedItems: [MediaItem] {
+        viewModel.filteredItems(items).sorted(using: sortOrder)
+    }
 
     var body: some View {
-        Table(displayedItems, selection: $viewModel.selectedItems, columnCustomization: $columnCustomization) {
-            Group {
-                TableColumn("") { (item: MediaItem) in
-                    ListThumbnail(item: item, library: library)
-                }
-                .width(40)
-                .customizationID(ListColumnID.thumbnail.rawValue)
-                .disabledCustomizationBehavior(.all)
-
-                TableColumn("Title", value: \.displayName)
-                    .customizationID(ListColumnID.title.rawValue)
-
-                TableColumn("Filename", value: \.originalFilename)
-                    .customizationID(ListColumnID.filename.rawValue)
-                    .defaultVisibility(.hidden)
-
-                TableColumn("Media Type") { (item: MediaItem) in
-                    Text(item.mediaType.rawValue.capitalized)
-                }
-                .customizationID(ListColumnID.mediaType.rawValue)
-
-                TableColumn("Tags") { (item: MediaItem) in
-                    Text(item.tags.joined(separator: ", "))
-                        .lineLimit(1)
-                }
-                .customizationID(ListColumnID.tags.rawValue)
-
-                TableColumn("Caption") { (item: MediaItem) in
-                    Text(item.caption ?? "")
-                        .lineLimit(1)
-                }
-                .customizationID(ListColumnID.caption.rawValue)
-                .defaultVisibility(.hidden)
-
-                TableColumn("Transcript") { (item: MediaItem) in
-                    if item.hasTranscript {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .width(ideal: 70)
-                .customizationID(ListColumnID.hasTranscript.rawValue)
-                .defaultVisibility(.hidden)
-
-                TableColumn("Summary") { (item: MediaItem) in
-                    Text(item.summary ?? "")
-                        .lineLimit(1)
-                }
-                .customizationID(ListColumnID.summary.rawValue)
-                .defaultVisibility(.hidden)
-
-                TableColumn("Duration") { (item: MediaItem) in
-                    Text(item.formattedDuration ?? "")
-                }
-                .width(ideal: 60)
-                .customizationID(ListColumnID.duration.rawValue)
-
-                TableColumn("File Size") { (item: MediaItem) in
-                    Text(formattedFileSize(item.fileSize))
-                }
-                .width(ideal: 80)
-                .customizationID(ListColumnID.fileSize.rawValue)
-            }
-
-            Group {
-                TableColumn("Date Imported") { (item: MediaItem) in
-                    Text(item.importDate, style: .date)
-                }
-                .customizationID(ListColumnID.dateImported.rawValue)
-
-                TableColumn("Date Modified") { (item: MediaItem) in
-                    Text(item.fileModifiedDate, style: .date)
-                }
-                .customizationID(ListColumnID.dateModified.rawValue)
-                .defaultVisibility(.hidden)
-
-                TableColumn("Rating") { (item: MediaItem) in
-                    if let rating = item.rating, rating > 0 {
-                        Text(String(repeating: "\u{2605}", count: rating))
-                            .foregroundStyle(.orange)
-                    }
-                }
-                .width(ideal: 80)
-                .customizationID(ListColumnID.rating.rawValue)
-
-                TableColumn("Production") { (item: MediaItem) in
-                    if let production = item.production {
-                        Label(production.displayName, systemImage: production.iconName)
-                    }
-                }
-                .customizationID(ListColumnID.production.rawValue)
-                .defaultVisibility(.hidden)
-
-                TableColumn("Source") { (item: MediaItem) in
-                    Text(item.source ?? "")
-                        .lineLimit(1)
-                }
-                .customizationID(ListColumnID.source.rawValue)
-                .defaultVisibility(.hidden)
-
-                TableColumn("Dimensions") { (item: MediaItem) in
-                    if let w = item.width, let h = item.height {
-                        Text("\(w) \u{00D7} \(h)")
-                    }
-                }
-                .width(ideal: 90)
-                .customizationID(ListColumnID.dimensions.rawValue)
-                .defaultVisibility(.hidden)
-
-                TableColumn("Frame Rate") { (item: MediaItem) in
-                    if let fps = item.frameRate {
-                        Text(String(format: "%.1f fps", fps))
-                    }
-                }
-                .width(ideal: 80)
-                .customizationID(ListColumnID.frameRate.rawValue)
-                .defaultVisibility(.hidden)
-
-                TableColumn("Audio") { (item: MediaItem) in
-                    if let hasAudio = item.hasAudio {
-                        Image(systemName: hasAudio ? "speaker.wave.2" : "speaker.slash")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .width(ideal: 50)
-                .customizationID(ListColumnID.hasAudio.rawValue)
-                .defaultVisibility(.hidden)
-
-                TableColumn("Frames") { (item: MediaItem) in
-                    if let count = item.frameCount {
-                        Text("\(count)")
-                    }
-                }
-                .width(ideal: 60)
-                .customizationID(ListColumnID.frameCount.rawValue)
-                .defaultVisibility(.hidden)
-
-                TableColumn("Fav") { (item: MediaItem) in
-                    if item.isFavorite {
-                        Image(systemName: "heart.fill")
-                            .foregroundStyle(.red)
-                    }
-                }
-                .width(ideal: 40)
-                .customizationID(ListColumnID.favorite.rawValue)
-                .defaultVisibility(.hidden)
-            }
-
-            Group {
-                TableColumn("Storage") { (item: MediaItem) in
-                    Label(item.storageLocation.displayName, systemImage: item.storageLocation.icon)
-                }
-                .customizationID(ListColumnID.storageLocation.rawValue)
-                .defaultVisibility(.hidden)
-
-                TableColumn("Status") { (item: MediaItem) in
-                    Text(item.status.rawValue.capitalized)
-                }
-                .width(ideal: 70)
-                .customizationID(ListColumnID.status.rawValue)
-                .defaultVisibility(.hidden)
-            }
+        Table(displayedItems, selection: $viewModel.selectedItems, sortOrder: $sortOrder, columnCustomization: $columnCustomization) {
+            primaryColumns
+            metadataColumns
+            statusColumns
         }
         .contextMenu(forSelectionType: UUID.self) { selectedIDs in
             contextMenuContent(for: selectedIDs)
@@ -185,6 +32,173 @@ struct MediaListView: View {
             onStartSlideshow(displayedItems, index, nil)
         }
         .focusedSceneValue(\.listColumnCustomization, $columnCustomization)
+    }
+
+    // MARK: - Column Builders
+
+    @TableColumnBuilder<MediaItem, KeyPathComparator<MediaItem>>
+    private var primaryColumns: some TableColumnContent<MediaItem, KeyPathComparator<MediaItem>> {
+        TableColumn("Title", value: \MediaItem.displayName) { (item: MediaItem) in
+            HStack(spacing: 8) {
+                ListThumbnail(item: item, library: library)
+                Text(item.displayName)
+            }
+        }
+        .customizationID(ListColumnID.title.rawValue)
+
+        TableColumn("Filename", value: \MediaItem.originalFilename) { (item: MediaItem) in
+            Text(item.originalFilename)
+        }
+        .customizationID(ListColumnID.filename.rawValue)
+        .defaultVisibility(.hidden)
+
+        TableColumn("Media Type", value: \MediaItem.mediaTypeSortKey) { (item: MediaItem) in
+            Text(item.mediaType.rawValue.capitalized)
+        }
+        .customizationID(ListColumnID.mediaType.rawValue)
+
+        TableColumn("Tags", value: \MediaItem.tagsSortKey) { (item: MediaItem) in
+            Text(item.tags.joined(separator: ", "))
+                .lineLimit(1)
+        }
+        .customizationID(ListColumnID.tags.rawValue)
+
+        TableColumn("Caption", value: \MediaItem.captionSortKey) { (item: MediaItem) in
+            Text(item.caption ?? "")
+                .lineLimit(1)
+        }
+        .customizationID(ListColumnID.caption.rawValue)
+        .defaultVisibility(.hidden)
+
+        TableColumn("Transcript", value: \MediaItem.hasTranscriptSortKey) { (item: MediaItem) in
+            if item.hasTranscript {
+                Image(systemName: "checkmark")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .width(ideal: 70)
+        .customizationID(ListColumnID.hasTranscript.rawValue)
+        .defaultVisibility(.hidden)
+
+        TableColumn("Summary", value: \MediaItem.summarySortKey) { (item: MediaItem) in
+            Text(item.summary ?? "")
+                .lineLimit(1)
+        }
+        .customizationID(ListColumnID.summary.rawValue)
+        .defaultVisibility(.hidden)
+
+        TableColumn("Duration", value: \MediaItem.durationSortKey) { (item: MediaItem) in
+            Text(item.formattedDuration ?? "")
+        }
+        .width(ideal: 60)
+        .customizationID(ListColumnID.duration.rawValue)
+
+        TableColumn("File Size", value: \MediaItem.fileSize) { (item: MediaItem) in
+            Text(formattedFileSize(item.fileSize))
+        }
+        .width(ideal: 80)
+        .customizationID(ListColumnID.fileSize.rawValue)
+    }
+
+    @TableColumnBuilder<MediaItem, KeyPathComparator<MediaItem>>
+    private var metadataColumns: some TableColumnContent<MediaItem, KeyPathComparator<MediaItem>> {
+        TableColumn("Date Imported", value: \MediaItem.importDate) { (item: MediaItem) in
+            Text(item.importDate, style: .date)
+        }
+        .customizationID(ListColumnID.dateImported.rawValue)
+
+        TableColumn("Date Modified", value: \MediaItem.fileModifiedDate) { (item: MediaItem) in
+            Text(item.fileModifiedDate, style: .date)
+        }
+        .customizationID(ListColumnID.dateModified.rawValue)
+        .defaultVisibility(.hidden)
+
+        TableColumn("Rating", value: \MediaItem.effectiveRating) { (item: MediaItem) in
+            if let rating = item.rating, rating > 0 {
+                Text(String(repeating: "\u{2605}", count: rating))
+                    .foregroundStyle(.orange)
+            }
+        }
+        .width(ideal: 80)
+        .customizationID(ListColumnID.rating.rawValue)
+
+        TableColumn("Production", value: \MediaItem.productionSortKey) { (item: MediaItem) in
+            if let production = item.production {
+                Label(production.displayName, systemImage: production.iconName)
+            }
+        }
+        .customizationID(ListColumnID.production.rawValue)
+        .defaultVisibility(.hidden)
+
+        TableColumn("Source", value: \MediaItem.sourceSortKey) { (item: MediaItem) in
+            Text(item.source ?? "")
+                .lineLimit(1)
+        }
+        .customizationID(ListColumnID.source.rawValue)
+        .defaultVisibility(.hidden)
+
+        TableColumn("Dimensions", value: \MediaItem.dimensionsSortKey) { (item: MediaItem) in
+            if let w = item.width, let h = item.height {
+                Text("\(w) \u{00D7} \(h)")
+            }
+        }
+        .width(ideal: 90)
+        .customizationID(ListColumnID.dimensions.rawValue)
+        .defaultVisibility(.hidden)
+
+        TableColumn("Frame Rate", value: \MediaItem.frameRateSortKey) { (item: MediaItem) in
+            if let fps = item.frameRate {
+                Text(String(format: "%.1f fps", fps))
+            }
+        }
+        .width(ideal: 80)
+        .customizationID(ListColumnID.frameRate.rawValue)
+        .defaultVisibility(.hidden)
+
+        TableColumn("Audio", value: \MediaItem.hasAudioSortKey) { (item: MediaItem) in
+            if let hasAudio = item.hasAudio {
+                Image(systemName: hasAudio ? "speaker.wave.2" : "speaker.slash")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .width(ideal: 50)
+        .customizationID(ListColumnID.hasAudio.rawValue)
+        .defaultVisibility(.hidden)
+
+        TableColumn("Frames", value: \MediaItem.frameCountSortKey) { (item: MediaItem) in
+            if let count = item.frameCount {
+                Text("\(count)")
+            }
+        }
+        .width(ideal: 60)
+        .customizationID(ListColumnID.frameCount.rawValue)
+        .defaultVisibility(.hidden)
+
+        TableColumn("Fav", value: \MediaItem.isFavoriteSortKey) { (item: MediaItem) in
+            if item.isFavorite {
+                Image(systemName: "heart.fill")
+                    .foregroundStyle(.red)
+            }
+        }
+        .width(ideal: 40)
+        .customizationID(ListColumnID.favorite.rawValue)
+        .defaultVisibility(.hidden)
+    }
+
+    @TableColumnBuilder<MediaItem, KeyPathComparator<MediaItem>>
+    private var statusColumns: some TableColumnContent<MediaItem, KeyPathComparator<MediaItem>> {
+        TableColumn("Storage", value: \MediaItem.storageLocationSortKey) { (item: MediaItem) in
+            Label(item.storageLocation.displayName, systemImage: item.storageLocation.icon)
+        }
+        .customizationID(ListColumnID.storageLocation.rawValue)
+        .defaultVisibility(.hidden)
+
+        TableColumn("Status", value: \MediaItem.statusSortKey) { (item: MediaItem) in
+            Text(item.status.rawValue.capitalized)
+        }
+        .width(ideal: 70)
+        .customizationID(ListColumnID.status.rawValue)
+        .defaultVisibility(.hidden)
     }
 
     // MARK: - Context Menu

@@ -8,7 +8,7 @@ struct SubtitleOverlayView: View {
     var fontSize: Double = 16.0
     var backgroundOpacity: Double = 0.7
 
-    @State private var currentCueIndex: Int?
+    @State private var currentArrayIndex: Int?
     @State private var speakerColors: [String: Color] = [:]
     @State private var hasMultipleSpeakers = false
 
@@ -19,15 +19,20 @@ struct SubtitleOverlayView: View {
     var body: some View {
         ZStack(alignment: position.alignment) {
             Color.clear
-            if let index = currentCueIndex, index < cues.count {
+            if let index = currentArrayIndex, index >= 0, index < cues.count {
                 subtitleContent(for: cues[index])
                     .padding(.horizontal, 40)
                     .padding(edgePadding)
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.15), value: currentCueIndex)
+        .animation(.easeInOut(duration: 0.15), value: currentArrayIndex)
         .onChange(of: scrubber.currentTime) {
+            updateCue()
+        }
+        .onChange(of: cues.count) {
+            currentArrayIndex = nil
+            buildSpeakerColors()
             updateCue()
         }
         .onAppear {
@@ -117,12 +122,12 @@ struct SubtitleOverlayView: View {
 
     private func updateCue() {
         let time = scrubber.currentTime.seconds
-        if let cue = TranscriptParser.activeCue(at: time, in: cues) {
-            if currentCueIndex != cue.index {
-                currentCueIndex = cue.index
+        if let arrayIndex = TranscriptParser.activeCueArrayIndex(at: time, in: cues) {
+            if currentArrayIndex != arrayIndex {
+                currentArrayIndex = arrayIndex
             }
-        } else if currentCueIndex != nil {
-            currentCueIndex = nil
+        } else if currentArrayIndex != nil {
+            currentArrayIndex = nil
         }
     }
 }

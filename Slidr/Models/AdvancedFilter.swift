@@ -101,7 +101,9 @@ struct AdvancedFilter {
                     }
                 }
             case .rating:
-                if case .rating(let rating) = rule.value {
+                if rule.condition == .hasValue {
+                    playlist.filterMinRating = 1
+                } else if case .rating(let rating) = rule.value {
                     switch rule.condition {
                     case .is, .greaterThan:
                         playlist.filterMinRating = rating
@@ -221,13 +223,20 @@ struct FilterRule: Identifiable {
             }
 
         case .rating:
-            guard case .rating(let rating) = value else { return true }
-            let itemRating = item.rating ?? 0
             switch condition {
-            case .is: return itemRating == rating
-            case .greaterThan: return itemRating > rating
-            case .lessThan: return itemRating < rating
-            default: return true
+            case .hasValue:
+                return (item.rating ?? 0) > 0
+            case .doesNotHaveValue:
+                return (item.rating ?? 0) == 0
+            default:
+                guard case .rating(let rating) = value else { return true }
+                let itemRating = item.rating ?? 0
+                switch condition {
+                case .is: return itemRating == rating
+                case .greaterThan: return itemRating > rating
+                case .lessThan: return itemRating < rating
+                default: return true
+                }
             }
 
         case .hasTranscript:
@@ -260,7 +269,7 @@ enum FilterField: String, CaseIterable {
         case .duration:
             return [.greaterThan, .lessThan]
         case .rating:
-            return [.is, .greaterThan, .lessThan]
+            return [.hasValue, .doesNotHaveValue, .is, .greaterThan, .lessThan]
         case .hasTranscript, .hasCaption:
             return []
         }
@@ -288,6 +297,8 @@ enum FilterCondition: String, CaseIterable {
     case isNot = "is not"
     case greaterThan = "greater than"
     case lessThan = "less than"
+    case hasValue = "has rating"
+    case doesNotHaveValue = "does not have rating"
 }
 
 // MARK: - FilterValue
