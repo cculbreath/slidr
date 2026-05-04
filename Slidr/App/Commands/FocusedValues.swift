@@ -42,10 +42,6 @@ struct NewPlaylistKey: FocusedValueKey {
     typealias Value = () -> Void
 }
 
-struct NewSmartPlaylistKey: FocusedValueKey {
-    typealias Value = () -> Void
-}
-
 struct FocusSearchKey: FocusedValueKey {
     typealias Value = () -> Void
 }
@@ -83,6 +79,18 @@ struct ToggleTagPaletteKey: FocusedValueKey {
 }
 
 struct ExportSelectedKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+struct SwitchLibraryKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+struct ImportWithManifestKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+struct ApplyManifestCaptionsKey: FocusedValueKey {
     typealias Value = () -> Void
 }
 
@@ -334,11 +342,6 @@ extension FocusedValues {
         set { self[NewPlaylistKey.self] = newValue }
     }
 
-    var newSmartPlaylist: (() -> Void)? {
-        get { self[NewSmartPlaylistKey.self] }
-        set { self[NewSmartPlaylistKey.self] = newValue }
-    }
-
     var focusSearch: (() -> Void)? {
         get { self[FocusSearchKey.self] }
         set { self[FocusSearchKey.self] = newValue }
@@ -387,6 +390,21 @@ extension FocusedValues {
     var exportSelected: (() -> Void)? {
         get { self[ExportSelectedKey.self] }
         set { self[ExportSelectedKey.self] = newValue }
+    }
+
+    var switchLibrary: (() -> Void)? {
+        get { self[SwitchLibraryKey.self] }
+        set { self[SwitchLibraryKey.self] = newValue }
+    }
+
+    var importWithManifest: (() -> Void)? {
+        get { self[ImportWithManifestKey.self] }
+        set { self[ImportWithManifestKey.self] = newValue }
+    }
+
+    var applyManifestCaptions: (() -> Void)? {
+        get { self[ApplyManifestCaptionsKey.self] }
+        set { self[ApplyManifestCaptionsKey.self] = newValue }
     }
 
     // Filter binding values

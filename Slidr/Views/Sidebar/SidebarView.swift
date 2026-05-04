@@ -16,7 +16,6 @@ struct SidebarView: View {
             List(selection: $viewModel.selectedItem) {
                 librarySection
                 manualPlaylistsSection
-                smartPlaylistsSection
             }
             .listStyle(.sidebar)
         }
@@ -205,34 +204,6 @@ struct SidebarView: View {
         )
     }
 
-    // MARK: - Smart Playlists Section
-
-    private var smartPlaylistsSection: some View {
-        Section {
-            ForEach(viewModel.smartPlaylists) { playlist in
-                PlaylistRow(
-                    playlist: playlist,
-                    onEdit: { openWindow(value: playlist.id) },
-                    onDelete: { viewModel.deletePlaylist(playlist) }
-                )
-                .tag(SidebarItem.playlist(playlist.id))
-            }
-        } header: {
-            HStack {
-                Text("Smart Playlists")
-                Spacer()
-                Button {
-                    viewModel.createSmartPlaylist()
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.caption)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.trailing, 8)
-        }
-    }
-
     // MARK: - Inline Playlist Editor
 
     @ViewBuilder
@@ -342,13 +313,13 @@ struct PlaylistRow: View {
         if let name = playlist.iconName {
             return name
         }
-        return playlist.isSmartPlaylist ? "gearshape" : "music.note.list"
+        return "music.note.list"
     }
 
     private var iconColor: Color {
         if let hex = playlist.colorHex {
             return Color(hex: hex) ?? .accentColor
         }
-        return playlist.isSmartPlaylist ? .orange : .accentColor
+        return .accentColor
     }
 }

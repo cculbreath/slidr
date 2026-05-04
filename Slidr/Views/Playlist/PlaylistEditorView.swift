@@ -13,10 +13,6 @@ struct PlaylistEditorView: View {
     @State private var sortOrder: SortOrder = .dateImported
     @State private var sortAscending: Bool = false
 
-    // Smart playlist
-    @State private var watchedFolderPath: String = ""
-    @State private var includeSubfolders: Bool = true
-
     // Filters
     @State private var filterFavoritesOnly: Bool = false
     @State private var filterMinDuration: Double? = nil
@@ -53,10 +49,6 @@ struct PlaylistEditorView: View {
                     basicInfoSection
 
                     appearanceSection
-
-                    if playlist.isSmartPlaylist {
-                        smartPlaylistSection
-                    }
 
                     filtersSection
 
@@ -163,33 +155,6 @@ struct PlaylistEditorView: View {
                         .buttonStyle(.plain)
                     }
                 }
-            }
-        }
-    }
-
-    // MARK: - Smart Playlist Section
-
-    private var smartPlaylistSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Watched Folder")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-
-            FolderPickerView(
-                folderPath: $watchedFolderPath,
-                title: "Select Watched Folder",
-                message: "Select a folder to watch for new media files"
-            )
-
-            Toggle("Include subfolders", isOn: $includeSubfolders)
-
-            if !watchedFolderPath.isEmpty {
-                Text(
-                    "Files added to this folder will automatically appear in this playlist."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
         }
     }
@@ -308,9 +273,6 @@ struct PlaylistEditorView: View {
         sortOrder = playlist.sortOrder
         sortAscending = playlist.sortAscending
 
-        watchedFolderPath = playlist.watchedFolderPath ?? ""
-        includeSubfolders = playlist.includeSubfolders
-
         filterFavoritesOnly = playlist.filterFavoritesOnly
         filterMinDuration = playlist.filterMinDuration
         filterMaxDuration = playlist.filterMaxDuration
@@ -334,8 +296,6 @@ struct PlaylistEditorView: View {
         playlist.sortOrder = sortOrder
         playlist.sortAscending = sortAscending
 
-        playlist.includeSubfolders = includeSubfolders
-
         playlist.filterFavoritesOnly = filterFavoritesOnly
         playlist.filterMinDuration = filterMinDuration
         playlist.filterMaxDuration = filterMaxDuration
@@ -349,13 +309,6 @@ struct PlaylistEditorView: View {
             playlist.filterMediaTypes = nil
         } else {
             playlist.filterMediaTypes = mediaTypes
-        }
-
-        if playlist.isSmartPlaylist {
-            let newURL = watchedFolderPath.isEmpty ? nil : URL(fileURLWithPath: watchedFolderPath)
-            if newURL?.path != playlist.watchedFolderPath {
-                playlistService.setWatchedFolder(newURL, for: playlist)
-            }
         }
 
         playlistService.updatePlaylist(playlist)

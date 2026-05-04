@@ -62,17 +62,8 @@ final class Playlist {
 
     // MARK: - Computed Properties
 
-    var isSmartPlaylist: Bool {
-        type == .smart
-    }
-
     var isManualPlaylist: Bool {
         type == .manual
-    }
-
-    var watchedFolderURL: URL? {
-        guard let path = watchedFolderPath else { return nil }
-        return URL(fileURLWithPath: path)
     }
 
     var allowedMediaTypes: [MediaType] {

@@ -27,6 +27,8 @@ struct ContentView: View {
     @State private var pendingTranscriptSeek: TimeInterval?
     @State private var aiStatusWindow: AIStatusWindowController?
     @State private var audioCaptionImportAlert: String?
+    @State private var manifestImportAlert: String?
+    @State private var manifestImporter = ManifestImporter()
 
     var body: some View {
         ZStack {
@@ -53,6 +55,12 @@ struct ContentView: View {
             progress: library.importProgress?.overallProgress,
             onCancel: { library.cancelImport() }
         )
+        .progressOverlay(
+            isPresented: manifestImporter.isImporting,
+            title: "Manifest Import",
+            subtitle: manifestImporter.progressMessage,
+            progress: manifestImporter.progress
+        )
         .alert("Subtitle Import", isPresented: Binding(
             get: { subtitleImportAlert != nil },
             set: { if !$0 { subtitleImportAlert = nil } }
@@ -68,6 +76,14 @@ struct ContentView: View {
             Button("OK") { audioCaptionImportAlert = nil }
         } message: {
             Text(audioCaptionImportAlert ?? "")
+        }
+        .alert("Manifest Import", isPresented: Binding(
+            get: { manifestImportAlert != nil },
+            set: { if !$0 { manifestImportAlert = nil } }
+        )) {
+            Button("OK") { manifestImportAlert = nil }
+        } message: {
+            Text(manifestImportAlert ?? "")
         }
     }
 
@@ -89,10 +105,11 @@ struct ContentView: View {
                 importFiles: { importFiles() },
                 importSubtitles: { importSubtitles() },
                 importAudioCaptions: { importAudioCaptions() },
+                importWithManifest: { importWithManifest() },
+                applyManifestCaptions: { applyManifestCaptions() },
                 quickLook: { togglePreview() },
                 locateExternalLibrary: { library.locateExternalLibrary() },
                 newPlaylist: { sidebarViewModel.createPlaylist() },
-                newSmartPlaylist: { sidebarViewModel.createSmartPlaylist() },
                 toggleTagPalette: { toolbarCoordinator.toggleTagPalette() }
             ))
             .modifier(AIFocusedValuesModifier(
@@ -448,6 +465,63 @@ struct ContentView: View {
                 audioCaptionImportAlert = "Matched \(result.captionsMatched) captions, copied \(result.audioFilesCopied) audio files. \(result.itemsNotFound) items not found in library."
             } catch {
                 audioCaptionImportAlert = "Import failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func importWithManifest() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.message = "Select a directory containing board folders and an optional manifest.json"
+
+        guard panel.runModal() == .OK, let rootURL = panel.url else { return }
+
+        Task {
+            var options = ImportOptions()
+            if let settings = settingsQuery.first {
+                options.importMode = settings.importMode
+                options.storageLocation = settings.defaultImportLocation
+                options.organizeByDate = settings.importOrganizeByDate
+                options.convertIncompatible = settings.convertIncompatibleFormats
+                options.deleteOriginalAfterConvert = !settings.keepOriginalAfterConversion
+                options.targetFormat = settings.importTargetFormat
+            }
+
+            do {
+                let result = try await manifestImporter.importFromManifest(
+                    rootURL: rootURL,
+                    mediaLibrary: library,
+                    playlistService: playlistService,
+                    options: options
+                )
+                manifestImportAlert = "Import complete: \(result.summary)"
+            } catch {
+                manifestImportAlert = "Import failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func applyManifestCaptions() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [.json]
+        panel.message = "Select a manifest.json file to apply captions from"
+
+        guard panel.runModal() == .OK, let manifestURL = panel.url else { return }
+
+        Task {
+            do {
+                let result = try await manifestImporter.applyCaptions(
+                    manifestURL: manifestURL,
+                    mediaLibrary: library
+                )
+                manifestImportAlert = "\(result.captionsApplied) captions applied"
+            } catch {
+                manifestImportAlert = "Failed to apply captions: \(error.localizedDescription)"
             }
         }
     }

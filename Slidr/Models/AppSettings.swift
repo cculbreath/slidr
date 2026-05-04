@@ -16,7 +16,6 @@ final class AppSettings {
     var confirmBeforeDelete: Bool
     var defaultSortOrder: SortOrder
     var defaultSortAscending: Bool
-    var customLibraryPath: String?
 
     // MARK: - Import
     var importMode: ImportMode
@@ -209,7 +208,6 @@ final class AppSettings {
         self.confirmBeforeDelete = true
         self.defaultSortOrder = .dateImported
         self.defaultSortAscending = false
-        self.customLibraryPath = nil
 
         // Import defaults
         self.importMode = .copy
@@ -300,14 +298,4 @@ final class AppSettings {
         }
     }
 
-    var resolvedLibraryPath: URL {
-        if let custom = customLibraryPath {
-            return URL(fileURLWithPath: custom)
-        }
-        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return URL(fileURLWithPath: NSHomeDirectory())
-                .appendingPathComponent("Library/Application Support/Slidr/Library", isDirectory: true)
-        }
-        return appSupport.appendingPathComponent("Slidr/Library", isDirectory: true)
-    }
 }

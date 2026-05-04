@@ -1,0 +1,16 @@
+┌──────────┬───────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────────┬───────────┐
+│ Priority │ Filename              │ What to capture                                                                              │ Provided? │
+├──────────┼───────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────┼───────────┤
+│ 1        │ `grid-view.png`       │ Main window — grid thumbnails, sidebar visible, some items selected. This is the hero image. │ ✓         │
+│ 2        │ `slideshow.png`       │ Fullscreen slideshow with a caption visible, controls overlay showing                        │ ✓         │
+│ 3        │ `inspector.png`       │ Inspector panel open showing tags, caption, file info for a media item                       │ ✓         │
+│ 4        │ `hover-scrub.png`     │ Mouse hovering over a video thumbnail showing the scrub preview                              │ x         │
+│ 5        │ `tag-palette.png`     │ Floating tag palette window over the grid                                                    │ ✓         │
+│ 6        │ `list-view.png`       │ List view with sortable column headers                                                       │ ✓         │
+│ 7        │ `smart-playlist.png`  │ Playlist editor showing filter rules                                                         │ x         │
+│ 8        │ `settings-ai.png`     │ Settings > Intelligence tab                                                                  │ ✓         │
+│ 9        │ `vault-lock.png`      │ Vault lock screen / password entry                                                           │ ✓         │
+│ 10       │ `advanced-filter.png` │ Advanced filter sheet with multiple criteria (optional — can add later)                      │ ✓         │
+│ 11       │ `contact-sheet.png`   │ Generated video contact sheet (optional)                                                     │ x         │
+│ 12       │ `about.png`           │ About dialog (optional)                                                                      │ x         │
+└──────────┴───────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────┴───────────┘

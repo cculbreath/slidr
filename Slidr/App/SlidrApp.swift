@@ -33,11 +33,23 @@ struct SlidrApp: App {
                         .preferredColorScheme(.dark)
                 }
 
+                if launcher.phase == .libraryPicker {
+                    LibraryPickerView(
+                        manifestService: launcher.manifestService,
+                        onSelect: { ref in
+                            launcher.openLibrary(ref)
+                        }
+                    )
+                }
+
                 if launcher.phase == .locked {
                     VaultLockScreenView { password, useKeychain in
                         try await launcher.handleUnlock(password: password, useKeychain: useKeychain)
                     }
                 }
+            }
+            .focusedSceneValue(\.switchLibrary) {
+                Task { await launcher.switchLibrary() }
             }
         }
         .windowToolbarStyle(.unified)
@@ -80,7 +92,6 @@ struct AppContainer {
     let mediaLibrary: MediaLibrary
     let thumbnailCache: ThumbnailCache
     let transcriptStore: TranscriptStore
-    let folderWatcher: FolderWatcher
     let playlistService: PlaylistService
     let hoverVideoPlayer: HoverVideoPlayer
     let aiCoordinator: AIProcessingCoordinator
@@ -88,12 +99,13 @@ struct AppContainer {
 
 // MARK: - AppLauncher
 
-/// Manages two-phase app launch: vault check → lock screen or direct launch.
+/// Manages multi-phase app launch: library selection → vault check → lock screen or direct launch.
 @MainActor
 @Observable
 final class AppLauncher {
     enum Phase {
         case initializing
+        case libraryPicker
         case locked
         case ready
     }
@@ -101,37 +113,80 @@ final class AppLauncher {
     private(set) var phase: Phase = .initializing
     private(set) var container: AppContainer?
     let slidrDirectory: URL
+    let manifestService: LibraryManifestService
+    private var selectedLibraryRef: LibraryReference?
     private var vaultService: VaultService?
     var lifecycleManager: VaultLifecycleManager?
 
     init() {
-        slidrDirectory = Self.ensureSlidrDirectory()
+        let slidrDir = Self.ensureSlidrDirectory()
+        slidrDirectory = slidrDir
 
-        // Check vault mode synchronously by reading the manifest file directly.
-        // VaultService is an actor, so we avoid async calls in init.
-        let vaultEnabled = Self.isVaultEnabled(slidrDir: slidrDirectory)
+        let service = LibraryManifestService(slidrDirectory: slidrDir)
+        service.migrateDefaultLibraryIfNeeded()
+        manifestService = service
 
+        let optionHeld = NSEvent.modifierFlags.contains(.option)
+
+        if optionHeld || service.manifest.alwaysShowPicker {
+            phase = .libraryPicker
+            return
+        }
+
+        // Try to open last-used library
+        guard let lastUsed = service.lastUsedLibrary, lastUsed.isAvailable else {
+            phase = .libraryPicker
+            return
+        }
+
+        openLibrary(lastUsed)
+    }
+
+    // MARK: - Library Selection
+
+    /// Opens a specific library, checking vault mode and creating the AppContainer.
+    func openLibrary(_ ref: LibraryReference) {
+        selectedLibraryRef = ref
+        let libraryDir = ref.url
+
+        let vaultEnabled = Self.isVaultEnabled(slidrDir: libraryDir)
         if vaultEnabled {
             phase = .locked
-        } else {
-            let pathProvider = StoragePathProvider(slidrDirectory: slidrDirectory)
-            do {
-                container = try Self.createAppContainer(
-                    slidrDirectory: slidrDirectory,
-                    pathProvider: pathProvider
-                )
-                phase = .ready
-            } catch {
-                Logger.library.error("Failed to initialize app: \(error.localizedDescription)")
-                fatalError("Cannot continue without a valid database. Please resolve the issue and relaunch.")
-            }
+            return
         }
+
+        let pathProvider = StoragePathProvider(slidrDirectory: libraryDir)
+        do {
+            container = try Self.createAppContainer(
+                slidrDirectory: libraryDir,
+                pathProvider: pathProvider
+            )
+            try? manifestService.markOpened(id: ref.id, itemCount: nil)
+            phase = .ready
+        } catch {
+            Logger.library.error("Failed to open library '\(ref.name)': \(error.localizedDescription)")
+            phase = .libraryPicker
+        }
+    }
+
+    /// Tears down the current library and shows the picker.
+    func switchLibrary() async {
+        if let service = vaultService {
+            await service.unmountAllVaults()
+        }
+        lifecycleManager?.stopMonitoring()
+        lifecycleManager = nil
+        vaultService = nil
+        container = nil
+        selectedLibraryRef = nil
+        phase = .libraryPicker
     }
 
     // MARK: - Vault Unlock
 
     func handleUnlock(password: String, useKeychain: Bool) async throws {
-        let service = try VaultService(slidrDirectory: slidrDirectory)
+        let libraryDir = selectedLibraryRef?.url ?? slidrDirectory
+        let service = try VaultService(slidrDirectory: libraryDir)
         let mountPoints = try await service.mountAllEnabled(password: password)
 
         // Resolve local vault mount
@@ -147,14 +202,14 @@ final class AppLauncher {
         }
 
         let pathProvider = StoragePathProvider(
-            slidrDirectory: slidrDirectory,
+            slidrDirectory: libraryDir,
             vaultMode: true,
             localVaultMount: localMount,
             externalVaultMounts: externalMounts
         )
 
         container = try Self.createAppContainer(
-            slidrDirectory: slidrDirectory,
+            slidrDirectory: libraryDir,
             pathProvider: pathProvider
         )
 
@@ -175,6 +230,10 @@ final class AppLauncher {
             lockTimeoutMinutes: manifest.lockTimeoutMinutes
         )
         lifecycleManager = manager
+
+        if let ref = selectedLibraryRef {
+            try? manifestService.markOpened(id: ref.id, itemCount: nil)
+        }
 
         phase = .ready
     }
@@ -230,11 +289,9 @@ final class AppLauncher {
             configureExternalDrive(library: mediaLibrary, container: modelContainer)
         }
 
-        let folderWatcher = FolderWatcher()
         let playlistService = PlaylistService(
             modelContainer: modelContainer,
-            mediaLibrary: mediaLibrary,
-            folderWatcher: folderWatcher
+            mediaLibrary: mediaLibrary
         )
         let hoverVideoPlayer = HoverVideoPlayer()
         let aiCoordinator = AIProcessingCoordinator()
@@ -245,7 +302,6 @@ final class AppLauncher {
             mediaLibrary: mediaLibrary,
             thumbnailCache: thumbnailCache,
             transcriptStore: transcriptStore,
-            folderWatcher: folderWatcher,
             playlistService: playlistService,
             hoverVideoPlayer: hoverVideoPlayer,
             aiCoordinator: aiCoordinator

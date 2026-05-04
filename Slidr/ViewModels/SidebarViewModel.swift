@@ -28,22 +28,11 @@ final class SidebarViewModel {
         playlists.filter { $0.isManualPlaylist }
     }
 
-    var smartPlaylists: [Playlist] {
-        playlists.filter { $0.isSmartPlaylist }
-    }
-
     // MARK: - Inline Playlist Creation
 
     func createPlaylist() {
         guard let service = playlistService else { return }
         let playlist = service.createPlaylist(name: "New Playlist", type: .manual)
-        editingPlaylistID = playlist.id
-        selectedItem = .playlist(playlist.id)
-    }
-
-    func createSmartPlaylist() {
-        guard let service = playlistService else { return }
-        let playlist = service.createPlaylist(name: "New Smart Playlist", type: .smart)
         editingPlaylistID = playlist.id
         selectedItem = .playlist(playlist.id)
     }

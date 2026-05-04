@@ -4,44 +4,11 @@ import SwiftData
 struct GeneralSettingsView: View {
     @Bindable var settings: AppSettings
     @Environment(\.modelContext) private var modelContext
-    @State private var showLibraryLocationPicker = false
-    @State private var showResetConfirmation = false
     @State private var aiImporter = AIMetadataImporter()
     @State private var importResult: AIMetadataImportResult?
 
     var body: some View {
         Form {
-            Section("Library Location") {
-                HStack {
-                    if let customPath = settings.customLibraryPath {
-                        Text(shortenedPath(customPath))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    } else {
-                        Text("Default Location")
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Button("Change...") {
-                        showLibraryLocationPicker = true
-                    }
-
-                    if settings.customLibraryPath != nil {
-                        Button("Reset") {
-                            showResetConfirmation = true
-                        }
-                    }
-                }
-
-                Text(settings.resolvedLibraryPath.path)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
             Section("Startup") {
                 Toggle("Show welcome screen on launch", isOn: $settings.showWelcomeOnLaunch)
             }
@@ -94,25 +61,6 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .sheet(isPresented: $showLibraryLocationPicker) {
-            LibraryLocationPicker(
-                currentPath: settings.customLibraryPath,
-                onSelect: { newPath in
-                    settings.customLibraryPath = newPath
-                }
-            )
-        }
-        .confirmationDialog(
-            "Reset Library Location",
-            isPresented: $showResetConfirmation
-        ) {
-            Button("Reset to Default", role: .destructive) {
-                settings.customLibraryPath = nil
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will change the library location back to the default. Existing files will not be moved.")
-        }
     }
 
     private func pickDirectoryAndImport() {
@@ -135,11 +83,4 @@ struct GeneralSettingsView: View {
         }
     }
 
-    private func shortenedPath(_ path: String) -> String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        if path.hasPrefix(home) {
-            return "~" + path.dropFirst(home.count)
-        }
-        return path
-    }
 }

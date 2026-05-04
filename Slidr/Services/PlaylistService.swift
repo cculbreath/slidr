@@ -1,6 +1,5 @@
 import Foundation
 import SwiftData
-import UniformTypeIdentifiers
 import OSLog
 
 @MainActor
@@ -14,14 +13,12 @@ final class PlaylistService {
     // MARK: - Dependencies
     let modelContainer: ModelContainer
     let mediaLibrary: MediaLibrary
-    let folderWatcher: FolderWatcher
 
     // MARK: - Initialization
 
-    init(modelContainer: ModelContainer, mediaLibrary: MediaLibrary, folderWatcher: FolderWatcher) {
+    init(modelContainer: ModelContainer, mediaLibrary: MediaLibrary) {
         self.modelContainer = modelContainer
         self.mediaLibrary = mediaLibrary
-        self.folderWatcher = folderWatcher
 
         loadPlaylists()
         observeMediaDeletions()
@@ -47,12 +44,6 @@ final class PlaylistService {
     }
 
     func deletePlaylist(_ playlist: Playlist) {
-        // Stop watching if this is a smart playlist with a watched folder
-        if let folderURL = playlist.watchedFolderURL {
-            Task {
-                await folderWatcher.stopWatching(url: folderURL)
-            }
-        }
         let name = playlist.name
         modelContainer.mainContext.delete(playlist)
         save()
@@ -68,8 +59,6 @@ final class PlaylistService {
             return filteredAndSorted(items: mediaLibrary.allItems, playlist: playlist)
         case .manual:
             return filteredAndSorted(items: playlist.orderedManualItems, playlist: playlist)
-        case .smart:
-            return filteredAndSorted(items: mediaLibrary.allItems, playlist: playlist)
         }
     }
 
@@ -107,99 +96,6 @@ final class PlaylistService {
         playlist.moveItem(from: source, to: destination)
         save()
         playlistChangeGeneration += 1
-    }
-
-    // MARK: - Smart Playlist
-
-    func setWatchedFolder(_ url: URL?, for playlist: Playlist) {
-        guard playlist.isSmartPlaylist else { return }
-
-        // Stop previous watcher if any
-        if let previousURL = playlist.watchedFolderURL {
-            Task {
-                await folderWatcher.stopWatching(url: previousURL)
-            }
-        }
-
-        playlist.watchedFolderPath = url?.path
-        playlist.modifiedDate = Date()
-        save()
-
-        if let url = url {
-            startWatching(url: url, playlist: playlist)
-            Task {
-                await scanWatchedFolder(url: url, playlist: playlist)
-            }
-        }
-
-        Logger.playlists.info("Set watched folder for \(playlist.name): \(url?.path ?? "none")")
-    }
-
-    func scanWatchedFolder(url: URL, playlist: Playlist) async {
-        let filesToImport = collectMatchingFiles(in: url, playlist: playlist)
-
-        guard !filesToImport.isEmpty else {
-            Logger.playlists.info("No matching files in watched folder: \(url.path)")
-            return
-        }
-
-        do {
-            let result = try await mediaLibrary.importFiles(urls: filesToImport)
-            Logger.playlists.info("Scanned watched folder \(url.path): \(result.summary)")
-        } catch {
-            Logger.playlists.error("Failed to import from watched folder: \(error.localizedDescription)")
-            lastError = error
-        }
-    }
-
-    private func collectMatchingFiles(in url: URL, playlist: Playlist) -> [URL] {
-        let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: url.path) else {
-            Logger.playlists.warning("Watched folder does not exist: \(url.path)")
-            return []
-        }
-
-        var options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles]
-        if !playlist.includeSubfolders {
-            options.insert(.skipsSubdirectoryDescendants)
-        }
-
-        guard let enumerator = fileManager.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.isRegularFileKey, .contentTypeKey],
-            options: options
-        ) else {
-            Logger.playlists.error("Failed to enumerate folder: \(url.path)")
-            return []
-        }
-
-        var filesToImport: [URL] = []
-        let allowedTypes = playlist.allowedMediaTypes
-
-        while let fileURL = enumerator.nextObject() as? URL {
-            guard let resourceValues = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .contentTypeKey]),
-                  resourceValues.isRegularFile == true,
-                  let contentType = resourceValues.contentType else {
-                continue
-            }
-
-            let isAllowed = allowedTypes.contains { mediaType in
-                switch mediaType {
-                case .image:
-                    return contentType.conforms(to: .image) && !contentType.conforms(to: .gif)
-                case .gif:
-                    return contentType.conforms(to: .gif)
-                case .video:
-                    return contentType.conforms(to: .movie) || contentType.conforms(to: .video)
-                }
-            }
-
-            if isAllowed {
-                filesToImport.append(fileURL)
-            }
-        }
-
-        return filesToImport
     }
 
     // MARK: - Filtering & Sorting
@@ -363,47 +259,4 @@ final class PlaylistService {
         }
     }
 
-    private func startWatching(url: URL, playlist: Playlist) {
-        let playlistID = playlist.id
-        Task {
-            await folderWatcher.watch(url: url, includeSubfolders: playlist.includeSubfolders) { [weak self] eventURL, eventType in
-                Task { @MainActor [weak self] in
-                    guard let self = self else { return }
-                    self.handleFolderEvent(url: eventURL, type: eventType, playlistID: playlistID)
-                }
-            }
-        }
-    }
-
-    private func handleFolderEvent(url: URL, type: FSEventType, playlistID: UUID) {
-        guard let playlist = playlist(withID: playlistID),
-              playlist.isSmartPlaylist else { return }
-
-        switch type {
-        case .created, .renamed:
-            // Import new file if it matches allowed types
-            let ext = url.pathExtension.lowercased()
-            guard let uti = UTType(filenameExtension: ext) else { return }
-            let isMedia = uti.conforms(to: .image) || uti.conforms(to: .movie) || uti.conforms(to: .video)
-            guard isMedia else { return }
-
-            Task {
-                do {
-                    _ = try await mediaLibrary.importFiles(urls: [url])
-                    Logger.playlists.info("Auto-imported from watched folder: \(url.lastPathComponent)")
-                } catch {
-                    Logger.playlists.error("Auto-import failed: \(error.localizedDescription)")
-                }
-            }
-
-        case .modified:
-            // No action needed for modifications to already-imported files
-            break
-
-        case .deleted:
-            // File deletion from watched folder doesn't remove from library
-            // (user may want to keep imported copies)
-            Logger.playlists.info("File deleted from watched folder: \(url.lastPathComponent)")
-        }
-    }
 }

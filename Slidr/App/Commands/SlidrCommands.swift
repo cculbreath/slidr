@@ -49,8 +49,10 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.importSubtitlesAction) var importSubtitles
     @FocusedValue(\.importAudioCaptionsAction) var importAudioCaptions
     @FocusedValue(\.locateExternalLibrary) var locateExternalLibrary
+    @FocusedValue(\.switchLibrary) var switchLibrary
+    @FocusedValue(\.importWithManifest) var importWithManifest
+    @FocusedValue(\.applyManifestCaptions) var applyManifestCaptions
     @FocusedValue(\.newPlaylist) var newPlaylist
-    @FocusedValue(\.newSmartPlaylist) var newSmartPlaylist
     @FocusedValue(\.focusSearch) var focusSearch
     @FocusedValue(\.increaseThumbnailSize) var increaseThumbnailSize
     @FocusedValue(\.decreaseThumbnailSize) var decreaseThumbnailSize
@@ -199,6 +201,14 @@ struct SlidrCommands: Commands {
                 importSubtitles?()
             }
 
+            Button("Import with Manifest\u{2026}") {
+                importWithManifest?()
+            }
+
+            Button("Apply Manifest Captions\u{2026}") {
+                applyManifestCaptions?()
+            }
+
             if FeatureFlags.audioCaptions {
                 Button("Import Audio Captions...") {
                     importAudioCaptions?()
@@ -222,17 +232,17 @@ struct SlidrCommands: Commands {
                 locateExternalLibrary?()
             }
 
+            Button("Switch Library\u{2026}") {
+                switchLibrary?()
+            }
+            .keyboardShortcut("l", modifiers: [.command, .shift])
+
             Divider()
 
             Button("New Playlist") {
                 newPlaylist?()
             }
             .keyboardShortcut("n", modifiers: .command)
-
-            Button("New Smart Playlist") {
-                newSmartPlaylist?()
-            }
-            .keyboardShortcut("n", modifiers: [.command, .shift])
 
             Divider()
 

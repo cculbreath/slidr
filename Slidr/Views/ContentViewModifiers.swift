@@ -7,10 +7,11 @@ struct ActionFocusedValuesModifier: ViewModifier {
     let importFiles: () -> Void
     let importSubtitles: () -> Void
     let importAudioCaptions: () -> Void
+    let importWithManifest: () -> Void
+    let applyManifestCaptions: () -> Void
     let quickLook: () -> Void
     let locateExternalLibrary: () -> Void
     let newPlaylist: () -> Void
-    let newSmartPlaylist: () -> Void
     let toggleTagPalette: () -> Void
 
     func body(content: Content) -> some View {
@@ -19,10 +20,11 @@ struct ActionFocusedValuesModifier: ViewModifier {
             .focusedSceneValue(\.importFilesAction, importFiles)
             .focusedSceneValue(\.importSubtitlesAction, importSubtitles)
             .focusedSceneValue(\.importAudioCaptionsAction, importAudioCaptions)
+            .focusedSceneValue(\.importWithManifest, importWithManifest)
+            .focusedSceneValue(\.applyManifestCaptions, applyManifestCaptions)
             .focusedSceneValue(\.quickLook, quickLook)
             .focusedSceneValue(\.locateExternalLibrary, locateExternalLibrary)
             .focusedSceneValue(\.newPlaylist, newPlaylist)
-            .focusedSceneValue(\.newSmartPlaylist, newSmartPlaylist)
             .focusedSceneValue(\.toggleTagPalette, toggleTagPalette)
     }
 }

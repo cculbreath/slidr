@@ -20,7 +20,6 @@ enum KeyboardShortcuts {
 
     // MARK: - Playlists
     static let newPlaylist = KeyboardShortcut("n", modifiers: .command)
-    static let newSmartPlaylist = KeyboardShortcut("n", modifiers: [.command, .shift])
 
     // MARK: - Inspector
     static let toggleInspector = KeyboardShortcut("i", modifiers: [.command, .shift])
@@ -68,7 +67,6 @@ enum KeyboardShortcuts {
         ("\u{2318}\u{21E7}I", "Toggle inspector"),
         ("\u{2318}0", "Reset thumbnail size"),
         ("\u{2318}N", "New playlist"),
-        ("\u{2318}\u{21E7}N", "New smart playlist"),
         ("\u{2318}\u{21E7}R", "Reveal in Finder"),
     ]
 }
