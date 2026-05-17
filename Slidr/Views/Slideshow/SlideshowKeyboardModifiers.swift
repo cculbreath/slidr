@@ -16,17 +16,36 @@ extension View {
 
 // MARK: - Alt Shortcut Keys
 //
-// Only keys without a corresponding menu item live here. All other slideshow
-// shortcuts are dispatched via the Slideshow menu (see SlidrCommands), which
-// runs before the responder chain and so handles them globally for the
-// slideshow scope.
+// Most slideshow shortcuts are dispatched via the Slideshow menu (see
+// SlidrCommands), which runs before the responder chain. But the menu's
+// .keyboardShortcut routing depends on the focused-scene value being set,
+// which in turn requires the slideshow view to actually hold keyboard focus.
+// If focus has drifted (toolbar, sidebar, etc.) the menu shortcut is gated
+// off — so we also handle the critical "I'm stuck" keys (Esc / Space /
+// arrows) here as an in-view safety net. AppKit menu dispatch runs first
+// when focus is on the slideshow, so this doesn't double-fire.
 
 struct SlideshowAltShortcutKeys: ViewModifier {
     let viewModel: SlideshowViewModel
+    let onDismiss: () -> Void
+    let goNext: () -> Void
+    let goPrevious: () -> Void
 
     func body(content: Content) -> some View {
         content.onKeyPress(phases: .down) { press in
             switch press.key {
+            case .escape:
+                onDismiss()
+                return .handled
+            case .space:
+                viewModel.togglePlayback()
+                return .handled
+            case .leftArrow:
+                goPrevious()
+                return .handled
+            case .rightArrow:
+                goNext()
+                return .handled
             case KeyEquivalent("j"):
                 viewModel.previous()
                 return .handled

@@ -354,9 +354,6 @@ struct ContentView: View {
                 controlScreen: showControlPanel ? mainScreen : nil
             )
 
-            if !slideshowViewModel.isPlaying {
-                slideshowViewModel.togglePlayback()
-            }
         } else {
             showSlideshow = true
         }

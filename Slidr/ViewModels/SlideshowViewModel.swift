@@ -118,10 +118,11 @@ final class SlideshowViewModel {
 
     // MARK: - Setup
 
-    func start(with items: [MediaItem], startingAt index: Int = 0, seekFraction: Double? = nil, autoAdvance: Bool = true) {
+    func start(with items: [MediaItem], startingAt index: Int = 0, seekFraction: Double? = nil, autoAdvance: Bool = true, isPlaying: Bool = true) {
         self.items = items
         self.originalOrder = items
         self.autoAdvance = autoAdvance
+        self.isPlaying = isPlaying
 
         if isRandomMode {
             shuffledOrder = items.shuffled()

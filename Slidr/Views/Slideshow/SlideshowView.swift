@@ -62,7 +62,7 @@ struct SlideshowView: View {
                     uiState.ratingFeedback = nil
                 }
             }
-            .modifier(SlideshowAltShortcutKeys(viewModel: viewModel))
+            .modifier(SlideshowAltShortcutKeys(viewModel: viewModel, onDismiss: onDismiss, goNext: goNext, goPrevious: goPrevious))
             .modifier(SlideshowPersistenceModifier(viewModel: viewModel, uiState: uiState, settings: settings, library: library, startVideoCaptionTimer: startVideoCaptionTimer, loadTranscriptCues: loadTranscriptCues, setFocused: { isFocused = true }))
             .modifier(SlideshowMenuSyncModifier(viewModel: viewModel, settings: settings))
             .modifier(SlideshowUIObserverModifier(uiState: uiState))
