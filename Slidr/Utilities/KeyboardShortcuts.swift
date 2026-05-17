@@ -27,15 +27,20 @@ enum KeyboardShortcuts {
 
     // MARK: - Slideshow Reference
     static let slideshowShortcuts: [(String, String)] = [
-        ("Space", "Play/Pause"),
+        ("Space", "Play / Pause"),
+        ("A", "Toggle auto-advance"),
         ("\u{2190} / \u{2192}", "Previous / Next"),
         ("J / L", "Previous / Next (alt)"),
         ("\u{21E7}\u{2190} / \u{21E7}\u{2192}", "Seek \u{00B1}5 seconds"),
         ("\u{2325}\u{2190} / \u{2325}\u{2192}", "Seek \u{00B1}30 seconds"),
         (", / .", "Frame step"),
         ("\u{2191} / \u{2193}", "Volume up / down"),
+        ("K", "Volume up (alt)"),
         ("M", "Mute toggle"),
         ("C", "Toggle captions"),
+        ("S", "Toggle subtitles"),
+        ("T", "Toggle timer bar"),
+        ("V", "Toggle video duration limit"),
         ("I", "Toggle info overlay"),
         ("R", "Toggle shuffle"),
         ("F", "Toggle fullscreen"),

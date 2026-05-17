@@ -124,7 +124,7 @@ struct ContentView: View {
             ))
             .modifier(BrowserFocusedValuesModifier(coordinator: menuCoordinator))
             .modifier(SlideshowFocusedValuesModifier(coordinator: menuCoordinator))
-            .modifier(FilterFocusedValuesModifier(gridViewModel: gridViewModel, allTags: allTags))
+            .modifier(FilterFocusedValuesModifier(gridViewModel: gridViewModel))
             .onChange(of: sidebarViewModel.selectedItem) {
                 gridViewModel.clearSelection()
                 refreshItems()
@@ -239,7 +239,9 @@ struct ContentView: View {
                 MediaGridView(
                     viewModel: gridViewModel,
                     items: cachedItems,
-                    onStartSlideshow: startSlideshow,
+                    onStartSlideshow: { items, idx, seek, auto in
+                        startSlideshow(items: items, startIndex: idx, seekFraction: seek, autoAdvance: auto)
+                    },
                     onQuickLook: { item in
                         withAnimation(.easeInOut(duration: 0.25)) {
                             previewItem = item
@@ -322,8 +324,8 @@ struct ContentView: View {
 
     // MARK: - Slideshow
 
-    private func startSlideshow(items: [MediaItem], startIndex: Int, seekFraction: Double? = nil) {
-        slideshowViewModel.start(with: items, startingAt: startIndex, seekFraction: seekFraction)
+    private func startSlideshow(items: [MediaItem], startIndex: Int, seekFraction: Double? = nil, autoAdvance: Bool = true) {
+        slideshowViewModel.start(with: items, startingAt: startIndex, seekFraction: seekFraction, autoAdvance: autoAdvance)
 
         let settings = settingsQuery.first
         let screens = NSScreen.screens

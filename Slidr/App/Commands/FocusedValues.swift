@@ -132,9 +132,6 @@ struct SortAscendingBindingKey: FocusedValueKey {
     typealias Value = Binding<Bool>
 }
 
-struct AllTagsKey: FocusedValueKey {
-    typealias Value = [String]
-}
 
 // MARK: - Browser & Slideshow Binding Keys
 
@@ -286,6 +283,26 @@ struct AIProcessUntranscribedKey: FocusedValueKey {
 
 struct AIShowStatusWindowKey: FocusedValueKey {
     typealias Value = () -> Void
+}
+
+struct SlideshowViewModelKey: FocusedValueKey {
+    typealias Value = SlideshowViewModel
+}
+
+struct SlideshowInfoOverlayKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+struct SlideshowFullscreenKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+struct SlideshowDismissKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+struct SlideshowRateKey: FocusedValueKey {
+    typealias Value = (Int) -> Void
 }
 
 // MARK: - FocusedValues Extension
@@ -451,11 +468,6 @@ extension FocusedValues {
     var sortAscendingBinding: Binding<Bool>? {
         get { self[SortAscendingBindingKey.self] }
         set { self[SortAscendingBindingKey.self] = newValue }
-    }
-
-    var allTags: [String]? {
-        get { self[AllTagsKey.self] }
-        set { self[AllTagsKey.self] = newValue }
     }
 
     // Browser & Slideshow bindings
@@ -637,5 +649,30 @@ extension FocusedValues {
     var aiShowStatusWindow: (() -> Void)? {
         get { self[AIShowStatusWindowKey.self] }
         set { self[AIShowStatusWindowKey.self] = newValue }
+    }
+
+    var slideshowViewModel: SlideshowViewModel? {
+        get { self[SlideshowViewModelKey.self] }
+        set { self[SlideshowViewModelKey.self] = newValue }
+    }
+
+    var slideshowInfoOverlayToggle: (() -> Void)? {
+        get { self[SlideshowInfoOverlayKey.self] }
+        set { self[SlideshowInfoOverlayKey.self] = newValue }
+    }
+
+    var slideshowFullscreenToggle: (() -> Void)? {
+        get { self[SlideshowFullscreenKey.self] }
+        set { self[SlideshowFullscreenKey.self] = newValue }
+    }
+
+    var slideshowDismiss: (() -> Void)? {
+        get { self[SlideshowDismissKey.self] }
+        set { self[SlideshowDismissKey.self] = newValue }
+    }
+
+    var slideshowRate: ((Int) -> Void)? {
+        get { self[SlideshowRateKey.self] }
+        set { self[SlideshowRateKey.self] = newValue }
     }
 }

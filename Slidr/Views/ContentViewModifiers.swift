@@ -104,7 +104,6 @@ struct SlideshowFocusedValuesModifier: ViewModifier {
 
 struct FilterFocusedValuesModifier: ViewModifier {
     @Bindable var gridViewModel: GridViewModel
-    let allTags: [String]
 
     func body(content: Content) -> some View {
         content
@@ -117,6 +116,5 @@ struct FilterFocusedValuesModifier: ViewModifier {
             .focusedSceneValue(\.tagFilterBinding, $gridViewModel.tagFilter)
             .focusedSceneValue(\.sortOrderBinding, $gridViewModel.sortOrder)
             .focusedSceneValue(\.sortAscendingBinding, $gridViewModel.sortAscending)
-            .focusedSceneValue(\.allTags, allTags)
     }
 }

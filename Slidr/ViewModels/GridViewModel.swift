@@ -96,7 +96,7 @@ final class GridViewModel {
 
         if !tagFilter.isEmpty {
             result = result.filter { item in
-                tagFilter.contains { tag in item.hasTag(tag) }
+                item.tags.contains { tagFilter.contains($0) }
             }
         }
 

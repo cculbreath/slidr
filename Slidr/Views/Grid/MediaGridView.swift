@@ -13,7 +13,7 @@ struct MediaGridView: View {
     @Query private var settingsQuery: [AppSettings]
 
     let items: [MediaItem]
-    let onStartSlideshow: ([MediaItem], Int, Double?) -> Void
+    let onStartSlideshow: ([MediaItem], Int, Double?, Bool) -> Void
     var onQuickLook: ((MediaItem) -> Void)?
     var onImportFiles: (() -> Void)?
     var onToggleInspector: (() -> Void)?
@@ -140,8 +140,9 @@ struct MediaGridView: View {
             }
         )
         .onAppear { configureToolbar() }
-        .onChange(of: items.isEmpty) { _, empty in
-            toolbarCoordinator.itemsEmpty = empty
+        .onChange(of: items) { _, _ in
+            toolbarCoordinator.itemsEmpty = items.isEmpty
+            toolbarCoordinator.onStartSlideshow = startSlideshow
         }
         .onChange(of: allTags) { _, tags in
             toolbarCoordinator.allTags = tags
@@ -466,7 +467,7 @@ struct MediaGridView: View {
 
     private func handleDoubleTap(_ item: MediaItem, hoverPosition: Double? = nil) {
         guard let index = displayedItems.firstIndex(where: { $0.id == item.id }) else { return }
-        onStartSlideshow(displayedItems, index, hoverPosition)
+        onStartSlideshow(displayedItems, index, hoverPosition, false)
     }
 
     private func startSlideshow() {
@@ -477,7 +478,7 @@ struct MediaGridView: View {
         } else {
             startIndex = 0
         }
-        onStartSlideshow(displayedItems, startIndex, nil)
+        onStartSlideshow(displayedItems, startIndex, nil, true)
     }
 
     private func quickLookSelected() {

@@ -81,6 +81,15 @@ struct SlideshowControlBar: View {
     private var shuffleRepeatGroup: some View {
         HStack(spacing: 20) {
             Button {
+                viewModel.toggleAutoAdvance()
+            } label: {
+                Image(systemName: viewModel.autoAdvance ? "arrowshape.bounce.forward.fill" : "arrowshape.bounce.forward")
+                    .font(.title)
+                    .toggleGlow(viewModel.autoAdvance)
+            }
+            .help(viewModel.autoAdvance ? "Auto-advance: On (A)" : "Auto-advance: Off (A)")
+
+            Button {
                 viewModel.toggleRandomMode()
             } label: {
                 Image(systemName: "shuffle")

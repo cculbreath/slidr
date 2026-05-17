@@ -40,6 +40,7 @@ final class SlideshowViewModel {
     // MARK: - Configuration
     var slideDuration: TimeInterval = 5.0
     var isPlaying: Bool = false
+    var autoAdvance: Bool = true
     var loop: Bool = true
     var videoPlayDuration: VideoPlayDuration = .fixed(30)
     var lastLimitedDuration: VideoPlayDuration = .fixed(30)
@@ -117,9 +118,23 @@ final class SlideshowViewModel {
 
     // MARK: - Setup
 
-    func start(with items: [MediaItem], startingAt index: Int = 0, seekFraction: Double? = nil) {
+    func start(with items: [MediaItem], startingAt index: Int = 0, seekFraction: Double? = nil, autoAdvance: Bool = true) {
         self.items = items
-        self.currentIndex = max(0, min(index, items.count - 1))
+        self.originalOrder = items
+        self.autoAdvance = autoAdvance
+
+        if isRandomMode {
+            shuffledOrder = items.shuffled()
+            if let startID = items.indices.contains(index) ? items[index].id : nil,
+               let shuffledIndex = shuffledOrder.firstIndex(where: { $0.id == startID }) {
+                self.currentIndex = shuffledIndex
+            } else {
+                self.currentIndex = 0
+            }
+        } else {
+            shuffledOrder = []
+            self.currentIndex = max(0, min(index, items.count - 1))
+        }
 
         if let fraction = seekFraction, currentItem?.isVideo == true {
             scrubber.setInitialSeekFraction(fraction)
@@ -241,6 +256,17 @@ final class SlideshowViewModel {
         isMuted.toggle()
     }
 
+    func toggleAutoAdvance() {
+        autoAdvance.toggle()
+        if autoAdvance {
+            if isPlaying { scheduleNextAdvance() }
+        } else {
+            timerCancellable?.cancel()
+            timerCancellable = nil
+            resetTimerProgress()
+        }
+    }
+
     func toggleVideoPlayDuration() {
         if videoPlayDuration.isFullVideo {
             videoPlayDuration = lastLimitedDuration
@@ -264,13 +290,14 @@ final class SlideshowViewModel {
 
     // Called by VideoPlayerView when video ends
     func onVideoEnded() {
-        if videoPlayDuration.isFullVideo && isPlaying {
+        if videoPlayDuration.isFullVideo && isPlaying && autoAdvance {
             next()
         }
         // For non-fullVideo modes, the slide timer handles advancement
     }
 
     private func scheduleNextAdvance() {
+        guard autoAdvance else { return }
         guard let item = currentItem else { return }
 
         var duration: TimeInterval
@@ -429,8 +456,13 @@ final class SlideshowViewModel {
     // MARK: - Random Mode
 
     func toggleRandomMode() {
-        isRandomMode.toggle()
-        if isRandomMode {
+        setRandomMode(!isRandomMode)
+    }
+
+    func setRandomMode(_ enabled: Bool) {
+        guard enabled != isRandomMode else { return }
+        isRandomMode = enabled
+        if enabled {
             originalOrder = items
             shuffledOrder = items.shuffled()
             currentIndex = 0

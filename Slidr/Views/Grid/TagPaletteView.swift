@@ -13,7 +13,8 @@ struct TagPaletteView: View {
             Divider()
             searchField
             Divider()
-            sortToggle
+            columnHeader
+            Divider()
             tagChecklist
             Divider()
             bottomBar
@@ -179,23 +180,37 @@ struct TagPaletteView: View {
         .padding(.vertical, 6)
     }
 
-    // MARK: - Sort Toggle
+    // MARK: - Column Header
 
-    private var sortToggle: some View {
-        HStack {
+    private var columnHeader: some View {
+        HStack(spacing: 0) {
+            columnHeaderButton(label: "Tag", sort: .alphabetical)
             Spacer()
-            Button {
-                viewModel.tagSort = viewModel.tagSort == .alphabetical ? .byCount : .alphabetical
-            } label: {
-                Image(systemName: viewModel.tagSort == .alphabetical ? "textformat.abc" : "number")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .help(viewModel.tagSort == .alphabetical ? "Sort by count" : "Sort alphabetically")
-            }
-            .buttonStyle(.plain)
+            columnHeaderButton(label: "Count", sort: .byCount)
         }
-        .padding(.horizontal, 8)
+        .padding(.leading, 32) // 8pt row padding + 24pt checkmark gutter
+        .padding(.trailing, 8)
         .padding(.vertical, 4)
+        .background(.bar)
+    }
+
+    private func columnHeaderButton(label: String, sort: TagPaletteViewModel.TagSort) -> some View {
+        Button {
+            viewModel.setSort(sort)
+        } label: {
+            HStack(spacing: 4) {
+                Text(label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                if viewModel.tagSort == sort {
+                    Image(systemName: viewModel.sortAscending ? "chevron.up" : "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Tag Checklist

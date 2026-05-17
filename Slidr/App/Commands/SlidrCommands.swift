@@ -75,7 +75,6 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.tagFilterBinding) var tagFilterBinding
     @FocusedValue(\.sortOrderBinding) var sortOrderBinding
     @FocusedValue(\.sortAscendingBinding) var sortAscendingBinding
-    @FocusedValue(\.allTags) var allTags
 
     // MARK: - Binding FocusedValues
     @FocusedValue(\.importDestination) var importDestination
@@ -108,6 +107,13 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.aiAutoProcess) var aiAutoProcess
     @FocusedValue(\.aiAutoTranscribe) var aiAutoTranscribe
     @FocusedValue(\.aiTagMode) var aiTagMode
+
+    // MARK: - Slideshow Playback FocusedValues
+    @FocusedValue(\.slideshowViewModel) var activeSlideshow
+    @FocusedValue(\.slideshowInfoOverlayToggle) var slideshowInfoToggle
+    @FocusedValue(\.slideshowFullscreenToggle) var slideshowFullscreenToggle
+    @FocusedValue(\.slideshowDismiss) var slideshowDismissAction
+    @FocusedValue(\.slideshowRate) var slideshowRateAction
     @FocusedValue(\.aiProcessSelected) var aiProcessSelected
     @FocusedValue(\.aiTagSelected) var aiTagSelected
     @FocusedValue(\.aiSummarizeSelected) var aiSummarizeSelected
@@ -532,32 +538,26 @@ struct SlidrCommands: Commands {
             }
 
             Menu("Tags") {
-                if let allTags, let tagFilterBinding {
-                    Button {
-                        tagFilterBinding.wrappedValue = []
-                    } label: {
-                        HStack {
-                            Text("All")
-                            if tagFilterBinding.wrappedValue.isEmpty {
-                                Spacer()
-                                Image(systemName: "checkmark")
-                            }
-                        }
+                if let tagFilterBinding {
+                    Button("Open Tag Palette\u{2026}") {
+                        toggleTagPalette?()
                     }
 
-                    Divider()
+                    if !tagFilterBinding.wrappedValue.isEmpty {
+                        Divider()
 
-                    ForEach(allTags, id: \.self) { tag in
-                        Button {
-                            if tagFilterBinding.wrappedValue.contains(tag) {
+                        Button("Clear Tag Filter") {
+                            tagFilterBinding.wrappedValue = []
+                        }
+
+                        Divider()
+
+                        ForEach(Array(tagFilterBinding.wrappedValue).sorted(), id: \.self) { tag in
+                            Button {
                                 tagFilterBinding.wrappedValue.remove(tag)
-                            } else {
-                                tagFilterBinding.wrappedValue.insert(tag)
-                            }
-                        } label: {
-                            HStack {
-                                Text(tag)
-                                if tagFilterBinding.wrappedValue.contains(tag) {
+                            } label: {
+                                HStack {
+                                    Text(tag)
                                     Spacer()
                                     Image(systemName: "checkmark")
                                 }
@@ -636,6 +636,20 @@ struct SlidrCommands: Commands {
 
             Divider()
 
+            playbackMenu
+            viewMenu
+            rateMenu
+
+            Divider()
+
+            Button("Exit Slideshow") {
+                slideshowDismissAction?()
+            }
+            .keyboardShortcut(.escape, modifiers: [])
+            .disabled(slideshowDismissAction == nil)
+
+            Divider()
+
             if let loopSlideshow {
                 Toggle("Loop", isOn: loopSlideshow)
             }
@@ -698,6 +712,158 @@ struct SlidrCommands: Commands {
                 }
             }
         }
+    }
+
+    // MARK: - Playback Submenu (active slideshow only)
+
+    @ViewBuilder
+    private var playbackMenu: some View {
+        Menu("Playback") {
+            Button(activeSlideshow?.isPlaying == true ? "Pause" : "Play") {
+                activeSlideshow?.togglePlayback()
+            }
+            .keyboardShortcut(.space, modifiers: [])
+            .disabled(activeSlideshow == nil)
+
+            Toggle(isOn: Binding(
+                get: { activeSlideshow?.autoAdvance ?? false },
+                set: { _ in activeSlideshow?.toggleAutoAdvance() }
+            )) {
+                Text("Auto-Advance")
+            }
+            .keyboardShortcut("a", modifiers: [])
+            .disabled(activeSlideshow == nil)
+
+            Divider()
+
+            Button("Previous") { activeSlideshow?.previous() }
+                .keyboardShortcut(.leftArrow, modifiers: [])
+                .disabled(activeSlideshow == nil)
+
+            Button("Next") { activeSlideshow?.next() }
+                .keyboardShortcut(.rightArrow, modifiers: [])
+                .disabled(activeSlideshow == nil)
+
+            Divider()
+
+            Button("Skip Back 5s") { activeSlideshow?.seekVideo(by: .fiveSeconds, forward: false) }
+                .keyboardShortcut(.leftArrow, modifiers: .shift)
+                .disabled(activeSlideshow == nil)
+
+            Button("Skip Forward 5s") { activeSlideshow?.seekVideo(by: .fiveSeconds, forward: true) }
+                .keyboardShortcut(.rightArrow, modifiers: .shift)
+                .disabled(activeSlideshow == nil)
+
+            Button("Skip Back 30s") { activeSlideshow?.seekVideo(by: .thirtySeconds, forward: false) }
+                .keyboardShortcut(.leftArrow, modifiers: .option)
+                .disabled(activeSlideshow == nil)
+
+            Button("Skip Forward 30s") { activeSlideshow?.seekVideo(by: .thirtySeconds, forward: true) }
+                .keyboardShortcut(.rightArrow, modifiers: .option)
+                .disabled(activeSlideshow == nil)
+
+            Divider()
+
+            Button("Frame Back") { activeSlideshow?.stepVideoFrame(forward: false) }
+                .keyboardShortcut(",", modifiers: [])
+                .disabled(activeSlideshow == nil)
+
+            Button("Frame Forward") { activeSlideshow?.stepVideoFrame(forward: true) }
+                .keyboardShortcut(".", modifiers: [])
+                .disabled(activeSlideshow == nil)
+
+            Divider()
+
+            Button("Volume Up") { activeSlideshow?.increaseVolume() }
+                .keyboardShortcut(.upArrow, modifiers: [])
+                .disabled(activeSlideshow == nil)
+
+            Button("Volume Down") { activeSlideshow?.decreaseVolume() }
+                .keyboardShortcut(.downArrow, modifiers: [])
+                .disabled(activeSlideshow == nil)
+
+            Button(activeSlideshow?.isMuted == true ? "Unmute" : "Mute") {
+                activeSlideshow?.toggleMute()
+            }
+            .keyboardShortcut("m", modifiers: [])
+            .disabled(activeSlideshow == nil)
+        }
+        .disabled(activeSlideshow == nil)
+    }
+
+    // MARK: - View Submenu (active slideshow only)
+
+    @ViewBuilder
+    private var viewMenu: some View {
+        Menu("View") {
+            Toggle(isOn: Binding(
+                get: { activeSlideshow?.isRandomMode ?? false },
+                set: { _ in activeSlideshow?.toggleRandomMode() }
+            )) { Text("Shuffle") }
+                .keyboardShortcut("r", modifiers: [])
+                .disabled(activeSlideshow == nil)
+
+            Toggle(isOn: Binding(
+                get: { activeSlideshow?.showCaptions ?? false },
+                set: { activeSlideshow?.showCaptions = $0 }
+            )) { Text("Captions") }
+                .keyboardShortcut("c", modifiers: [])
+                .disabled(activeSlideshow == nil)
+
+            Toggle(isOn: Binding(
+                get: { activeSlideshow?.showSubtitles ?? false },
+                set: { activeSlideshow?.showSubtitles = $0 }
+            )) { Text("Subtitles") }
+                .keyboardShortcut("s", modifiers: [])
+                .disabled(activeSlideshow == nil)
+
+            Toggle(isOn: Binding(
+                get: { activeSlideshow?.showTimerBar ?? false },
+                set: { activeSlideshow?.showTimerBar = $0 }
+            )) { Text("Timer Bar") }
+                .keyboardShortcut("t", modifiers: [])
+                .disabled(activeSlideshow == nil)
+
+            Toggle(isOn: Binding(
+                get: { activeSlideshow.map { !$0.videoPlayDuration.isFullVideo } ?? false },
+                set: { _ in activeSlideshow?.toggleVideoPlayDuration() }
+            )) { Text("Limit Video Duration") }
+                .keyboardShortcut("v", modifiers: [])
+                .disabled(activeSlideshow == nil)
+
+            Divider()
+
+            Button("Info Overlay") { slideshowInfoToggle?() }
+                .keyboardShortcut("i", modifiers: [])
+                .disabled(slideshowInfoToggle == nil)
+
+            Button("Toggle Fullscreen") { slideshowFullscreenToggle?() }
+                .keyboardShortcut("f", modifiers: [])
+                .disabled(slideshowFullscreenToggle == nil)
+        }
+        .disabled(activeSlideshow == nil)
+    }
+
+    // MARK: - Rate Submenu (active slideshow only)
+
+    @ViewBuilder
+    private var rateMenu: some View {
+        Menu("Rate") {
+            Button("Clear Rating") { slideshowRateAction?(0) }
+                .keyboardShortcut("0", modifiers: [])
+                .disabled(slideshowRateAction == nil)
+
+            Divider()
+
+            ForEach(1...5, id: \.self) { stars in
+                Button(String(repeating: "\u{2605}", count: stars)) {
+                    slideshowRateAction?(stars)
+                }
+                .keyboardShortcut(KeyEquivalent(Character("\(stars)")), modifiers: [])
+                .disabled(slideshowRateAction == nil)
+            }
+        }
+        .disabled(slideshowRateAction == nil)
     }
 
     // MARK: - Controls Mode Submenu

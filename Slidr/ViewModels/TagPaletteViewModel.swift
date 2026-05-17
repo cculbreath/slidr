@@ -16,6 +16,7 @@ final class TagPaletteViewModel {
     var mode: Mode = .filter
     var searchText: String = ""
     var tagSort: TagSort = .alphabetical
+    var sortAscending: Bool = true
 
     // External state (set by coordinator)
     var allTags: [String] = []
@@ -31,9 +32,25 @@ final class TagPaletteViewModel {
         let base = searchText.isEmpty ? allTags : allTags.filter { $0.localizedCaseInsensitiveContains(searchText) }
         switch tagSort {
         case .alphabetical:
-            return base
+            return sortAscending
+                ? base.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+                : base.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedDescending }
         case .byCount:
-            return base.sorted { (tagCounts[$0] ?? 0) > (tagCounts[$1] ?? 0) }
+            return base.sorted { lhs, rhs in
+                let lc = tagCounts[lhs] ?? 0
+                let rc = tagCounts[rhs] ?? 0
+                if lc == rc { return lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending }
+                return sortAscending ? lc < rc : lc > rc
+            }
+        }
+    }
+
+    func setSort(_ sort: TagSort) {
+        if tagSort == sort {
+            sortAscending.toggle()
+        } else {
+            tagSort = sort
+            sortAscending = (sort == .alphabetical)
         }
     }
 

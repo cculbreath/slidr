@@ -47,10 +47,22 @@ struct SlideshowView: View {
         slideshowContent
             .focusable()
             .focused($isFocused)
-            .modifier(SlideshowKeyboardModifier(viewModel: viewModel, onDismiss: onDismiss, goNext: goNext, goPrevious: goPrevious))
-            .modifier(CaptionKeys(viewModel: viewModel))
-            .modifier(RatingKeys(viewModel: viewModel, uiState: uiState))
-            .modifier(ExtraNavigationKeys(viewModel: viewModel, uiState: uiState))
+            .focusedSceneValue(\.slideshowViewModel, viewModel)
+            .focusedSceneValue(\.slideshowInfoOverlayToggle) { uiState.showInfoOverlay.toggle() }
+            .focusedSceneValue(\.slideshowFullscreenToggle) {
+                if let window = NSApplication.shared.keyWindow {
+                    window.toggleFullScreen(nil)
+                }
+            }
+            .focusedSceneValue(\.slideshowDismiss, onDismiss)
+            .focusedSceneValue(\.slideshowRate) { rating in
+                viewModel.rateCurrentItem(rating)
+                uiState.ratingFeedback = rating
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    uiState.ratingFeedback = nil
+                }
+            }
+            .modifier(SlideshowAltShortcutKeys(viewModel: viewModel))
             .modifier(SlideshowPersistenceModifier(viewModel: viewModel, uiState: uiState, settings: settings, library: library, startVideoCaptionTimer: startVideoCaptionTimer, loadTranscriptCues: loadTranscriptCues, setFocused: { isFocused = true }))
             .modifier(SlideshowMenuSyncModifier(viewModel: viewModel, settings: settings))
             .modifier(SlideshowUIObserverModifier(uiState: uiState))
@@ -501,7 +513,7 @@ private struct SlideshowMenuSyncModifier: ViewModifier {
             }
             .onChange(of: settings?.shuffleSlideshow) { _, newValue in
                 if let newValue, newValue != viewModel.isRandomMode {
-                    viewModel.isRandomMode = newValue
+                    viewModel.setRandomMode(newValue)
                 }
             }
             .onChange(of: settings?.showTimerBar) { _, newValue in
