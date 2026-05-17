@@ -23,8 +23,8 @@ actor ThumbnailCache {
         memoryCache.countLimit = maxMemoryCacheSize
     }
 
-    func thumbnail(for item: MediaItem, size: ThumbnailSize, libraryRoot: URL) async throws -> NSImage {
-        let cacheKey = "\(item.contentHash)-\(size.rawValue)"
+    func thumbnail(snapshot: MediaItemSnapshot, size: ThumbnailSize, libraryRoot: URL) async throws -> NSImage {
+        let cacheKey = "\(snapshot.contentHash)-\(size.rawValue)"
 
         // 1. Check memory cache
         if let cached = memoryCache.object(forKey: cacheKey as NSString) {
@@ -44,12 +44,11 @@ actor ThumbnailCache {
             return image
         }
 
-        // 4. Generate thumbnail
-        // Capture values to avoid crossing isolation boundaries
+        // 4. Generate thumbnail — snapshot is Sendable, safe to use here.
         let pixelSize = size.pixelSize
-        let relativePath = item.relativePath
-        let filename = item.originalFilename
-        let mediaType = item.mediaType
+        let relativePath = snapshot.relativePath
+        let filename = snapshot.filename
+        let mediaType = snapshot.mediaType
 
         let task = Task<NSImage, Error> {
             let fileURL = libraryRoot.appendingPathComponent(relativePath)

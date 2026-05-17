@@ -30,9 +30,16 @@ struct SlideshowAltShortcutKeys: ViewModifier {
     let onDismiss: () -> Void
     let goNext: () -> Void
     let goPrevious: () -> Void
+    let onRate: (Int) -> Void
+    let onDeleteCurrent: () -> Void
 
     func body(content: Content) -> some View {
         content.onKeyPress(phases: .down) { press in
+            // Cmd+Delete: trash the current item.
+            if press.key == .delete, press.modifiers.contains(.command) {
+                onDeleteCurrent()
+                return .handled
+            }
             switch press.key {
             case .escape:
                 onDismiss()
@@ -55,6 +62,18 @@ struct SlideshowAltShortcutKeys: ViewModifier {
             case KeyEquivalent("k"):
                 viewModel.increaseVolume()
                 return .handled
+            case KeyEquivalent("0"):
+                onRate(0); return .handled
+            case KeyEquivalent("1"):
+                onRate(1); return .handled
+            case KeyEquivalent("2"):
+                onRate(2); return .handled
+            case KeyEquivalent("3"):
+                onRate(3); return .handled
+            case KeyEquivalent("4"):
+                onRate(4); return .handled
+            case KeyEquivalent("5"):
+                onRate(5); return .handled
             default:
                 return .ignored
             }

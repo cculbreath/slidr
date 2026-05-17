@@ -29,6 +29,7 @@ struct ContentView: View {
     @State private var audioCaptionImportAlert: String?
     @State private var manifestImportAlert: String?
     @State private var manifestImporter = ManifestImporter()
+    @State private var duplicateScanCoordinator = DuplicateScanCoordinator()
 
     var body: some View {
         ZStack {
@@ -40,6 +41,15 @@ struct ContentView: View {
                     .transition(.opacity)
             }
         }
+        // These focused-scene-values must be set on a view that contains BOTH
+        // mainContent and SlideshowView. SwiftUI propagates a published
+        // focused-scene-value only when its publishing view is an ancestor of
+        // the currently-focused view; the slideshow is a sibling of mainContent
+        // in this ZStack, so placing the modifiers here keeps Browser/Slideshow
+        // menu shortcuts (Cmd+1, Cmd+2, etc.) working while the slideshow has
+        // focus.
+        .modifier(BrowserFocusedValuesModifier(coordinator: menuCoordinator))
+        .modifier(SlideshowFocusedValuesModifier(coordinator: menuCoordinator))
         .animation(.easeInOut(duration: 0.3), value: showSlideshow)
         .onChange(of: slideshowViewModel.currentIndex) { _, newIndex in
             guard showSlideshow || externalSlideshowActive else { return }
@@ -60,6 +70,13 @@ struct ContentView: View {
             title: "Manifest Import",
             subtitle: manifestImporter.progressMessage,
             progress: manifestImporter.progress
+        )
+        .progressOverlay(
+            isPresented: duplicateScanCoordinator.isRunning,
+            title: "Scanning for Duplicates",
+            subtitle: duplicateScanCoordinator.phaseLabel,
+            progress: duplicateScanCoordinator.overallProgress,
+            onCancel: { duplicateScanCoordinator.cancel() }
         )
         .alert("Subtitle Import", isPresented: Binding(
             get: { subtitleImportAlert != nil },
@@ -122,9 +139,12 @@ struct ContentView: View {
                 processUntranscribed: { aiProcessUntranscribed() },
                 showStatusWindow: { aiStatusWindow?.show() }
             ))
-            .modifier(BrowserFocusedValuesModifier(coordinator: menuCoordinator))
-            .modifier(SlideshowFocusedValuesModifier(coordinator: menuCoordinator))
             .modifier(FilterFocusedValuesModifier(gridViewModel: gridViewModel))
+            .modifier(DuplicateFocusedValuesModifier(scan: { force in
+                Task {
+                    await duplicateScanCoordinator.runFullScan(items: Array(library.allItems), force: force)
+                }
+            }))
             .onChange(of: sidebarViewModel.selectedItem) {
                 gridViewModel.clearSelection()
                 refreshItems()
@@ -170,6 +190,7 @@ struct ContentView: View {
                 if aiStatusWindow == nil {
                     aiStatusWindow = AIStatusWindowController(coordinator: aiCoordinator)
                 }
+                duplicateScanCoordinator.configure(library: library)
             }
             .onChange(of: aiCoordinator.isProcessing) { _, isProcessing in
                 if isProcessing {
@@ -203,7 +224,7 @@ struct ContentView: View {
 
     private var navigationView: some View {
         NavigationSplitView {
-            SidebarView(viewModel: sidebarViewModel, searchText: $gridViewModel.searchText)
+            SidebarView(viewModel: sidebarViewModel, searchText: $gridViewModel.searchText, duplicateScanCoordinator: duplicateScanCoordinator)
         } detail: {
             detailContent
         }
@@ -230,7 +251,12 @@ struct ContentView: View {
     @ViewBuilder
     private var detailContent: some View {
         ZStack(alignment: .topLeading) {
-            if let previewItem {
+            if sidebarViewModel.selectedItem == .duplicates {
+                DuplicatesView(
+                    coordinator: duplicateScanCoordinator,
+                    library: library
+                )
+            } else if let previewItem {
                 MediaPreviewView(item: previewItem, items: cachedItems, library: library, onSeekAction: $transcriptSeekAction) {
                     self.previewItem = nil
                 }
@@ -314,6 +340,8 @@ struct ContentView: View {
             return library.unplayableVideos(sortedBy: gridViewModel.sortOrder, ascending: gridViewModel.sortAscending)
         case .decodeErrors:
             return library.decodeErrorVideos(sortedBy: gridViewModel.sortOrder, ascending: gridViewModel.sortAscending)
+        case .duplicates:
+            return []  // Duplicate review uses its own view, not the grid.
         case .playlist(let id):
             if let playlist = playlistService.playlist(withID: id) {
                 return playlistService.items(for: playlist)
@@ -360,6 +388,10 @@ struct ContentView: View {
     }
 
     private func dismissSlideshow() {
+        // Capture the currently-playing item so we can sync the grid selection
+        // before tearing down the slideshow state.
+        let currentID = slideshowViewModel.currentItem?.id
+
         slideshowViewModel.stop()
 
         if externalSlideshowActive {
@@ -368,6 +400,12 @@ struct ContentView: View {
             appDelegate?.closeAllSlideshowWindows()
         } else {
             showSlideshow = false
+        }
+
+        // Re-sync the grid: select the slideshow's current item, queue a scroll.
+        if let currentID, cachedItems.contains(where: { $0.id == currentID }) {
+            gridViewModel.selectedItems = [currentID]
+            gridViewModel.scrollToItemID = currentID
         }
 
         let selectedIDs = gridViewModel.selectedItems

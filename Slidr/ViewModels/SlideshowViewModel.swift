@@ -125,13 +125,17 @@ final class SlideshowViewModel {
         self.isPlaying = isPlaying
 
         if isRandomMode {
-            shuffledOrder = items.shuffled()
-            if let startID = items.indices.contains(index) ? items[index].id : nil,
-               let shuffledIndex = shuffledOrder.firstIndex(where: { $0.id == startID }) {
-                self.currentIndex = shuffledIndex
+            // Put the user's chosen item at position 0 of the shuffled play
+            // sequence so the indicator reads "1/N" at start.
+            if items.indices.contains(index) {
+                let clicked = items[index]
+                var others = items
+                others.removeAll { $0.id == clicked.id }
+                shuffledOrder = [clicked] + others.shuffled()
             } else {
-                self.currentIndex = 0
+                shuffledOrder = items.shuffled()
             }
+            self.currentIndex = 0
         } else {
             shuffledOrder = []
             self.currentIndex = max(0, min(index, items.count - 1))
@@ -255,6 +259,30 @@ final class SlideshowViewModel {
 
     func toggleMute() {
         isMuted.toggle()
+    }
+
+    /// Drop an item from all internal ordering lists and adjust currentIndex
+    /// so the slot that slid into the deleted item's place is now current.
+    /// Caller is responsible for the actual `library.delete(_:)` afterwards.
+    func removeItem(withID id: UUID) {
+        items.removeAll { $0.id == id }
+        shuffledOrder.removeAll { $0.id == id }
+        originalOrder.removeAll { $0.id == id }
+        let active = activeItems
+        if active.isEmpty {
+            currentIndex = 0
+            return
+        }
+        if currentIndex >= active.count {
+            currentIndex = active.count - 1
+        }
+        // Reset any timer / playback state that referenced the now-stale slide.
+        timerCancellable?.cancel()
+        timerCancellable = nil
+        resetTimerProgress()
+        if isPlaying {
+            scheduleNextAdvance()
+        }
     }
 
     func toggleAutoAdvance() {

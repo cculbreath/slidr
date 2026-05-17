@@ -234,8 +234,22 @@ final class MediaLibrary {
     // MARK: - Thumbnail Access
 
     func thumbnail(for item: MediaItem, size: ThumbnailSize) async throws -> NSImage {
-        let root = (item.storageLocation == .external) ? (externalLibraryRoot ?? libraryRoot) : libraryRoot
-        return try await thumbnailCache.thumbnail(for: item, size: size, libraryRoot: root)
+        // Capture everything we need on the main actor BEFORE the async hop into
+        // the ThumbnailCache actor. Once the await suspends, `item` may be deleted
+        // out from under us (e.g. the duplicate-review delete flow); reading any
+        // of its `@Model` properties off-main would trap.
+        let snapshot = MediaItemSnapshot.capture(item)
+        return try await thumbnail(snapshot: snapshot, size: size)
+    }
+
+    func thumbnail(snapshot: MediaItemSnapshot, size: ThumbnailSize) async throws -> NSImage {
+        let root = (snapshot.storageLocation == .external) ? (externalLibraryRoot ?? libraryRoot) : libraryRoot
+        return try await thumbnailCache.thumbnail(snapshot: snapshot, size: size, libraryRoot: root)
+    }
+
+    func absoluteURL(for snapshot: MediaItemSnapshot) -> URL {
+        let root = (snapshot.storageLocation == .external) ? (externalLibraryRoot ?? libraryRoot) : libraryRoot
+        return root.appendingPathComponent(snapshot.relativePath)
     }
 
     func videoScrubThumbnails(for item: MediaItem, count: Int) async throws -> [NSImage] {
@@ -351,6 +365,33 @@ final class MediaLibrary {
             Logger.library.info("Recovered \(recovered) video(s) from decode errors")
         }
 
+        return recovered
+    }
+
+    // MARK: - Unplayable Reassessment
+
+    /// Re-attempts thumbnail generation for items currently flagged as unplayable
+    /// (i.e., `hasThumbnailError == true`). Clears the flag for items that now succeed.
+    /// Returns the count recovered.
+    @discardableResult
+    func reassessUnplayable(_ items: [MediaItem]) async -> Int {
+        var recovered = 0
+        for item in items {
+            // Drop any cached thumbnails first so we don't read a stale failure.
+            await thumbnailCache.removeThumbnails(forHash: item.contentHash)
+            do {
+                _ = try await thumbnail(for: item, size: .medium)
+                item.hasThumbnailError = false
+                recovered += 1
+            } catch {
+                // Leave flag as-is; still unplayable.
+            }
+        }
+        if recovered > 0 {
+            try? modelContainer.mainContext.save()
+            libraryVersion += 1
+            Logger.library.info("Reassessed \(recovered) item(s) as playable")
+        }
         return recovered
     }
 

@@ -47,6 +47,18 @@ final class MediaItem {
     var imageText: String?
     var audioCaptionRelativePath: String?
 
+    // MARK: - Vision Feature Print (for duplicate detection)
+    /// Serialized VNFeaturePrintObservation for the item's thumbnail.
+    /// nil until computed by FeaturePrintService.
+    var featurePrint: Data?
+
+    /// For videos: JSON-encoded array of per-keyframe `VNFeaturePrintObservation`
+    /// blobs (sampled at 5 evenly-spaced points along the duration). Comparison
+    /// uses the minimum pairwise distance across all frame combos, which lets us
+    /// catch duplicates whose static thumbnail came from a different frame.
+    /// nil for images and for items predating this code path.
+    var featurePrintFrames: Data?
+
     // MARK: - Status
     var status: MediaStatus
     var hasThumbnailErrorRaw: Bool?

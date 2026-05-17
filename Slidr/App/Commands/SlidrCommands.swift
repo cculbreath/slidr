@@ -114,6 +114,7 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.slideshowFullscreenToggle) var slideshowFullscreenToggle
     @FocusedValue(\.slideshowDismiss) var slideshowDismissAction
     @FocusedValue(\.slideshowRate) var slideshowRateAction
+    @FocusedValue(\.slideshowDeleteCurrent) var slideshowDeleteCurrentAction
     @FocusedValue(\.aiProcessSelected) var aiProcessSelected
     @FocusedValue(\.aiTagSelected) var aiTagSelected
     @FocusedValue(\.aiSummarizeSelected) var aiSummarizeSelected
@@ -121,6 +122,9 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.aiProcessUntagged) var aiProcessUntagged
     @FocusedValue(\.aiProcessUntranscribed) var aiProcessUntranscribed
     @FocusedValue(\.aiShowStatusWindow) var aiShowStatusWindow
+
+    // MARK: - Library FocusedValues
+    @FocusedValue(\.duplicateScanAction) var duplicateScanAction
 
     var body: some Commands {
         helpCommands
@@ -292,13 +296,16 @@ struct SlidrCommands: Commands {
 
     private var browserCommands: some Commands {
         CommandMenu("Browser") {
-            // View mode switching
+            // View mode switching. Also dismiss any active slideshow so the
+            // chosen browser view becomes visible immediately.
             Button("As Grid") {
+                slideshowDismissAction?()
                 browserViewMode?.wrappedValue = .grid
             }
             .keyboardShortcut("1", modifiers: .command)
 
             Button("As List") {
+                slideshowDismissAction?()
                 browserViewMode?.wrappedValue = .list
             }
             .keyboardShortcut("2", modifiers: .command)
@@ -351,6 +358,18 @@ struct SlidrCommands: Commands {
                 resetThumbnailSize?()
             }
             .keyboardShortcut("0", modifiers: .command)
+
+            Divider()
+
+            Button("Scan for Duplicates") {
+                duplicateScanAction?(false)
+            }
+            .disabled(duplicateScanAction == nil)
+
+            Button("Force Re-scan Duplicates") {
+                duplicateScanAction?(true)
+            }
+            .disabled(duplicateScanAction == nil)
         }
     }
 
@@ -639,6 +658,14 @@ struct SlidrCommands: Commands {
             playbackMenu
             viewMenu
             rateMenu
+
+            Divider()
+
+            Button("Delete Current Item") {
+                slideshowDeleteCurrentAction?()
+            }
+            .keyboardShortcut(.delete, modifiers: .command)
+            .disabled(slideshowDeleteCurrentAction == nil)
 
             Divider()
 

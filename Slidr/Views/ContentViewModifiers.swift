@@ -118,3 +118,13 @@ struct FilterFocusedValuesModifier: ViewModifier {
             .focusedSceneValue(\.sortAscendingBinding, $gridViewModel.sortAscending)
     }
 }
+
+// MARK: - Duplicate Scan Focused Values
+
+struct DuplicateFocusedValuesModifier: ViewModifier {
+    let scan: (Bool) -> Void
+
+    func body(content: Content) -> some View {
+        content.focusedSceneValue(\.duplicateScanAction, scan)
+    }
+}

@@ -323,6 +323,17 @@ struct MediaGridView: View {
                     scrollProxy.scrollTo(selectedID, anchor: .center)
                 }
             }
+            .onChange(of: viewModel.scrollToItemID) { _, target in
+                guard let target else { return }
+                // Defer one tick so the grid has the item to scroll to.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(50))
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        scrollProxy.scrollTo(target, anchor: .center)
+                    }
+                    viewModel.scrollToItemID = nil
+                }
+            }
             .background {
                 GeometryReader { geometry in
                     Color.clear
@@ -380,6 +391,12 @@ struct MediaGridView: View {
 
         if let playlist = activePlaylist, playlist.isManualPlaylist {
             Button("Remove from Playlist") { removeFromPlaylist(item, playlist: playlist) }
+        }
+
+        if item.hasThumbnailError {
+            Button(isPartOfMultiSelection(item) ? "Reassess Selected as Playable" : "Reassess as Playable") {
+                reassessUnplayable(item)
+            }
         }
 
         Divider()
@@ -515,6 +532,19 @@ struct MediaGridView: View {
     private func performDelete(_ items: [MediaItem]) {
         library.delete(items)
         viewModel.clearSelection()
+    }
+
+    // MARK: - Unplayable Reassessment
+
+    private func reassessUnplayable(_ item: MediaItem) {
+        let targets: [MediaItem]
+        if isPartOfMultiSelection(item) {
+            targets = displayedItems.filter { viewModel.selectedItems.contains($0.id) && $0.hasThumbnailError }
+        } else {
+            targets = [item]
+        }
+        guard !targets.isEmpty else { return }
+        Task { await library.reassessUnplayable(targets) }
     }
 
     // MARK: - Decode Error Actions

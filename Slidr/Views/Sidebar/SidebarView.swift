@@ -7,6 +7,7 @@ struct SidebarView: View {
     @Environment(\.openWindow) private var openWindow
     @Bindable var viewModel: SidebarViewModel
     @Binding var searchText: String
+    var duplicateScanCoordinator: DuplicateScanCoordinator?
 
     @State private var playlistDropTargetID: UUID?
 
@@ -77,6 +78,29 @@ struct SidebarView: View {
                 .tag(SidebarItem.importedToday)
             unplayableVideosRow
             decodeErrorsRow
+            duplicatesRow
+        }
+    }
+
+    @ViewBuilder
+    private var duplicatesRow: some View {
+        let count = duplicateScanCoordinator?.detectionService.pairs.count ?? 0
+        if count > 0 {
+            Label {
+                HStack {
+                    Text("Duplicates")
+                    Spacer()
+                    Text("\(count)")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
+            } icon: {
+                Image(systemName: "doc.on.doc")
+            }
+            .tag(SidebarItem.duplicates)
+        } else {
+            Label("Duplicates", systemImage: "doc.on.doc")
+                .tag(SidebarItem.duplicates)
         }
     }
 
@@ -97,7 +121,18 @@ struct SidebarView: View {
                     .foregroundStyle(.yellow)
             }
             .tag(SidebarItem.unplayableVideos)
+            .contextMenu {
+                Button("Reassess All as Playable") {
+                    reassessAllUnplayable()
+                }
+            }
         }
+    }
+
+    private func reassessAllUnplayable() {
+        let items = library.unplayableVideos(sortedBy: .dateImported, ascending: false)
+        guard !items.isEmpty else { return }
+        Task { await library.reassessUnplayable(items) }
     }
 
     @ViewBuilder
@@ -256,6 +291,7 @@ enum SidebarItem: Hashable, Identifiable {
     case importedToday
     case unplayableVideos
     case decodeErrors
+    case duplicates
     case playlist(UUID)
 
     var id: String {
@@ -266,6 +302,7 @@ enum SidebarItem: Hashable, Identifiable {
         case .importedToday: return "importedToday"
         case .unplayableVideos: return "unplayableVideos"
         case .decodeErrors: return "decodeErrors"
+        case .duplicates: return "duplicates"
         case .playlist(let uuid): return "playlist-\(uuid.uuidString)"
         }
     }

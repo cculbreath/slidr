@@ -94,6 +94,10 @@ struct ApplyManifestCaptionsKey: FocusedValueKey {
     typealias Value = () -> Void
 }
 
+struct DuplicateScanActionKey: FocusedValueKey {
+    typealias Value = (Bool) -> Void
+}
+
 // MARK: - Filter Binding Keys
 
 struct MediaTypeFilterBindingKey: FocusedValueKey {
@@ -305,6 +309,10 @@ struct SlideshowRateKey: FocusedValueKey {
     typealias Value = (Int) -> Void
 }
 
+struct SlideshowDeleteCurrentKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
 // MARK: - FocusedValues Extension
 
 extension FocusedValues {
@@ -422,6 +430,11 @@ extension FocusedValues {
     var applyManifestCaptions: (() -> Void)? {
         get { self[ApplyManifestCaptionsKey.self] }
         set { self[ApplyManifestCaptionsKey.self] = newValue }
+    }
+
+    var duplicateScanAction: ((Bool) -> Void)? {
+        get { self[DuplicateScanActionKey.self] }
+        set { self[DuplicateScanActionKey.self] = newValue }
     }
 
     // Filter binding values
@@ -674,5 +687,10 @@ extension FocusedValues {
     var slideshowRate: ((Int) -> Void)? {
         get { self[SlideshowRateKey.self] }
         set { self[SlideshowRateKey.self] = newValue }
+    }
+
+    var slideshowDeleteCurrent: (() -> Void)? {
+        get { self[SlideshowDeleteCurrentKey.self] }
+        set { self[SlideshowDeleteCurrentKey.self] = newValue }
     }
 }

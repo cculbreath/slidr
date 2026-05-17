@@ -55,14 +55,9 @@ struct SlideshowView: View {
                 }
             }
             .focusedSceneValue(\.slideshowDismiss, onDismiss)
-            .focusedSceneValue(\.slideshowRate) { rating in
-                viewModel.rateCurrentItem(rating)
-                uiState.ratingFeedback = rating
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                    uiState.ratingFeedback = nil
-                }
-            }
-            .modifier(SlideshowAltShortcutKeys(viewModel: viewModel, onDismiss: onDismiss, goNext: goNext, goPrevious: goPrevious))
+            .focusedSceneValue(\.slideshowRate, applyRating)
+            .focusedSceneValue(\.slideshowDeleteCurrent, deleteCurrentItem)
+            .modifier(SlideshowAltShortcutKeys(viewModel: viewModel, onDismiss: onDismiss, goNext: goNext, goPrevious: goPrevious, onRate: applyRating, onDeleteCurrent: deleteCurrentItem))
             .modifier(SlideshowPersistenceModifier(viewModel: viewModel, uiState: uiState, settings: settings, library: library, startVideoCaptionTimer: startVideoCaptionTimer, loadTranscriptCues: loadTranscriptCues, setFocused: { isFocused = true }))
             .modifier(SlideshowMenuSyncModifier(viewModel: viewModel, settings: settings))
             .modifier(SlideshowUIObserverModifier(uiState: uiState))
@@ -281,6 +276,24 @@ struct SlideshowView: View {
     private func goPrevious() {
         navigationDirection = .backward
         viewModel.previous()
+    }
+
+    private func applyRating(_ rating: Int) {
+        viewModel.rateCurrentItem(rating)
+        uiState.ratingFeedback = rating
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            uiState.ratingFeedback = nil
+        }
+    }
+
+    private func deleteCurrentItem() {
+        guard let item = viewModel.currentItem else { return }
+        let id = item.id
+        viewModel.removeItem(withID: id)
+        library.delete(item)
+        if viewModel.activeItems.isEmpty {
+            onDismiss()
+        }
     }
 
     // MARK: - Floating Controls

@@ -31,6 +31,11 @@ final class GridViewModel {
     // MARK: - Keyboard Navigation
     var focusedIndex: Int? = nil
 
+    // MARK: - Scroll Request
+    /// Set to ask the grid to scroll a specific item into view. The grid
+    /// observes this via .onChange and clears it after handling.
+    var scrollToItemID: UUID? = nil
+
     // MARK: - Delete State
     var itemsToDelete: [MediaItem] = []
     var showDeleteConfirmation = false
