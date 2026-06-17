@@ -230,7 +230,20 @@ final class AITaggingService {
         """
 
         if tagMode == .constrainToExisting, let existing = existingTags, !existing.isEmpty {
-            prompt += "\n\nIMPORTANT: You must ONLY select tags from this list: \(existing.joined(separator: ", ")). Do not invent new tags."
+            prompt += """
+
+
+            STRICT TAG CONSTRAINT — READ CAREFULLY:
+            The `tags` field of your response MUST be a subset of the following allow-list.
+            You are FORBIDDEN from inventing, paraphrasing, pluralizing, translating,
+            combining, or otherwise modifying any tag. Reuse the exact strings below,
+            verbatim and case-sensitive. If a concept is not represented in the list,
+            omit it rather than approximating. Returning any string not present in the
+            allow-list is a hard failure.
+
+            ALLOWED TAGS (\(existing.count)):
+            \(existing.joined(separator: ", "))
+            """
         }
 
         if let transcript = transcript, !transcript.isEmpty {

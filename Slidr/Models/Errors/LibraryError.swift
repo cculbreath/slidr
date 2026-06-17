@@ -7,6 +7,7 @@ enum LibraryError: LocalizedError {
     case migrationFailed(underlying: Error)
     case invalidLibraryPath
     case databaseSaveFailed(underlying: Error)
+    case externalDriveDisconnected
 
     var errorDescription: String? {
         switch self {
@@ -22,6 +23,8 @@ enum LibraryError: LocalizedError {
             return "The specified library path is invalid."
         case .databaseSaveFailed(let error):
             return "Failed to save to database: \(error.localizedDescription)"
+        case .externalDriveDisconnected:
+            return "The external drive containing this media is disconnected."
         }
     }
 }

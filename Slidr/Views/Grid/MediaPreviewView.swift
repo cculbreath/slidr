@@ -67,6 +67,29 @@ struct MediaPreviewView: View {
                 .padding(.vertical, 8)
                 .background(.ultraThinMaterial.opacity(0.5))
             }
+
+            // Always-available close control. Keyboard dismissal (Esc/Space)
+            // can be lost if focus drifts to the embedded player, so this gives
+            // the user a guaranteed way out.
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 26))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .shadow(color: .black.opacity(0.5), radius: 4)
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction)
+                    .help("Close preview")
+                    .onHover { hovering in
+                        if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                    }
+                }
+                Spacer()
+            }
+            .padding(16)
         }
         .focusable()
         .focused($isFocused)

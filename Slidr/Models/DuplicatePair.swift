@@ -3,23 +3,27 @@ import Foundation
 /// A candidate pair of media items flagged as visually similar.
 /// Produced by `DuplicateDetectionService`, consumed by the duplicate review UI.
 ///
-/// Carries Sendable `MediaItemSnapshot`s for display, and the underlying
-/// `MediaItem` references for the eventual delete operation. The review UI
-/// reads from snapshots only — that way SwiftUI's deferred render/hover
-/// updates can't crash on a tombstoned `@Model` after the user trashes one
-/// side of a pair.
+/// The pair exposes Sendable snapshots for view code, and keeps the underlying
+/// `@Model` references private so callers can't accidentally read attributes
+/// from a tombstoned model after a delete. Use `delete(side:in:)` /
+/// `deleteBoth(in:)` to dispose of items.
 struct DuplicatePair: Identifiable, Hashable {
+    enum Side { case left, right }
+
     let id: UUID
     let snapshotA: MediaItemSnapshot
     let snapshotB: MediaItemSnapshot
     /// Vision feature-print distance. Lower = more similar.
     let distance: Float
 
-    /// Live `@Model` references. Only the review handler should touch these,
-    /// and only to call `library.delete(_:)` — never read any of their
-    /// `@Attribute` properties from view code.
-    let itemA: MediaItem
-    let itemB: MediaItem
+    private let itemA: MediaItem
+    private let itemB: MediaItem
+
+    /// Live model references for the items that would be removed by
+    /// `delete(side:in:)` / `deleteBoth(in:)`. Pass these to
+    /// `DuplicateDetectionService.removePairs(referencing:)` before the
+    /// delete lands so SwiftUI can't re-render a tombstoned model.
+    var members: [MediaItem] { [itemA, itemB] }
 
     @MainActor
     init(itemA: MediaItem, itemB: MediaItem, distance: Float) {
@@ -37,6 +41,20 @@ struct DuplicatePair: Identifiable, Hashable {
             self.snapshotB = MediaItemSnapshot.capture(itemA)
         }
         self.distance = distance
+    }
+
+    /// Trash the item on the chosen side. Returns the item that was deleted
+    /// so the caller can strip every pair referencing it from the review list.
+    @MainActor
+    func delete(side: Side, in library: MediaLibrary) -> MediaItem {
+        let target = side == .left ? itemA : itemB
+        library.delete(target)
+        return target
+    }
+
+    @MainActor
+    func deleteBoth(in library: MediaLibrary) {
+        library.delete([itemA, itemB])
     }
 
     static func == (lhs: DuplicatePair, rhs: DuplicatePair) -> Bool {

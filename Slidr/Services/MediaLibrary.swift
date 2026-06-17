@@ -36,6 +36,13 @@ final class MediaLibrary {
     private(set) var libraryRoot: URL
     var externalLibraryRoot: URL?
 
+    // MARK: - Volume Monitoring
+    // Not UI state, so kept out of observation. nonisolated(unsafe) lets the
+    // nonisolated deinit remove the observers; the tokens are only mutated on the
+    // main actor (startVolumeMonitoring) and read once at deinit.
+    @ObservationIgnored private nonisolated(unsafe) var volumeMountObserver: NSObjectProtocol?
+    @ObservationIgnored private nonisolated(unsafe) var volumeUnmountObserver: NSObjectProtocol?
+
     // MARK: - Initialization
 
     init(modelContainer: ModelContainer, thumbnailCache: ThumbnailCache, transcriptStore: TranscriptStore, libraryRoot: URL) {
@@ -62,6 +69,13 @@ final class MediaLibrary {
         )
 
         updateItemCount()
+        startVolumeMonitoring()
+    }
+
+    deinit {
+        let center = NSWorkspace.shared.notificationCenter
+        if let observer = volumeMountObserver { center.removeObserver(observer) }
+        if let observer = volumeUnmountObserver { center.removeObserver(observer) }
     }
 
     // MARK: - Queries
@@ -234,15 +248,17 @@ final class MediaLibrary {
     // MARK: - Thumbnail Access
 
     func thumbnail(for item: MediaItem, size: ThumbnailSize) async throws -> NSImage {
-        // Capture everything we need on the main actor BEFORE the async hop into
-        // the ThumbnailCache actor. Once the await suspends, `item` may be deleted
-        // out from under us (e.g. the duplicate-review delete flow); reading any
-        // of its `@Model` properties off-main would trap.
+        // Capture the cache's Sendable inputs on the main actor BEFORE the async
+        // hop; the item may be deleted while we await, and `@Model` attribute
+        // reads off-main would trap.
         let snapshot = MediaItemSnapshot.capture(item)
         return try await thumbnail(snapshot: snapshot, size: size)
     }
 
     func thumbnail(snapshot: MediaItemSnapshot, size: ThumbnailSize) async throws -> NSImage {
+        if snapshot.storageLocation == .external && !isExternalDriveConnected {
+            throw LibraryError.externalDriveDisconnected
+        }
         let root = (snapshot.storageLocation == .external) ? (externalLibraryRoot ?? libraryRoot) : libraryRoot
         return try await thumbnailCache.thumbnail(snapshot: snapshot, size: size, libraryRoot: root)
     }
@@ -253,6 +269,9 @@ final class MediaLibrary {
     }
 
     func videoScrubThumbnails(for item: MediaItem, count: Int) async throws -> [NSImage] {
+        if item.storageLocation == .external && !isExternalDriveConnected {
+            throw LibraryError.externalDriveDisconnected
+        }
         let root = (item.storageLocation == .external) ? (externalLibraryRoot ?? libraryRoot) : libraryRoot
         return try await thumbnailCache.videoScrubThumbnails(for: item, count: count, libraryRoot: root)
     }
@@ -384,7 +403,7 @@ final class MediaLibrary {
                 item.hasThumbnailError = false
                 recovered += 1
             } catch {
-                // Leave flag as-is; still unplayable.
+                Logger.library.debug("Reassess thumbnail still failing for \(item.originalFilename, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
         if recovered > 0 {
@@ -459,6 +478,61 @@ final class MediaLibrary {
             isExternalDriveConnected = false
         }
         updateExternalItemCount()
+    }
+
+    /// Watches for the external library's volume mounting/unmounting so
+    /// `isExternalDriveConnected` stays accurate without polling. Flipping the
+    /// flag the instant a volume disappears lets every external-media I/O path
+    /// short-circuit (see `thumbnail`, `videoScrubThumbnails`, `isAccessible`,
+    /// and slideshow preloading) instead of blocking on a dead mount — the
+    /// blocking read that otherwise beachballs the app.
+    private func startVolumeMonitoring() {
+        let center = NSWorkspace.shared.notificationCenter
+
+        // `willUnmount` fires *before* the volume goes away, giving us the
+        // earliest possible chance to stop new reads from targeting it.
+        volumeUnmountObserver = center.addObserver(
+            forName: NSWorkspace.willUnmountNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            MainActor.assumeIsolated {
+                self?.handleVolumeChange(note, mounted: false)
+            }
+        }
+
+        volumeMountObserver = center.addObserver(
+            forName: NSWorkspace.didMountNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            MainActor.assumeIsolated {
+                self?.handleVolumeChange(note, mounted: true)
+            }
+        }
+    }
+
+    private func handleVolumeChange(_ note: Notification, mounted: Bool) {
+        guard let extRoot = externalLibraryRoot,
+              let volumeURL = note.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL else { return }
+
+        // Only react to the volume that actually hosts our external library.
+        let volumePath = volumeURL.path
+        let rootPath = extRoot.path
+        let affectsLibrary = rootPath == volumePath || rootPath.hasPrefix(volumePath + "/")
+        guard affectsLibrary else { return }
+
+        if mounted {
+            // Safe to touch the filesystem now that the volume is back.
+            refreshExternalDriveStatus()
+            Logger.library.info("External drive reconnected: \(volumePath, privacy: .public)")
+        } else {
+            // Do NOT do any I/O here — the volume is on its way out. Just flip
+            // the flag so in-flight and future reads bail immediately.
+            isExternalDriveConnected = false
+            updateExternalItemCount()
+            Logger.library.warning("External drive disconnected: \(volumePath, privacy: .public)")
+        }
     }
 
     func locateExternalLibrary() {

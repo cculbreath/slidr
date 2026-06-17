@@ -109,6 +109,13 @@ final class MediaItem {
     var hasImageText: Bool { !(imageText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) }
     var hasAudioCaption: Bool { audioCaptionRelativePath != nil }
 
+    /// Matches a leading run of digits followed by whitespace, e.g. "54526658 ".
+    /// Hoisted to a stored static so the pattern compiles exactly once instead of
+    /// on every `displayName` access. Sorting a Table by Title evaluates the sort
+    /// key O(N log N) times — recompiling this regex each call turned that into a
+    /// multi-second main-thread hang.
+    private static let leadingNumberPrefix = /^\d+\s+/
+
     /// Returns the filename stripped of leading numbers and file extension
     /// e.g., "54526658 Girlfriend.gif" → "Girlfriend"
     var displayName: String {
@@ -120,7 +127,7 @@ final class MediaItem {
         }
 
         // Strip leading numbers and whitespace (e.g., "54526658 ")
-        if let match = name.firstMatch(of: /^\d+\s+/) {
+        if let match = name.firstMatch(of: Self.leadingNumberPrefix) {
             name = String(name[match.range.upperBound...])
         }
 

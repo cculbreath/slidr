@@ -666,7 +666,7 @@ struct MediaGridView: View {
         guard let settings else { return }
         let items = effectiveItems(for: item)
         Task {
-            await aiCoordinator.processItems(items, settings: settings, allTags: allTags, library: library, modelContext: modelContext)
+            await aiCoordinator.processItems(items, settings: settings, library: library, modelContext: modelContext)
         }
     }
 
@@ -674,7 +674,7 @@ struct MediaGridView: View {
         guard let settings else { return }
         let items = effectiveItems(for: item)
         Task {
-            await aiCoordinator.tagItems(items, settings: settings, allTags: allTags, library: library, modelContext: modelContext)
+            await aiCoordinator.tagItems(items, settings: settings, library: library, modelContext: modelContext)
         }
     }
 

@@ -167,28 +167,27 @@ struct VideoPlayerView: View {
 
 // MARK: - AVPlayerView without native controls or key handling
 
-private class KeyPassthroughPlayerView: AVPlayerView {
-    override func keyDown(with event: NSEvent) {
-        nextResponder?.keyDown(with: event)
-    }
-
-    override func keyUp(with event: NSEvent) {
-        nextResponder?.keyUp(with: event)
-    }
+/// Refuses first-responder status so keyboard events stay with the SwiftUI view
+/// that presents the player (slideshow / preview), where the `.onKeyPress`
+/// handlers live. If the player view became first responder, AVKit would route
+/// key events through the AppKit responder chain and SwiftUI's handlers would
+/// never fire — leaving the view impossible to dismiss with Esc/Space.
+private final class NonInteractivePlayerView: AVPlayerView {
+    override var acceptsFirstResponder: Bool { false }
 }
 
 private struct NoControlsPlayerView: NSViewRepresentable {
     let player: AVPlayer
 
-    func makeNSView(context: Context) -> KeyPassthroughPlayerView {
-        let view = KeyPassthroughPlayerView()
+    func makeNSView(context: Context) -> NonInteractivePlayerView {
+        let view = NonInteractivePlayerView()
         view.player = player
         view.controlsStyle = .none
         view.showsFullScreenToggleButton = false
         return view
     }
 
-    func updateNSView(_ nsView: KeyPassthroughPlayerView, context: Context) {
+    func updateNSView(_ nsView: NonInteractivePlayerView, context: Context) {
         nsView.player = player
     }
 }

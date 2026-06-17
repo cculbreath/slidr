@@ -41,13 +41,8 @@ struct ContentView: View {
                     .transition(.opacity)
             }
         }
-        // These focused-scene-values must be set on a view that contains BOTH
-        // mainContent and SlideshowView. SwiftUI propagates a published
-        // focused-scene-value only when its publishing view is an ancestor of
-        // the currently-focused view; the slideshow is a sibling of mainContent
-        // in this ZStack, so placing the modifiers here keeps Browser/Slideshow
-        // menu shortcuts (Cmd+1, Cmd+2, etc.) working while the slideshow has
-        // focus.
+        // Must be applied above the ZStack so the focused-scene-values
+        // propagate while either mainContent or SlideshowView holds focus.
         .modifier(BrowserFocusedValuesModifier(coordinator: menuCoordinator))
         .modifier(SlideshowFocusedValuesModifier(coordinator: menuCoordinator))
         .animation(.easeInOut(duration: 0.3), value: showSlideshow)
@@ -102,10 +97,6 @@ struct ContentView: View {
         } message: {
             Text(manifestImportAlert ?? "")
         }
-    }
-
-    private var allTags: [String] {
-        Array(Set(cachedItems.flatMap(\.tags))).sorted()
     }
 
     private var importProgressSubtitle: String? {
@@ -171,6 +162,9 @@ struct ContentView: View {
                     toolbarCoordinator.toolbar.isVisible = false
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .slidrImportURLs)) { _ in
+                drainDockImportURLs()
+            }
             .onAppear {
                 sidebarViewModel.configure(with: playlistService)
                 transcriptSearchService.configure(transcriptStore: transcriptStore)
@@ -191,6 +185,7 @@ struct ContentView: View {
                     aiStatusWindow = AIStatusWindowController(coordinator: aiCoordinator)
                 }
                 duplicateScanCoordinator.configure(library: library)
+                drainDockImportURLs()
             }
             .onChange(of: aiCoordinator.isProcessing) { _, isProcessing in
                 if isProcessing {
@@ -314,6 +309,15 @@ struct ContentView: View {
         }
     }
 
+    private func drainDockImportURLs() {
+        guard let delegate = NSApp.delegate as? AppDelegate else { return }
+        let urls = delegate.consumePendingImportURLs()
+        guard !urls.isEmpty else { return }
+        Task {
+            await performImport(urls: urls)
+        }
+    }
+
     private func refreshItems() {
         cachedItems = fetchItems()
     }
@@ -388,8 +392,6 @@ struct ContentView: View {
     }
 
     private func dismissSlideshow() {
-        // Capture the currently-playing item so we can sync the grid selection
-        // before tearing down the slideshow state.
         let currentID = slideshowViewModel.currentItem?.id
 
         slideshowViewModel.stop()
@@ -402,7 +404,6 @@ struct ContentView: View {
             showSlideshow = false
         }
 
-        // Re-sync the grid: select the slideshow's current item, queue a scroll.
         if let currentID, cachedItems.contains(where: { $0.id == currentID }) {
             gridViewModel.selectedItems = [currentID]
             gridViewModel.scrollToItemID = currentID
@@ -601,7 +602,7 @@ struct ContentView: View {
         if let settings = settingsQuery.first, !importedItems.isEmpty {
             if settings.aiAutoProcessOnImport {
                 Task {
-                    await aiCoordinator.processItems(importedItems, settings: settings, allTags: allTags, library: library, modelContext: modelContext)
+                    await aiCoordinator.processItems(importedItems, settings: settings, library: library, modelContext: modelContext)
                 }
             } else if settings.aiAutoTranscribeOnImport {
                 let videos = importedItems.filter { $0.isVideo && $0.hasAudio == true }
@@ -665,13 +666,13 @@ struct ContentView: View {
     private func aiProcessSelected() {
         let items = selectedItems()
         guard !items.isEmpty, let settings = settingsQuery.first else { return }
-        Task { await aiCoordinator.processItems(items, settings: settings, allTags: allTags, library: library, modelContext: modelContext) }
+        Task { await aiCoordinator.processItems(items, settings: settings, library: library, modelContext: modelContext) }
     }
 
     private func aiTagSelected() {
         let items = selectedItems()
         guard !items.isEmpty, let settings = settingsQuery.first else { return }
-        Task { await aiCoordinator.tagItems(items, settings: settings, allTags: allTags, library: library, modelContext: modelContext) }
+        Task { await aiCoordinator.tagItems(items, settings: settings, library: library, modelContext: modelContext) }
     }
 
     private func aiSummarizeSelected() {
@@ -689,7 +690,7 @@ struct ContentView: View {
     private func aiProcessUntagged() {
         let untagged = cachedItems.filter { $0.tags.isEmpty }
         guard !untagged.isEmpty, let settings = settingsQuery.first else { return }
-        Task { await aiCoordinator.processItems(untagged, settings: settings, allTags: allTags, library: library, modelContext: modelContext) }
+        Task { await aiCoordinator.processItems(untagged, settings: settings, library: library, modelContext: modelContext) }
     }
 
     private func aiProcessUntranscribed() {

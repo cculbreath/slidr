@@ -2,26 +2,6 @@ import SwiftUI
 import SwiftData
 import AVFoundation
 
-/// Renders an AVPlayer via AVPlayerLayer with no control chrome.
-private struct AVPlayerLayerView: NSViewRepresentable {
-    let player: AVPlayer
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        view.wantsLayer = true
-        let playerLayer = AVPlayerLayer(player: player)
-        playerLayer.videoGravity = .resizeAspectFill
-        view.layer = playerLayer
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        if let playerLayer = nsView.layer as? AVPlayerLayer {
-            playerLayer.player = player
-        }
-    }
-}
-
 struct VideoHoverView: View {
     let item: MediaItem
     let size: ThumbnailSize

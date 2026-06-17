@@ -2,9 +2,6 @@ import Foundation
 import OSLog
 import Vision
 
-/// File-scoped logger so background work can use it without crossing the main actor.
-private let duplicateDetectionLog = Logger(subsystem: "com.physicscloud.slidr", category: "Duplicates")
-
 /// Mutable cancellation flag shared between the main actor and a detached task.
 /// File-scoped and explicitly nonisolated so it isn't picked up by default-actor inference.
 private final class DuplicateScanCancellationFlag: @unchecked Sendable {
@@ -12,10 +9,6 @@ private final class DuplicateScanCancellationFlag: @unchecked Sendable {
 }
 
 /// Finds visually-similar pairs of media items using cached Vision feature prints.
-///
-/// IMPLEMENTATION NOTE: This file is a stub — Agent B fills in the
-/// implementations. The public surface here is the contract consumed by
-/// `DuplicateScanCoordinator` and the duplicate review UI.
 @MainActor
 @Observable
 final class DuplicateDetectionService {
@@ -116,7 +109,7 @@ final class DuplicateDetectionService {
         }
 
         guard !candidates.isEmpty else {
-            duplicateDetectionLog.info("Duplicate scan: no items with feature prints")
+            Logger.duplicates.info("Duplicate scan: no items with feature prints")
             return
         }
 
@@ -176,20 +169,22 @@ final class DuplicateDetectionService {
                     try a.computeDistance(&out, to: b)
                     return out
                 } catch {
-                    duplicateDetectionLog.error("computeDistance failed: \(error.localizedDescription)")
+                    Logger.duplicates.error("computeDistance failed: \(error.localizedDescription)")
                     return nil
                 }
             }
 
             /// Minimum pairwise distance across all (frameA, frameB) combinations.
             /// Catches re-encodes whose thumbnail came from a different timestamp.
+            /// Exits early once any pair beats the threshold — we only need a
+            /// single passing combo to flag the items, not the true minimum.
             func bestDistance(_ a: [VNFeaturePrintObservation], _ b: [VNFeaturePrintObservation]) -> Float? {
                 var best: Float? = nil
                 for fa in a {
                     for fb in b {
-                        if let d = pairDistance(fa, fb) {
-                            if best == nil || d < best! { best = d }
-                        }
+                        guard let d = pairDistance(fa, fb) else { continue }
+                        if best == nil || d < best! { best = d }
+                        if d <= threshold { return best }
                     }
                 }
                 return best
@@ -325,9 +320,9 @@ final class DuplicateDetectionService {
         }
 
         if flag.isCancelled {
-            duplicateDetectionLog.info("Duplicate scan cancelled after finding \(self.pairs.count) pair(s)")
+            Logger.duplicates.info("Duplicate scan cancelled after finding \(self.pairs.count) pair(s)")
         } else {
-            duplicateDetectionLog.info("Duplicate scan complete: \(self.pairs.count) pair(s) within threshold \(self.distanceThreshold)")
+            Logger.duplicates.info("Duplicate scan complete: \(self.pairs.count) pair(s) within threshold \(self.distanceThreshold)")
         }
     }
 
@@ -347,6 +342,8 @@ final class DuplicateDetectionService {
     /// `@Model` reference that's still held by another pair.
     func removePairs(referencing items: [MediaItem]) {
         let trash = Set(items.map(\.id))
-        pairs.removeAll { trash.contains($0.itemA.id) || trash.contains($0.itemB.id) }
+        pairs.removeAll { pair in
+            pair.members.contains { trash.contains($0.id) }
+        }
     }
 }

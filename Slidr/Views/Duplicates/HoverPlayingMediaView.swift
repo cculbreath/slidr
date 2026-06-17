@@ -5,10 +5,8 @@ import AVKit
 /// Self-contained media preview for the duplicate review UI.
 /// Operates on a Sendable `MediaItemSnapshot` so the view can never touch a
 /// tombstoned `@Model` after the user trashes the underlying item.
-/// - Images: shows the cached thumbnail.
-/// - GIFs: shows the thumbnail (no GIF auto-animation here — keeps things simple
-///   alongside the video hover-play UX).
 /// - Videos: thumbnail by default; on hover, swaps in a muted, looping AVPlayer.
+/// - Everything else: shows the cached thumbnail.
 struct HoverPlayingMediaView: View {
     let snapshot: MediaItemSnapshot
     @Environment(MediaLibrary.self) private var library
@@ -20,9 +18,9 @@ struct HoverPlayingMediaView: View {
     var body: some View {
         ZStack {
             if snapshot.isVideo, isHovering, let player {
-                AVPlayerLayerHost(player: player)
+                AVPlayerLayerView(player: player, videoGravity: .resizeAspect)
             } else {
-                SnapshotThumbnailView(snapshot: snapshot)
+                AsyncThumbnailImage(snapshot: snapshot, size: .large)
             }
         }
         .onHover { hovering in
@@ -65,58 +63,5 @@ struct HoverPlayingMediaView: View {
         }
         player?.pause()
         player = nil
-    }
-}
-
-/// AsyncThumbnailImage equivalent that takes a Sendable snapshot.
-/// Safe to render after the underlying `MediaItem` has been deleted.
-struct SnapshotThumbnailView: View {
-    let snapshot: MediaItemSnapshot
-    @Environment(MediaLibrary.self) private var library
-    @State private var image: NSImage?
-    @State private var isLoading = true
-
-    var body: some View {
-        Group {
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-            } else if isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.gray.opacity(0.1))
-            } else {
-                Image(systemName: "photo")
-                    .font(.largeTitle)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.gray.opacity(0.1))
-            }
-        }
-        .task(id: snapshot.id) {
-            isLoading = true
-            image = try? await library.thumbnail(snapshot: snapshot, size: .large)
-            isLoading = false
-        }
-    }
-}
-
-private struct AVPlayerLayerHost: NSViewRepresentable {
-    let player: AVPlayer
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        view.wantsLayer = true
-        let layer = AVPlayerLayer(player: player)
-        layer.videoGravity = .resizeAspect
-        view.layer = layer
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        if let layer = nsView.layer as? AVPlayerLayer {
-            layer.player = player
-        }
     }
 }

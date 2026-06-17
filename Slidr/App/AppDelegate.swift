@@ -1,14 +1,40 @@
 import AppKit
 import SwiftUI
 
+extension Notification.Name {
+    static let slidrImportURLs = Notification.Name("SlidrImportURLs")
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var slideshowWindows: [NSWindow] = []
     private var controlWindow: NSWindow?
+    private(set) var pendingImportURLs: [URL] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {}
 
     func applicationWillTerminate(_ notification: Notification) {
         closeAllSlideshowWindows()
+    }
+
+    // MARK: - Dock / Finder file drops
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let filtered = urls.filter { url in
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+                return true
+            }
+            return FileTypeDetector.isSupported(url)
+        }
+        guard !filtered.isEmpty else { return }
+        pendingImportURLs.append(contentsOf: filtered)
+        NotificationCenter.default.post(name: .slidrImportURLs, object: nil)
+    }
+
+    func consumePendingImportURLs() -> [URL] {
+        let urls = pendingImportURLs
+        pendingImportURLs.removeAll()
+        return urls
     }
 
     func openExternalSlideshow<Content: View>(

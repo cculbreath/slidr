@@ -44,7 +44,7 @@ final class AIProcessingCoordinator {
 
     // MARK: - Full Pipeline (Batch)
 
-    func processItems(_ items: [MediaItem], settings: AppSettings, allTags: [String], library: MediaLibrary, modelContext: ModelContext) async {
+    func processItems(_ items: [MediaItem], settings: AppSettings, library: MediaLibrary, modelContext: ModelContext) async {
         guard !items.isEmpty else { return }
 
         let xaiKey = KeychainService.load(key: KeychainService.xaiAPIKeyName)
@@ -81,7 +81,7 @@ final class AIProcessingCoordinator {
             if let xaiKey {
                 currentOperation = "Tagging"
                 do {
-                    try await tagItem(item, xaiKey: xaiKey, settings: settings, allTags: allTags, library: library, modelContext: modelContext)
+                    try await tagItem(item, xaiKey: xaiKey, settings: settings, library: library, modelContext: modelContext)
                     operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Tag", status: .success))
                 } catch {
                     Self.logger.error("Tagging failed for \(item.originalFilename): \(self.describeError(error))")
@@ -145,7 +145,7 @@ final class AIProcessingCoordinator {
 
     // MARK: - Tag-Only (Batch)
 
-    func tagItems(_ items: [MediaItem], settings: AppSettings, allTags: [String], library: MediaLibrary, modelContext: ModelContext) async {
+    func tagItems(_ items: [MediaItem], settings: AppSettings, library: MediaLibrary, modelContext: ModelContext) async {
         guard !items.isEmpty else { return }
 
         guard let xaiKey = KeychainService.load(key: KeychainService.xaiAPIKeyName) else {
@@ -165,7 +165,7 @@ final class AIProcessingCoordinator {
             currentOperation = "Tagging"
 
             do {
-                try await tagItem(item, xaiKey: xaiKey, settings: settings, allTags: allTags, library: library, modelContext: modelContext)
+                try await tagItem(item, xaiKey: xaiKey, settings: settings, library: library, modelContext: modelContext)
                 operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Tag", status: .success))
             } catch {
                 Self.logger.error("Tagging failed for \(item.originalFilename): \(self.describeError(error))")
@@ -307,11 +307,22 @@ final class AIProcessingCoordinator {
         Self.logger.info("Transcribed \(item.originalFilename): \(result.text.prefix(80))...")
     }
 
-    private func tagItem(_ item: MediaItem, xaiKey: String, settings: AppSettings, allTags: [String], library: MediaLibrary, modelContext: ModelContext) async throws {
+    private func tagItem(_ item: MediaItem, xaiKey: String, settings: AppSettings, library: MediaLibrary, modelContext: ModelContext) async throws {
         let url = library.absoluteURL(for: item)
         Self.logger.info("Tagging \(item.originalFilename) at \(url.path)")
 
-        let constrainTags = settings.aiTagMode == .constrainToExisting ? allTags : nil
+        // Always source the constraint set from the full library — never from a
+        // filtered grid view — so the JSON-schema enum truly reflects every known tag.
+        // Lowercase + dedupe to match the post-write normalization further down,
+        // so model output round-trips identically to the canonical stored tag.
+        let constrainTags: [String]?
+        if settings.aiTagMode == .constrainToExisting {
+            let normalized = Array(Set(library.allTags.map { $0.lowercased() })).sorted()
+            constrainTags = normalized
+            Self.logger.info("Tag constraint active: \(normalized.count) library tags")
+        } else {
+            constrainTags = nil
+        }
         let result: AITagResult
 
         if item.isVideo {
@@ -346,8 +357,20 @@ final class AIProcessingCoordinator {
             )
         }
 
-        // Apply results
-        item.tags = result.tags.map { $0.lowercased() }
+        // Apply results — in constrain mode, defensively drop any tag not in the
+        // allow-list. xAI's strict JSON-schema enum is not always honored end-to-end
+        // (e.g. the model has been observed pluralizing "tattoo" → "tattoos"), so
+        // we enforce the constraint client-side too.
+        var finalTags = result.tags.map { $0.lowercased() }
+        if let allowList = constrainTags {
+            let allowed = Set(allowList)
+            let rejected = finalTags.filter { !allowed.contains($0) }
+            if !rejected.isEmpty {
+                Self.logger.warning("Dropped \(rejected.count) tag(s) outside library allow-list for \(item.originalFilename): \(rejected.joined(separator: ", "))")
+            }
+            finalTags = finalTags.filter { allowed.contains($0) }
+        }
+        item.tags = finalTags
         item.summary = result.summary
 
         switch result.productionSource {

@@ -458,11 +458,20 @@ final class SlideshowViewModel {
     }
 
     private func preloadItem(_ item: MediaItem, library: MediaLibrary) async {
+        // Never touch a disconnected external volume — a blocking read on a dead
+        // mount would freeze the main actor (beachball).
+        if item.storageLocation == .external && !library.isExternalDriveConnected { return }
+
         let url = library.absoluteURL(for: item)
 
         switch item.mediaType {
         case .image, .gif:
-            if let image = NSImage(contentsOf: url) {
+            // Read off the main actor so a slow or stalled volume can't freeze
+            // the UI; `Data` is Sendable, so it crosses back cleanly.
+            let data = await Task.detached(priority: .utility) {
+                try? Data(contentsOf: url)
+            }.value
+            if let data, let image = NSImage(data: data) {
                 preloadedItems[item.id] = PreloadedMedia(image: image, videoAsset: nil)
             }
         case .video:

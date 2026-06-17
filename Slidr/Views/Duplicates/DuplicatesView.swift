@@ -1,8 +1,6 @@
 import SwiftUI
 import OSLog
 
-private let dupLog = Logger(subsystem: "com.physicscloud.slidr", category: "Duplicates")
-
 struct DuplicatesView: View {
     @Bindable var coordinator: DuplicateScanCoordinator
     let library: MediaLibrary
@@ -78,7 +76,7 @@ struct DuplicatesView: View {
         if coordinator.isRunning {
             Button(role: .destructive) {
                 coordinator.cancel()
-                dupLog.info("User cancelled in-flight scan")
+                Logger.duplicates.info("User cancelled in-flight scan")
             } label: {
                 Label("Cancel", systemImage: "stop.circle")
             }
@@ -127,7 +125,7 @@ struct DuplicatesView: View {
             )
         } else if pairs.isEmpty {
             VStack(spacing: 12) {
-                Text("No duplicates found 🎉")
+                Text("No duplicates found")
                     .font(.title2)
                     .fontWeight(.semibold)
                 Text("Your library looks clean.")
@@ -160,17 +158,15 @@ struct DuplicatesView: View {
                 DuplicatePairCardView(
                     snapshot: pair.snapshotA,
                     label: "Left",
-                    keepShortcutHint: "\u{2190}"
-                ) {
-                    keep(side: .left, in: pair)
-                }
+                    keepShortcutHint: "\u{2190}",
+                    onKeep: handleKeepLeft
+                )
                 DuplicatePairCardView(
                     snapshot: pair.snapshotB,
                     label: "Right",
-                    keepShortcutHint: "\u{2192}"
-                ) {
-                    keep(side: .right, in: pair)
-                }
+                    keepShortcutHint: "\u{2192}",
+                    onKeep: handleKeepRight
+                )
             }
             .padding(.horizontal, 20)
 
@@ -214,11 +210,11 @@ struct DuplicatesView: View {
 
     // MARK: - Actions
 
-    private enum Side { case left, right }
+    private enum PairAction { case keepLeft, keepRight, keepBoth, deleteBoth }
 
     private func startScan(force: Bool) {
         Task {
-            dupLog.info("Starting duplicate scan (force=\(force))")
+            Logger.duplicates.info("Starting duplicate scan (force=\(force))")
             await coordinator.runFullScan(items: library.allItems, force: force)
             await MainActor.run {
                 hasScanned = true
@@ -228,27 +224,10 @@ struct DuplicatesView: View {
         }
     }
 
-    private func keep(side: Side, in pair: DuplicatePair) {
-        let toDelete = (side == .left) ? pair.itemB : pair.itemA
-        let keptName = (side == .left) ? pair.snapshotA.filename : pair.snapshotB.filename
-        let trashedName = (side == .left) ? pair.snapshotB.filename : pair.snapshotA.filename
-        dupLog.info("Keeping \(keptName, privacy: .public); trashing \(trashedName, privacy: .public)")
-        // Strip every pair referencing the deleted item BEFORE the delete lands,
-        // so SwiftUI can't re-render with a tombstoned @Model reference.
-        coordinator.detectionService.removePairs(referencing: [toDelete])
-        library.delete(toDelete)
-        advanceAfterRemoval()
-    }
-
-    private func handleKeepLeft() {
-        guard let pair = currentPair() else { return }
-        keep(side: .left, in: pair)
-    }
-
-    private func handleKeepRight() {
-        guard let pair = currentPair() else { return }
-        keep(side: .right, in: pair)
-    }
+    private func handleKeepLeft()  { apply(.keepLeft) }
+    private func handleKeepRight() { apply(.keepRight) }
+    private func handleKeepBoth()  { apply(.keepBoth) }
+    private func handleDeleteBoth() { apply(.deleteBoth) }
 
     private func handleSkip() {
         guard !pairs.isEmpty else { return }
@@ -256,24 +235,32 @@ struct DuplicatesView: View {
         currentIndex = next >= pairs.count ? 0 : next
     }
 
-    private func handleKeepBoth() {
-        guard let pair = currentPair() else { return }
-        dupLog.info("Keeping both items in pair (\(pair.snapshotA.filename, privacy: .public), \(pair.snapshotB.filename, privacy: .public))")
-        coordinator.detectionService.remove(pair: pair)
-        advanceAfterRemoval()
-    }
-
     private func requestDeleteBoth() {
         guard currentPair() != nil else { return }
         pendingDeleteBoth = true
     }
 
-    private func handleDeleteBoth() {
+    private func apply(_ action: PairAction) {
         guard let pair = currentPair() else { return }
-        dupLog.info("Deleting both items in pair (\(pair.snapshotA.filename, privacy: .public), \(pair.snapshotB.filename, privacy: .public))")
-        let items = [pair.itemA, pair.itemB]
-        coordinator.detectionService.removePairs(referencing: items)
-        library.delete(items)
+        // Remove pairs from the review list BEFORE delete() lands so SwiftUI
+        // can't render a tombstoned @Model reference.
+        switch action {
+        case .keepLeft:
+            Logger.duplicates.info("Keep \(pair.snapshotA.filename, privacy: .public); trash \(pair.snapshotB.filename, privacy: .public)")
+            coordinator.detectionService.removePairs(referencing: [pair.members[1]])
+            _ = pair.delete(side: .right, in: library)
+        case .keepRight:
+            Logger.duplicates.info("Keep \(pair.snapshotB.filename, privacy: .public); trash \(pair.snapshotA.filename, privacy: .public)")
+            coordinator.detectionService.removePairs(referencing: [pair.members[0]])
+            _ = pair.delete(side: .left, in: library)
+        case .keepBoth:
+            Logger.duplicates.info("Keep both in pair (\(pair.snapshotA.filename, privacy: .public), \(pair.snapshotB.filename, privacy: .public))")
+            coordinator.detectionService.remove(pair: pair)
+        case .deleteBoth:
+            Logger.duplicates.info("Trash both in pair (\(pair.snapshotA.filename, privacy: .public), \(pair.snapshotB.filename, privacy: .public))")
+            coordinator.detectionService.removePairs(referencing: pair.members)
+            pair.deleteBoth(in: library)
+        }
         advanceAfterRemoval()
     }
 

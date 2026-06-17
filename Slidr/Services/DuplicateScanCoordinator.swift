@@ -1,9 +1,9 @@
 import Foundation
 import OSLog
 
-/// Orchestrates a duplicate scan: first computes feature prints for any
-/// items missing them, then runs `DuplicateDetectionService` to find pairs.
-/// UI binds to the two underlying services for progress display.
+/// Orchestrates a duplicate scan: first compute feature prints for items
+/// missing them, then run pair detection. UI binds to the two underlying
+/// services for progress display.
 @MainActor
 @Observable
 final class DuplicateScanCoordinator {
@@ -25,13 +25,17 @@ final class DuplicateScanCoordinator {
         featurePrintService.isComputing || detectionService.isScanning
     }
 
-    /// Overall progress 0...1 across both phases, weighted 70% compute / 30% scan.
+    /// Overall progress 0...1 across both phases. Feature-print compute dominates
+    /// wall-time on first scans, so it gets the larger share.
+    private static let computeShare: Double = 0.7
+    private static let scanShare: Double = 1 - computeShare
+
     var overallProgress: Double {
         if featurePrintService.isComputing {
-            return featurePrintService.progress * 0.7
+            return featurePrintService.progress * Self.computeShare
         }
         if detectionService.isScanning {
-            return 0.7 + detectionService.progress * 0.3
+            return Self.computeShare + detectionService.progress * Self.scanShare
         }
         return 0
     }

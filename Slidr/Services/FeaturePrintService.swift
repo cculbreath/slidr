@@ -39,7 +39,6 @@ final class FeaturePrintService {
     private weak var library: MediaLibrary?
     private var isCancelled: Bool = false
 
-    private static let log = Logger(subsystem: "com.physicscloud.slidr", category: "FeaturePrint")
 
     init(library: MediaLibrary? = nil) {
         self.library = library
@@ -67,11 +66,6 @@ final class FeaturePrintService {
             )
             if !frames.isEmpty {
                 item.featurePrintFrames = try JSONEncoder().encode(frames)
-            }
-            // Also fill in the single-frame featurePrint (using the middle frame)
-            // so any code that still consults the single print has something useful.
-            if let middle = frames[safe: frames.count / 2] {
-                item.featurePrint = middle
             }
         } else {
             let image = try await library.thumbnail(for: item, size: .medium)
@@ -118,7 +112,7 @@ final class FeaturePrintService {
             do {
                 try await compute(for: item)
             } catch {
-                Self.log.error("Failed to compute feature print for \(item.originalFilename, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                Logger.featurePrint.error("Failed to compute feature print for \(item.originalFilename, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
             processedCount += 1
             progress = Double(processedCount) / Double(max(totalCount, 1))
@@ -128,7 +122,7 @@ final class FeaturePrintService {
             do {
                 try context.save()
             } catch {
-                Self.log.error("Failed to save feature prints: \(error.localizedDescription, privacy: .public)")
+                Logger.featurePrint.error("Failed to save feature prints: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -193,29 +187,17 @@ final class FeaturePrintService {
                     }
                 } catch {
                     // Skip frames that fail (DRM-protected, seek-past-end, etc.).
-                    Self.log.debug("Frame extract failed at \(CMTimeGetSeconds(time))s for \(url.lastPathComponent): \(error.localizedDescription)")
+                    Logger.featurePrint.debug("Frame extract failed at \(CMTimeGetSeconds(time))s for \(url.lastPathComponent): \(error.localizedDescription)")
                 }
             }
             return prints
         }.value
     }
 
-    // MARK: - Decode helpers
+    // MARK: - Decode
 
-    /// Reconstruct a VNFeaturePrintObservation from stored single-frame data.
+    /// Reconstruct a VNFeaturePrintObservation from stored data.
     nonisolated static func decode(_ data: Data) -> VNFeaturePrintObservation? {
         try? NSKeyedUnarchiver.unarchivedObject(ofClass: VNFeaturePrintObservation.self, from: data)
-    }
-
-    /// Reconstruct an array of VNFeaturePrintObservations from multi-frame data.
-    nonisolated static func decodeFrames(_ data: Data) -> [VNFeaturePrintObservation] {
-        guard let array = try? JSONDecoder().decode([Data].self, from: data) else { return [] }
-        return array.compactMap(decode)
-    }
-}
-
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
     }
 }

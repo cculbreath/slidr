@@ -56,7 +56,7 @@ struct DuplicatePairCardView: View {
                 .truncationMode(.middle)
 
             HStack(spacing: 12) {
-                metaChip(systemImage: "doc", text: Self.byteFormatter.string(fromByteCount: snapshot.fileSize))
+                metaChip(systemImage: "doc", text: Formatters.formatFileSize(snapshot.fileSize))
                 if let dims = snapshot.dimensions {
                     metaChip(
                         systemImage: "aspectratio",
@@ -75,7 +75,7 @@ struct DuplicatePairCardView: View {
                 if snapshot.tagsCount > 0 {
                     metaChip(systemImage: "tag", text: "\(snapshot.tagsCount) tag\(snapshot.tagsCount == 1 ? "" : "s")")
                 }
-                metaChip(systemImage: "calendar", text: Self.dateFormatter.string(from: snapshot.importDate))
+                metaChip(systemImage: "calendar", text: Formatters.longDate.string(from: snapshot.importDate))
             }
             .foregroundStyle(.secondary)
         }
@@ -91,18 +91,4 @@ struct DuplicatePairCardView: View {
         }
         .foregroundStyle(.secondary)
     }
-
-    private static let byteFormatter: ByteCountFormatter = {
-        let f = ByteCountFormatter()
-        f.allowedUnits = [.useKB, .useMB, .useGB]
-        f.countStyle = .file
-        return f
-    }()
-
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f
-    }()
 }

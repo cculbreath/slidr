@@ -307,10 +307,24 @@ struct MediaInspectorView: View {
 
     private var tagsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Tags")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("Tags")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                if !item.tags.isEmpty {
+                    Button("Clear Tags") {
+                        item.tags.removeAll()
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help("Remove all tags from this item")
+                }
+            }
 
             // Existing tags
             if !item.tags.isEmpty {

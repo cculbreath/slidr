@@ -13,4 +13,6 @@ extension Logger {
     nonisolated static let hoverPlayer = Logger(subsystem: subsystem, category: "HoverPlayer")
     nonisolated static let transcripts = Logger(subsystem: subsystem, category: "Transcripts")
     nonisolated static let vault = Logger(subsystem: subsystem, category: "Vault")
+    nonisolated static let featurePrint = Logger(subsystem: subsystem, category: "FeaturePrint")
+    nonisolated static let duplicates = Logger(subsystem: subsystem, category: "Duplicates")
 }
