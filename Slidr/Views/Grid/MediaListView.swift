@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct MediaListView: View {
     @Bindable var viewModel: GridViewModel
@@ -14,8 +15,48 @@ struct MediaListView: View {
         KeyPathComparator(\MediaItem.importDate, order: .reverse)
     ]
 
-    private var displayedItems: [MediaItem] {
-        viewModel.filteredItems(items).sorted(using: sortOrder)
+    /// The Table's data. Held in @State and recomputed only when inputs actually
+    /// change (see the recompute triggers in `body`), rather than re-sorting
+    /// inline on every render. This keeps the array identity stable across the
+    /// re-renders the Table fires for selection/hover, so we don't redo the
+    /// sort dozens of times per interaction.
+    @State private var sortedItems: [MediaItem] = []
+
+    private var displayedItems: [MediaItem] { sortedItems }
+
+    /// Cheap per-render fingerprint of the *filtered* set (ids only). When it
+    /// changes — filters, search, or the incoming items changed — we resort.
+    /// Plain re-renders (selection, hover) leave it untouched, so no resort.
+    private var filteredItemIDs: [UUID] {
+        viewModel.filteredItems(items).map(\.id)
+    }
+
+    private func recomputeSortedItems() {
+        sortedItems = Self.sorted(viewModel.filteredItems(items), by: sortOrder)
+    }
+
+    /// Pairs an item with a precomputed sort key so the key is evaluated once
+    /// per item instead of on every comparison.
+    private struct KeyedItem {
+        let key: String
+        let item: MediaItem
+    }
+
+    /// Sorts using `sortOrder`. The Title column sorts by `displayName`, an
+    /// expensive computed property (string scans + a regex match). Feeding it
+    /// straight to `sorted(using:)` evaluates the key O(N log N) times; we use a
+    /// Schwartzian transform instead — compute `displayName` once per item, then
+    /// sort by the cached key with identical comparator semantics. Cheap
+    /// stored-property keys take the direct path.
+    private static func sorted(_ items: [MediaItem], by order: [KeyPathComparator<MediaItem>]) -> [MediaItem] {
+        guard let primary = order.first,
+              primary.keyPath == \MediaItem.displayName else {
+            return items.sorted(using: order)
+        }
+        return items
+            .map { KeyedItem(key: $0.displayName, item: $0) }
+            .sorted(using: KeyPathComparator(\KeyedItem.key, order: primary.order))
+            .map(\.item)
     }
 
     var body: some View {
@@ -32,6 +73,10 @@ struct MediaListView: View {
             onStartSlideshow(displayedItems, index, nil, false)
         }
         .focusedSceneValue(\.listColumnCustomization, $columnCustomization)
+        .background(TableRowHeightConfigurator(rowHeight: 36))
+        .onAppear { recomputeSortedItems() }
+        .onChange(of: sortOrder) { recomputeSortedItems() }
+        .onChange(of: filteredItemIDs) { recomputeSortedItems() }
     }
 
     // MARK: - Column Builders
@@ -246,10 +291,16 @@ struct MediaListView: View {
 
     // MARK: - Formatting
 
-    private func formattedFileSize(_ bytes: Int64) -> String {
+    /// Shared formatter — allocating a ByteCountFormatter per cell showed up as a
+    /// real cost while the Table builds row views.
+    private static let fileSizeFormatter: ByteCountFormatter = {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
-        return formatter.string(fromByteCount: bytes)
+        return formatter
+    }()
+
+    private func formattedFileSize(_ bytes: Int64) -> String {
+        Self.fileSizeFormatter.string(fromByteCount: bytes)
     }
 }
 
@@ -278,5 +329,65 @@ private struct ListThumbnail: View {
         .task(id: item.id) {
             image = try? await library.thumbnail(for: item, size: .small)
         }
+    }
+}
+
+// MARK: - Fixed Row Height
+
+/// Pins the Table's backing NSTableView to a fixed row height and disables
+/// automatic row-height measurement.
+///
+/// SwiftUI's macOS `Table` defaults to automatic row heights. To measure a row's
+/// height it builds that row's entire multi-column view — so a re-sort, which
+/// reorders most rows, forces NSTableView to rebuild thousands of full row views
+/// synchronously on the main thread. A process sample of the freeze showed exactly
+/// this: `_doAutomaticRowHeightsForInsertedAndVisibleRows` → `outlineView(_:viewFor:item:)`
+/// for the whole reordered set. Fixed heights skip measurement entirely — only the
+/// handful of visible rows are ever built.
+private struct TableRowHeightConfigurator: NSViewRepresentable {
+    let rowHeight: CGFloat
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSView { NSView(frame: .zero) }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        let coordinator = context.coordinator
+        let target = rowHeight
+        // Defer one cycle so the Table's NSTableView exists in the hierarchy.
+        DispatchQueue.main.async { [weak nsView] in
+            guard let nsView else { return }
+            let table = coordinator.table ?? Self.enclosingTableView(near: nsView)
+            coordinator.table = table
+            guard let table else { return }
+            if table.usesAutomaticRowHeights || abs(table.rowHeight - target) > 0.5 {
+                table.usesAutomaticRowHeights = false
+                table.rowHeight = target
+            }
+        }
+    }
+
+    /// Walks up to the nearest ancestor whose subtree contains an NSTableView,
+    /// which scopes the search to this Table's container rather than, say, the
+    /// sidebar's list elsewhere in the window.
+    private static func enclosingTableView(near view: NSView) -> NSTableView? {
+        var ancestor = view.superview
+        while let current = ancestor {
+            if let table = firstTableView(in: current) { return table }
+            ancestor = current.superview
+        }
+        return nil
+    }
+
+    private static func firstTableView(in view: NSView) -> NSTableView? {
+        if let table = view as? NSTableView { return table }
+        for subview in view.subviews {
+            if let table = firstTableView(in: subview) { return table }
+        }
+        return nil
+    }
+
+    final class Coordinator {
+        weak var table: NSTableView?
     }
 }

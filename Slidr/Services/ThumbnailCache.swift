@@ -187,7 +187,9 @@ actor ThumbnailCache {
 
             for i in startIndex..<count {
                 let fraction = Double(i) / Double(max(count - 1, 1))
-                let time = CMTime(seconds: fraction * durationSeconds, preferredTimescale: 600)
+                // Cap just shy of the end; no frame exists at exactly `duration`.
+                let seconds = min(fraction * durationSeconds, durationSeconds * 0.999)
+                let time = CMTime(seconds: seconds, preferredTimescale: 600)
                 do {
                     let (cgImage, _) = try await generator.image(at: time)
                     let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
@@ -260,7 +262,11 @@ actor ThumbnailCache {
 
                 for i in 0..<count {
                     let fraction = Double(i) / Double(max(count - 1, 1))
-                    let time = CMTime(seconds: fraction * durationSeconds, preferredTimescale: 600)
+                    // Cap just shy of the end; there is no frame at exactly
+                    // `duration`, so sampling it leaves us one frame short and
+                    // the cache-complete check never passes (endless regen).
+                    let seconds = min(fraction * durationSeconds, durationSeconds * 0.999)
+                    let time = CMTime(seconds: seconds, preferredTimescale: 600)
                     let (cgImage, _) = try await generator.image(at: time)
                     let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
 

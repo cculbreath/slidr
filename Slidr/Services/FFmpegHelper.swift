@@ -140,7 +140,11 @@ enum FFmpegHelper {
 
         for i in 0..<count {
             let fraction = Double(i) / Double(max(count - 1, 1))
-            let time = fraction * duration
+            // Cap just shy of the end. There is no frame at exactly `duration`,
+            // so the last sample (fraction == 1) extracts nothing — leaving the
+            // set one frame short forever, which defeats the cache-complete
+            // check and makes the whole library regenerate on every launch.
+            let time = min(fraction * duration, duration * 0.999)
             let outputURL = tempDir.appendingPathComponent("frame_\(i).jpg")
 
             let status = await runProcess(
@@ -180,7 +184,8 @@ enum FFmpegHelper {
 
         for i in 0..<count {
             let fraction = Double(i) / Double(max(count - 1, 1))
-            let time = startTime + fraction * (endTime - startTime)
+            // Cap just shy of the end; there is no frame at exactly `duration`.
+            let time = min(startTime + fraction * (endTime - startTime), duration * 0.999)
             let outputURL = tempDir.appendingPathComponent("frame_\(i).jpg")
 
             let status = await runProcess(
