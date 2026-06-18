@@ -37,10 +37,11 @@ final class MediaImportCoordinator {
         let importer = MediaImporter(
             libraryRoot: libraryRoot,
             externalLibraryRoot: externalLibraryRoot,
-            modelContext: modelContainer.mainContext,
+            modelContainer: modelContainer,
             options: options
         )
-        return try await importer.importFiles(urls: urls, progressHandler: progressHandler)
+        let output = try await importer.importFiles(urls: urls, progressHandler: progressHandler)
+        return makeImportResult(from: output)
     }
 
     // MARK: - Folder Import
@@ -74,11 +75,11 @@ final class MediaImportCoordinator {
             let importer = MediaImporter(
                 libraryRoot: libraryRoot,
                 externalLibraryRoot: externalLibraryRoot,
-                modelContext: modelContainer.mainContext,
+                modelContainer: modelContainer,
                 options: options
             )
             let baseCount = processedCount
-            let folderResult = try await importer.importFiles(urls: fileURLs) { progress in
+            let folderOutput = try await importer.importFiles(urls: fileURLs) { progress in
                 progressHandler(ImportProgress(
                     currentItem: baseCount + progress.currentItem,
                     totalItems: totalFileCount,
@@ -86,6 +87,7 @@ final class MediaImportCoordinator {
                     phase: progress.phase
                 ))
             }
+            let folderResult = makeImportResult(from: folderOutput)
             combinedResult.merge(folderResult)
             processedCount += fileURLs.count
             if !folderResult.imported.isEmpty {
@@ -98,11 +100,11 @@ final class MediaImportCoordinator {
             let importer = MediaImporter(
                 libraryRoot: libraryRoot,
                 externalLibraryRoot: externalLibraryRoot,
-                modelContext: modelContainer.mainContext,
+                modelContainer: modelContainer,
                 options: options
             )
             let baseCount = processedCount
-            let looseResult = try await importer.importFiles(urls: looseFiles) { progress in
+            let looseOutput = try await importer.importFiles(urls: looseFiles) { progress in
                 progressHandler(ImportProgress(
                     currentItem: baseCount + progress.currentItem,
                     totalItems: totalFileCount,
@@ -110,7 +112,7 @@ final class MediaImportCoordinator {
                     phase: progress.phase
                 ))
             }
-            combinedResult.merge(looseResult)
+            combinedResult.merge(makeImportResult(from: looseOutput))
         }
 
         Logger.library.info("Folder import complete: \(combinedResult.summary)")
@@ -211,6 +213,20 @@ final class MediaImportCoordinator {
     }
 
     // MARK: - Private
+
+    /// Translates an importer's background-context output into an `ImportResult`
+    /// whose `imported` items are resolved into the main context, so they are
+    /// safe to hand to main-actor consumers (AI processing, scrub-gen, grid).
+    private func makeImportResult(from output: ImporterOutput) -> ImportResult {
+        var result = ImportResult()
+        result.skippedDuplicates = output.skippedDuplicates
+        result.converted = output.converted
+        result.failed = output.failed
+        result.imported = output.importedIDs.compactMap {
+            modelContainer.mainContext.model(for: $0) as? MediaItem
+        }
+        return result
+    }
 
     private func collectMediaByFolder(in url: URL) -> [(name: String, fileURLs: [URL])] {
         var folderMap: [String: [URL]] = [:]

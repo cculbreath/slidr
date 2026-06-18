@@ -38,8 +38,44 @@ final class AIProcessingCoordinator {
 
     private var cancelled = false
 
+    /// Save and log-flush cadence: persist + surface accumulated log entries
+    /// every N processed items, with a final save/flush after the batch.
+    private static let batchInterval = 20
+
+    /// Log entries accumulated between flushes. Appending here does not trigger
+    /// SwiftUI invalidation; entries are surfaced to `operationLog` in batches to
+    /// avoid re-rendering the status list on every single item.
+    private var pendingLog: [AIOperationLog] = []
+
     func clearLog() {
+        pendingLog.removeAll()
         operationLog.removeAll()
+    }
+
+    /// Set `currentOperation` only when the label actually changes, so identical
+    /// per-item writes don't trigger redundant SwiftUI invalidation.
+    private func setOperation(_ operation: String) {
+        if currentOperation != operation {
+            currentOperation = operation
+        }
+    }
+
+    /// Move buffered log entries into the observed `operationLog` in one mutation.
+    private func flushLog() {
+        guard !pendingLog.isEmpty else { return }
+        operationLog.append(contentsOf: pendingLog)
+        pendingLog.removeAll(keepingCapacity: true)
+    }
+
+    /// Persist mutated model objects and surface buffered log entries together.
+    /// Called at batch boundaries and once more after the loop completes.
+    private func commitBatch(_ modelContext: ModelContext) {
+        do {
+            try modelContext.save()
+        } catch {
+            Self.logger.error("Batch save failed: \(self.describeError(error))")
+        }
+        flushLog()
     }
 
     // MARK: - Full Pipeline (Batch)
@@ -59,6 +95,7 @@ final class AIProcessingCoordinator {
         totalCount = items.count
         errors = []
         cancelled = false
+        defer { commitBatch(modelContext) }
 
         for item in items {
             guard !cancelled else { break }
@@ -66,31 +103,34 @@ final class AIProcessingCoordinator {
 
             // Step 1: Transcribe if video with audio (independent of tagging)
             if item.isVideo, item.hasAudio == true, item.transcriptText == nil {
-                currentOperation = "Transcribing"
+                setOperation("Transcribing")
                 do {
-                    try await transcribeItem(item, settings: settings, library: library, modelContext: modelContext)
-                    operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Transcribe", status: .success))
+                    try await transcribeItem(item, settings: settings, library: library)
+                    pendingLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Transcribe", status: .success))
                 } catch {
                     Self.logger.error("Transcription failed for \(item.originalFilename): \(self.describeError(error))")
                     errors.append((item, error))
-                    operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Transcribe", status: .failure(describeError(error))))
+                    pendingLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Transcribe", status: .failure(describeError(error))))
                 }
             }
 
             // Step 2: Tag and summarize (runs even if transcription failed)
             if let xaiKey {
-                currentOperation = "Tagging"
+                setOperation("Tagging")
                 do {
-                    try await tagItem(item, xaiKey: xaiKey, settings: settings, library: library, modelContext: modelContext)
-                    operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Tag", status: .success))
+                    try await tagItem(item, xaiKey: xaiKey, settings: settings, library: library)
+                    pendingLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Tag", status: .success))
                 } catch {
                     Self.logger.error("Tagging failed for \(item.originalFilename): \(self.describeError(error))")
                     errors.append((item, error))
-                    operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Tag", status: .failure(describeError(error))))
+                    pendingLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Tag", status: .failure(describeError(error))))
                 }
             }
 
             processedCount += 1
+            if processedCount % Self.batchInterval == 0 {
+                commitBatch(modelContext)
+            }
         }
 
         currentItem = nil
@@ -120,22 +160,26 @@ final class AIProcessingCoordinator {
         totalCount = items.count
         errors = []
         cancelled = false
+        defer { commitBatch(modelContext) }
 
+        setOperation("Transcribing")
         for item in items {
             guard !cancelled else { break }
             currentItem = item
-            currentOperation = "Transcribing"
 
             do {
-                try await transcribeItem(item, settings: settings, library: library, modelContext: modelContext)
-                operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Transcribe", status: .success))
+                try await transcribeItem(item, settings: settings, library: library)
+                pendingLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Transcribe", status: .success))
             } catch {
                 Self.logger.error("Transcription failed for \(item.originalFilename): \(self.describeError(error))")
                 errors.append((item, error))
-                operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Transcribe", status: .failure(describeError(error))))
+                pendingLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Transcribe", status: .failure(describeError(error))))
             }
 
             processedCount += 1
+            if processedCount % Self.batchInterval == 0 {
+                commitBatch(modelContext)
+            }
         }
 
         currentItem = nil
@@ -158,22 +202,26 @@ final class AIProcessingCoordinator {
         totalCount = items.count
         errors = []
         cancelled = false
+        defer { commitBatch(modelContext) }
 
+        setOperation("Tagging")
         for item in items {
             guard !cancelled else { break }
             currentItem = item
-            currentOperation = "Tagging"
 
             do {
-                try await tagItem(item, xaiKey: xaiKey, settings: settings, library: library, modelContext: modelContext)
-                operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Tag", status: .success))
+                try await tagItem(item, xaiKey: xaiKey, settings: settings, library: library)
+                pendingLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Tag", status: .success))
             } catch {
                 Self.logger.error("Tagging failed for \(item.originalFilename): \(self.describeError(error))")
                 errors.append((item, error))
-                operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Tag", status: .failure(describeError(error))))
+                pendingLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Tag", status: .failure(describeError(error))))
             }
 
             processedCount += 1
+            if processedCount % Self.batchInterval == 0 {
+                commitBatch(modelContext)
+            }
         }
 
         currentItem = nil
@@ -196,11 +244,12 @@ final class AIProcessingCoordinator {
         totalCount = items.count
         errors = []
         cancelled = false
+        defer { commitBatch(modelContext) }
 
+        setOperation("Summarizing")
         for item in items {
             guard !cancelled else { break }
             currentItem = item
-            currentOperation = "Summarizing"
 
             do {
                 let url = library.absoluteURL(for: item)
@@ -225,15 +274,18 @@ final class AIProcessingCoordinator {
 
                 let summary = try await taggingService.summarize(imageData: imageData, model: settings.aiModel, apiKey: xaiKey)
                 item.summary = summary
-                try modelContext.save()
-                operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Summarize", status: .success))
+                // Persisted in batches below.
+                pendingLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Summarize", status: .success))
             } catch {
                 Self.logger.error("Summarization failed for \(item.originalFilename): \(self.describeError(error))")
                 errors.append((item, error))
-                operationLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Summarize", status: .failure(describeError(error))))
+                pendingLog.append(AIOperationLog(timestamp: Date(), itemName: item.originalFilename, operation: "Summarize", status: .failure(describeError(error))))
             }
 
             processedCount += 1
+            if processedCount % Self.batchInterval == 0 {
+                commitBatch(modelContext)
+            }
         }
 
         currentItem = nil
@@ -264,7 +316,7 @@ final class AIProcessingCoordinator {
 
     // MARK: - Internal Helpers
 
-    private func transcribeItem(_ item: MediaItem, settings: AppSettings, library: MediaLibrary, modelContext: ModelContext) async throws {
+    private func transcribeItem(_ item: MediaItem, settings: AppSettings, library: MediaLibrary) async throws {
         guard item.transcriptText == nil else { return }
 
         let url = library.absoluteURL(for: item)
@@ -302,12 +354,11 @@ final class AIProcessingCoordinator {
             item.transcriptText = result.text
         }
 
-        try modelContext.save()
-
+        // Persisted in batches by the calling loop.
         Self.logger.info("Transcribed \(item.originalFilename): \(result.text.prefix(80))...")
     }
 
-    private func tagItem(_ item: MediaItem, xaiKey: String, settings: AppSettings, library: MediaLibrary, modelContext: ModelContext) async throws {
+    private func tagItem(_ item: MediaItem, xaiKey: String, settings: AppSettings, library: MediaLibrary) async throws {
         let url = library.absoluteURL(for: item)
         Self.logger.info("Tagging \(item.originalFilename) at \(url.path)")
 
@@ -380,7 +431,7 @@ final class AIProcessingCoordinator {
         default: break
         }
 
-        try modelContext.save()
+        // Persisted in batches by the calling loop.
         Self.logger.info("Tagged \(item.originalFilename): \(result.tags.count) tags, production=\(result.productionSource)")
     }
 }

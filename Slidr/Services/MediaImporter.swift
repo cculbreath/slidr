@@ -34,29 +34,33 @@ struct ImportProgress: Sendable {
 struct MediaImporter {
     private let libraryRoot: URL
     private let externalLibraryRoot: URL?
-    private let modelContext: ModelContext
+    private let modelContainer: ModelContainer
     private let videoConverter = VideoConverter()
     private let options: ImportOptions
 
-    init(libraryRoot: URL, externalLibraryRoot: URL? = nil, modelContext: ModelContext, options: ImportOptions = ImportOptions()) {
+    init(libraryRoot: URL, externalLibraryRoot: URL? = nil, modelContainer: ModelContainer, options: ImportOptions = ImportOptions()) {
         self.libraryRoot = libraryRoot
         self.externalLibraryRoot = externalLibraryRoot
-        self.modelContext = modelContext
+        self.modelContainer = modelContainer
         self.options = options
 
         let convertedDir = libraryRoot.appendingPathComponent("Converted")
         try? FileManager.default.createDirectory(at: convertedDir, withIntermediateDirectories: true)
     }
 
-    func importFiles(urls: [URL]) async throws -> ImportResult {
+    func importFiles(urls: [URL]) async throws -> ImporterOutput {
         return try await importFiles(urls: urls, progressHandler: nil)
     }
 
     func importFiles(
         urls: [URL],
         progressHandler: (@Sendable (ImportProgress) -> Void)?
-    ) async throws -> ImportResult {
-        var result = ImportResult()
+    ) async throws -> ImporterOutput {
+        // Inserts and dedupe fetches run on this background context so the
+        // main-thread SwiftData context (and its @Query consumers) are never
+        // touched off the main actor.
+        let context = ModelContext(modelContainer)
+        var output = ImporterOutput()
 
         for (index, url) in urls.enumerated() {
             do {
@@ -74,15 +78,15 @@ struct MediaImporter {
 
                 guard let mediaType = await detectMediaType(url: url) else {
                     Logger.importing.warning("Unsupported file type: \(url.lastPathComponent)")
-                    result.failed.append((url, ImportError.unsupportedFormat))
+                    output.failed.append((url, ImportError.unsupportedFormat))
                     continue
                 }
 
                 let hash = try ContentHasher.hash(fileAt: url)
 
-                if isDuplicate(hash: hash) {
+                if isDuplicate(hash: hash, context: context) {
                     Logger.importing.info("Skipping duplicate: \(url.lastPathComponent)")
-                    result.skippedDuplicates.append(url)
+                    output.skippedDuplicates.append(url)
                     continue
                 }
 
@@ -116,8 +120,8 @@ struct MediaImporter {
                         item.height = Int(dimensions.height)
                     }
 
-                    modelContext.insert(item)
-                    result.imported.append(item)
+                    context.insert(item)
+                    output.importedIDs.append(item.persistentModelID)
                     Logger.importing.info("Referenced: \(url.lastPathComponent)")
                     continue
                 }
@@ -149,7 +153,7 @@ struct MediaImporter {
                     }
                     importURL = convertedURL
                     finalExtension = options.targetFormat.fileExtension
-                    result.converted.append(url)
+                    output.converted.append(url)
                     Logger.importing.info("Converted \(url.lastPathComponent) to \(options.targetFormat.displayName)")
                 }
 
@@ -171,7 +175,7 @@ struct MediaImporter {
                 switch options.storageLocation {
                 case .external:
                     guard let extRoot = externalLibraryRoot else {
-                        result.failed.append((url, ImportError.externalDriveNotAvailable))
+                        output.failed.append((url, ImportError.externalDriveNotAvailable))
                         continue
                     }
                     if options.organizeByDate {
@@ -232,18 +236,18 @@ struct MediaImporter {
                     item.height = Int(dimensions.height)
                 }
 
-                modelContext.insert(item)
-                result.imported.append(item)
+                context.insert(item)
+                output.importedIDs.append(item.persistentModelID)
                 Logger.importing.info("Imported: \(url.lastPathComponent)")
 
             } catch {
                 Logger.importing.error("Failed to import \(url.lastPathComponent): \(error.localizedDescription)")
-                result.failed.append((url, error))
+                output.failed.append((url, error))
             }
         }
 
-        try modelContext.save()
-        return result
+        try context.save()
+        return output
     }
 
     // MARK: - Media Type Detection
@@ -273,11 +277,11 @@ struct MediaImporter {
 
     // MARK: - Helpers
 
-    private func isDuplicate(hash: String) -> Bool {
+    private func isDuplicate(hash: String, context: ModelContext) -> Bool {
         let predicate = #Predicate<MediaItem> { $0.contentHash == hash }
         var descriptor = FetchDescriptor<MediaItem>(predicate: predicate)
         descriptor.fetchLimit = 1
-        return (try? modelContext.fetchCount(descriptor)) ?? 0 > 0
+        return (try? context.fetchCount(descriptor)) ?? 0 > 0
     }
 
     private func getImageDimensions(url: URL) -> CGSize? {
@@ -333,6 +337,16 @@ enum ImportError: LocalizedError {
         case .externalDriveNotAvailable: return "External drive is not available"
         }
     }
+}
+
+/// Raw output of an import pass. Produced on the importer's background
+/// `ModelContext`, so persisted items are referenced by `persistentModelID`
+/// rather than as live objects — callers re-fetch them into the main context.
+struct ImporterOutput: Sendable {
+    var importedIDs: [PersistentIdentifier] = []
+    var skippedDuplicates: [URL] = []
+    var converted: [URL] = []
+    var failed: [(url: URL, error: Error)] = []
 }
 
 struct ImportResult: Sendable {

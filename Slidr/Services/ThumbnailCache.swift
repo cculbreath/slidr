@@ -67,7 +67,7 @@ actor ThumbnailCache {
             }
 
             // Cache to disk
-            saveThumbnailToDisk(image, to: diskPath)
+            Self.saveThumbnailToDisk(image, to: diskPath, jpegQuality: jpegQuality)
 
             // Cache to memory
             memoryCache.setObject(image, forKey: cacheKey as NSString)
@@ -196,7 +196,7 @@ actor ThumbnailCache {
                     thumbnails.append(image)
 
                     let diskPath = cacheDirectory.appendingPathComponent("\(hash)-scrub-\(i).jpg")
-                    saveThumbnailToDisk(image, to: diskPath)
+                    Self.saveThumbnailToDisk(image, to: diskPath, jpegQuality: jpegQuality)
                 } catch {
                     Self.logger.warning("Failed to generate scrub thumbnail at \(time.seconds)s: \(error.localizedDescription)")
                 }
@@ -207,7 +207,7 @@ actor ThumbnailCache {
             thumbnails = await FFmpegHelper.extractFrames(from: fileURL, count: count, thumbnailSize: scrubPixelSize)
             for (i, image) in thumbnails.enumerated() {
                 let diskPath = cacheDirectory.appendingPathComponent("\(hash)-scrub-\(i).jpg")
-                saveThumbnailToDisk(image, to: diskPath)
+                Self.saveThumbnailToDisk(image, to: diskPath, jpegQuality: jpegQuality)
             }
         }
 
@@ -218,91 +218,92 @@ actor ThumbnailCache {
         return thumbnails
     }
 
-    @discardableResult
-    func preGenerateScrubThumbnails(
-        for items: [PreGenerateItem],
+    /// Exposes the actor's scrub configuration to background fan-out workers
+    /// without forcing them onto the actor's serial executor.
+    nonisolated var scrubGenerationConfig: ScrubGenerationConfig {
+        ScrubGenerationConfig(
+            cacheDirectory: cacheDirectory,
+            pixelSize: scrubPixelSize,
+            jpegQuality: jpegQuality
+        )
+    }
+
+    /// Quick disk-completeness check usable from off-actor workers (no in-memory
+    /// state involved, just `FileManager`). Mirrors `hasScrubThumbnails`.
+    nonisolated static func hasScrubThumbnailsOnDisk(
+        forHash hash: String,
         count: Int,
-        progress: (@MainActor (Int, Int) -> Void)? = nil
-    ) async -> Set<String> {
-        var generated = 0
-        var failedHashes: Set<String> = []
-        let total = items.count
+        cacheDirectory: URL
+    ) -> Bool {
+        let firstPath = cacheDirectory.appendingPathComponent("\(hash)-scrub-0.jpg")
+        let lastPath = cacheDirectory.appendingPathComponent("\(hash)-scrub-\(count - 1).jpg")
+        let fm = FileManager.default
+        return fm.fileExists(atPath: firstPath.path) && fm.fileExists(atPath: lastPath.path)
+    }
 
-        // Report total immediately so the UI can show progress
-        await progress?(0, total)
-
-        for (index, item) in items.enumerated() {
-            if hasScrubThumbnails(forHash: item.contentHash, count: count) {
-                await progress?(index + 1, total)
-                continue
-            }
-
-            guard FileManager.default.fileExists(atPath: item.fileURL.path) else {
-                await progress?(index + 1, total)
-                continue
-            }
-
-            var succeeded = false
-
-            // Try AVFoundation first
-            do {
-                let asset = AVURLAsset(url: item.fileURL)
-                let generator = AVAssetImageGenerator(asset: asset)
-                generator.appliesPreferredTrackTransform = true
-                generator.maximumSize = CGSize(width: scrubPixelSize, height: scrubPixelSize)
-                generator.requestedTimeToleranceBefore = .zero
-                generator.requestedTimeToleranceAfter = .zero
-
-                let duration = try await asset.load(.duration)
-                let durationSeconds = duration.seconds
-                guard durationSeconds > 0 else {
-                    await progress?(index + 1, total)
-                    continue
-                }
-
-                for i in 0..<count {
-                    let fraction = Double(i) / Double(max(count - 1, 1))
-                    // Cap just shy of the end; there is no frame at exactly
-                    // `duration`, so sampling it leaves us one frame short and
-                    // the cache-complete check never passes (endless regen).
-                    let seconds = min(fraction * durationSeconds, durationSeconds * 0.999)
-                    let time = CMTime(seconds: seconds, preferredTimescale: 600)
-                    let (cgImage, _) = try await generator.image(at: time)
-                    let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-
-                    let diskPath = cacheDirectory.appendingPathComponent("\(item.contentHash)-scrub-\(i).jpg")
-                    saveThumbnailToDisk(image, to: diskPath)
-                }
-                succeeded = true
-            } catch {
-                Self.logger.warning("AVFoundation pre-generate failed for \(item.filename): \(error.localizedDescription), trying ffmpeg")
-
-                let frames = await FFmpegHelper.extractFrames(from: item.fileURL, count: count, thumbnailSize: scrubPixelSize)
-                if !frames.isEmpty {
-                    for (i, image) in frames.enumerated() {
-                        let diskPath = cacheDirectory.appendingPathComponent("\(item.contentHash)-scrub-\(i).jpg")
-                        saveThumbnailToDisk(image, to: diskPath)
-                    }
-                    succeeded = true
-                }
-            }
-
-            if succeeded {
-                generated += 1
-                Self.logger.debug("Pre-generated scrub thumbnails for \(item.filename)")
-            } else {
-                failedHashes.insert(item.contentHash)
-                Self.logger.warning("All methods failed to pre-generate scrub thumbnails for \(item.filename)")
-            }
-
-            await progress?(index + 1, total)
+    /// Generates and writes the full scrub-frame set for a single video, entirely
+    /// off the actor's serial executor so many videos can be processed in parallel.
+    /// Returns `true` on success; `false` means every extraction method failed
+    /// (the caller marks the content hash as a decode error).
+    ///
+    /// Preserves the exact prior behavior: AVFoundation first with the
+    /// `duration * 0.999` end clamp, ffmpeg fallback, `<hash>-scrub-<i>.jpg`
+    /// filenames, and identical JPEG encoding.
+    nonisolated static func generateScrubThumbnails(
+        for item: PreGenerateItem,
+        count: Int,
+        config: ScrubGenerationConfig
+    ) async -> Bool {
+        guard FileManager.default.fileExists(atPath: item.fileURL.path) else {
+            return true
         }
 
-        if generated > 0 {
-            Self.logger.info("Pre-generated scrub thumbnails for \(generated) videos")
-        }
+        // Try AVFoundation first
+        do {
+            let asset = AVURLAsset(url: item.fileURL)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: config.pixelSize, height: config.pixelSize)
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
 
-        return failedHashes
+            let duration = try await asset.load(.duration)
+            let durationSeconds = duration.seconds
+            guard durationSeconds > 0 else {
+                return true
+            }
+
+            for i in 0..<count {
+                let fraction = Double(i) / Double(max(count - 1, 1))
+                // Cap just shy of the end; there is no frame at exactly
+                // `duration`, so sampling it leaves us one frame short and
+                // the cache-complete check never passes (endless regen).
+                let seconds = min(fraction * durationSeconds, durationSeconds * 0.999)
+                let time = CMTime(seconds: seconds, preferredTimescale: 600)
+                let (cgImage, _) = try await generator.image(at: time)
+                let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+
+                let diskPath = config.cacheDirectory.appendingPathComponent("\(item.contentHash)-scrub-\(i).jpg")
+                saveThumbnailToDisk(image, to: diskPath, jpegQuality: config.jpegQuality)
+            }
+            logger.debug("Pre-generated scrub thumbnails for \(item.filename)")
+            return true
+        } catch {
+            logger.warning("AVFoundation pre-generate failed for \(item.filename): \(error.localizedDescription), trying ffmpeg")
+
+            let frames = await FFmpegHelper.extractFrames(from: item.fileURL, count: count, thumbnailSize: config.pixelSize)
+            if !frames.isEmpty {
+                for (i, image) in frames.enumerated() {
+                    let diskPath = config.cacheDirectory.appendingPathComponent("\(item.contentHash)-scrub-\(i).jpg")
+                    saveThumbnailToDisk(image, to: diskPath, jpegQuality: config.jpegQuality)
+                }
+                logger.debug("Pre-generated scrub thumbnails via ffmpeg for \(item.filename)")
+                return true
+            }
+
+            logger.warning("All methods failed to pre-generate scrub thumbnails for \(item.filename)")
+            return false
+        }
     }
 
     func clearScrubThumbnails() {
@@ -443,7 +444,7 @@ actor ThumbnailCache {
 
     // MARK: - Private Helpers
 
-    private func saveThumbnailToDisk(_ image: NSImage, to path: URL) {
+    private nonisolated static func saveThumbnailToDisk(_ image: NSImage, to path: URL, jpegQuality: CGFloat) {
         guard let tiffData = image.tiffRepresentation,
               let bitmapRep = NSBitmapImageRep(data: tiffData),
               let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: jpegQuality]) else {
@@ -474,6 +475,14 @@ struct PreGenerateItem: Sendable {
     let contentHash: String
     let fileURL: URL
     let filename: String
+}
+
+/// Sendable snapshot of the cache's scrub-generation configuration, handed to
+/// off-actor workers so they can write frames without touching the actor.
+struct ScrubGenerationConfig: Sendable {
+    let cacheDirectory: URL
+    let pixelSize: CGFloat
+    let jpegQuality: CGFloat
 }
 
 enum ThumbnailError: LocalizedError {

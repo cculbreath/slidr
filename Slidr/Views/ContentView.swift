@@ -25,11 +25,11 @@ struct ContentView: View {
     @State private var subtitleImportAlert: String?
     @State private var transcriptSeekAction: ((TimeInterval) -> Void)?
     @State private var pendingTranscriptSeek: TimeInterval?
-    @State private var aiStatusWindow: AIStatusWindowController?
     @State private var audioCaptionImportAlert: String?
     @State private var manifestImportAlert: String?
     @State private var manifestImporter = ManifestImporter()
     @State private var duplicateScanCoordinator = DuplicateScanCoordinator()
+    @State private var libraryRefreshTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -104,6 +104,12 @@ struct ContentView: View {
         return "\(progress.currentItem + 1) of \(progress.totalItems): \(progress.currentFilename)"
     }
 
+    /// The shared, app-lifetime AI status window (owned by AppDelegate so there's
+    /// exactly one regardless of how many times ContentView is rebuilt).
+    private var aiStatusWindow: AIStatusWindowController? {
+        (NSApp.delegate as? AppDelegate)?.aiStatusWindow(for: aiCoordinator)
+    }
+
     // MARK: - Main Content
 
     private var mainContent: some View {
@@ -151,7 +157,7 @@ struct ContentView: View {
             .onChange(of: settingsQuery.first?.externalDrivePath) { _, newPath in
                 library.configureExternalDrive(path: newPath)
             }
-            .onChange(of: library.libraryVersion) { refreshItems() }
+            .onChange(of: library.libraryVersion) { scheduleLibraryRefresh() }
             .onChange(of: playlistService.playlistChangeGeneration) { refreshItems() }
             .allowsHitTesting(!showSlideshow)
             .onChange(of: showSlideshow) { _, isSlideshow in
@@ -181,9 +187,6 @@ struct ContentView: View {
                 refreshItems()
                 let count = settingsQuery.first?.scrubThumbnailCount ?? 100
                 library.backgroundGenerateMissingScrubThumbnails(count: count)
-                if aiStatusWindow == nil {
-                    aiStatusWindow = AIStatusWindowController(coordinator: aiCoordinator)
-                }
                 duplicateScanCoordinator.configure(library: library)
                 drainDockImportURLs()
             }
@@ -311,15 +314,34 @@ struct ContentView: View {
 
     private func drainDockImportURLs() {
         guard let delegate = NSApp.delegate as? AppDelegate else { return }
-        let urls = delegate.consumePendingImportURLs()
-        guard !urls.isEmpty else { return }
-        Task {
-            await performImport(urls: urls)
+
+        let dockURLs = delegate.consumePendingImportURLs()
+        if !dockURLs.isEmpty {
+            Task { await performImport(urls: dockURLs) }
+        }
+
+        // Services ("Copy to Slidr Library") always copies into the library,
+        // regardless of the user's import-mode setting.
+        let serviceURLs = delegate.consumePendingServiceImportURLs()
+        if !serviceURLs.isEmpty {
+            Task { await performImport(urls: serviceURLs, forceCopyToLibrary: true) }
         }
     }
 
     private func refreshItems() {
         cachedItems = fetchItems()
+    }
+
+    /// Coalesces rapid `libraryVersion` bumps (AI tagging, scrub-gen) into a
+    /// single refresh so the main thread isn't re-fetching and re-sorting the
+    /// whole library on every increment.
+    private func scheduleLibraryRefresh() {
+        libraryRefreshTask?.cancel()
+        libraryRefreshTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            refreshItems()
+        }
     }
 
     private var activePlaylist: Playlist? {
@@ -564,7 +586,7 @@ struct ContentView: View {
         }
     }
 
-    private func performImport(urls: [URL]) async {
+    private func performImport(urls: [URL], forceCopyToLibrary: Bool = false) async {
         var options = ImportOptions()
         if let settings = settingsQuery.first {
             options.importMode = settings.importMode
@@ -573,6 +595,13 @@ struct ContentView: View {
             options.convertIncompatible = settings.convertIncompatibleFormats
             options.deleteOriginalAfterConvert = !settings.keepOriginalAfterConversion
             options.targetFormat = settings.importTargetFormat
+        }
+        if forceCopyToLibrary {
+            // Services imports come from temp/downloaded files or arbitrary Finder
+            // locations — always copy into the library and never touch the source.
+            options.importMode = .copy
+            options.storageLocation = .local
+            options.deleteOriginalAfterConvert = false
         }
 
         var importedItems: [MediaItem] = []

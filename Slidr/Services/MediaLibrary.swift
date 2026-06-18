@@ -279,14 +279,14 @@ final class MediaLibrary {
     // MARK: - Scrub Thumbnail Generation
 
     func generateScrubThumbnailsForVideos(_ items: [MediaItem], count: Int) {
-        let cache = thumbnailCache
+        let config = thumbnailCache.scrubGenerationConfig
         let videoItems = items.filter { $0.isVideo }
             .map { PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename) }
 
         guard !videoItems.isEmpty else { return }
 
         Task.detached(priority: .utility) { [weak self] in
-            let failedHashes = await cache.preGenerateScrubThumbnails(for: videoItems, count: count)
+            let failedHashes = await Self.fanOutScrubGeneration(items: videoItems, count: count, config: config)
             if !failedHashes.isEmpty {
                 await self?.markDecodeErrors(forHashes: failedHashes)
             }
@@ -294,14 +294,14 @@ final class MediaLibrary {
     }
 
     func backgroundGenerateMissingScrubThumbnails(count: Int) {
-        let cache = thumbnailCache
+        let config = thumbnailCache.scrubGenerationConfig
         let videoItems = allItems.filter { $0.isVideo && !$0.hasDecodeError }
             .map { PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename) }
 
         guard !videoItems.isEmpty else { return }
 
         Task.detached(priority: .background) { [weak self] in
-            let failedHashes = await cache.preGenerateScrubThumbnails(for: videoItems, count: count)
+            let failedHashes = await Self.fanOutScrubGeneration(items: videoItems, count: count, config: config)
             if !failedHashes.isEmpty {
                 await self?.markDecodeErrors(forHashes: failedHashes)
             }
@@ -323,18 +323,19 @@ final class MediaLibrary {
         let cache = thumbnailCache
         await cache.clearScrubThumbnails()
 
+        let config = cache.scrubGenerationConfig
         let videoItems = allItems.filter { $0.isVideo }
             .map { PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename) }
 
         let totalCount = videoItems.count
         guard totalCount > 0 else { return 0 }
 
-        let failedHashes = await cache.preGenerateScrubThumbnails(
-            for: videoItems,
-            count: count
-        ) { current, total in
-            progress(current, total)
-        }
+        let failedHashes = await Self.fanOutScrubGeneration(
+            items: videoItems,
+            count: count,
+            config: config,
+            progress: progress
+        )
 
         if !failedHashes.isEmpty {
             markDecodeErrors(forHashes: failedHashes)
@@ -362,12 +363,12 @@ final class MediaLibrary {
             PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename)
         }
 
-        let failedHashes = await cache.preGenerateScrubThumbnails(
-            for: pregenItems,
-            count: count
-        ) { current, total in
-            progress(current, total)
-        }
+        let failedHashes = await Self.fanOutScrubGeneration(
+            items: pregenItems,
+            count: count,
+            config: cache.scrubGenerationConfig,
+            progress: progress
+        )
 
         // Clear decode error flag for items that succeeded
         var recovered = 0
@@ -385,6 +386,68 @@ final class MediaLibrary {
         }
 
         return recovered
+    }
+
+    /// Bounded-parallel scrub-frame generation. Runs each video's extraction off
+    /// the thumbnail actor's serial executor (so interactive thumbnail requests
+    /// stay responsive) while capping concurrency at the core count minus a
+    /// couple to leave headroom for the UI.
+    ///
+    /// Videos that already have a complete on-disk scrub set are skipped (matching
+    /// the prior cache-completeness behavior). Returns the set of content hashes
+    /// for which every extraction method failed — used to flag decode errors.
+    nonisolated static func fanOutScrubGeneration(
+        items: [PreGenerateItem],
+        count: Int,
+        config: ScrubGenerationConfig,
+        progress: (@MainActor (Int, Int) -> Void)? = nil
+    ) async -> Set<String> {
+        let total = items.count
+        await progress?(0, total)
+        guard total > 0 else { return [] }
+
+        let maxConcurrency = max(2, ProcessInfo.processInfo.activeProcessorCount - 2)
+
+        // Each child task returns the failed hash (if any) for the video it
+        // processed; the parent aggregates and drives progress so the
+        // @MainActor progress closure never has to cross into a @Sendable task.
+        let failedHashes = await withTaskGroup(of: String?.self) { group -> Set<String> in
+            var iterator = items.makeIterator()
+            var inFlight = 0
+
+            func spawn(_ item: PreGenerateItem) {
+                group.addTask {
+                    guard !ThumbnailCache.hasScrubThumbnailsOnDisk(forHash: item.contentHash, count: count, cacheDirectory: config.cacheDirectory) else {
+                        return nil
+                    }
+                    let succeeded = await ThumbnailCache.generateScrubThumbnails(for: item, count: count, config: config)
+                    return succeeded ? nil : item.contentHash
+                }
+            }
+
+            // Prime the window, then refill one-for-one as tasks finish.
+            while inFlight < maxConcurrency, let item = iterator.next() {
+                spawn(item)
+                inFlight += 1
+            }
+
+            var failed: Set<String> = []
+            var completed = 0
+            while let result = await group.next() {
+                if let failedHash = result {
+                    failed.insert(failedHash)
+                }
+                completed += 1
+                await progress?(completed, total)
+
+                if let item = iterator.next() {
+                    spawn(item)
+                }
+            }
+            return failed
+        }
+
+        return failedHashes
     }
 
     // MARK: - Unplayable Reassessment

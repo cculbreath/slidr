@@ -35,5 +35,25 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Copy to Slidr Library</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>addToSlidr</string>
+			<key>NSPortName</key>
+			<string>Slidr</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.file-url</string>
+				<string>public.image</string>
+				<string>public.url</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

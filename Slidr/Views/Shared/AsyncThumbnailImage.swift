@@ -52,7 +52,10 @@ struct AsyncThumbnailImage: View {
                     .background(Color.gray.opacity(0.1))
             }
         }
-        .task(id: source.id) {
+        // Interactive grid requests run at a higher priority than the
+        // background scrub pre-generation (.utility/.background) so the visible
+        // grid never waits behind bulk work.
+        .task(id: source.id, priority: .userInitiated) {
             await loadThumbnail()
         }
     }
