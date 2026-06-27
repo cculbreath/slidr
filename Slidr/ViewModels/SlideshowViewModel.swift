@@ -363,6 +363,37 @@ final class SlideshowViewModel {
             }
     }
 
+    /// Push the auto-advance deadline for the current truncated video clip out by
+    /// one additional clip length. Each press extends the total slide duration by
+    /// the configured clip length and reschedules the advance for the new remaining
+    /// time, so the user can linger on a looping clip without switching to Full Video.
+    /// No-op unless a limited-duration video clip is actively auto-advancing.
+    func extendVideoClip() {
+        guard isPlaying,
+              autoAdvance,
+              currentItemIsVideo,
+              !videoPlayDuration.isFullVideo,
+              let start = timerStartDate,
+              currentSlideDuration > 0 else { return }
+
+        let clipLength = effectiveVideoDuration()
+        guard clipLength > 0 else { return }
+
+        // Keep timerStartDate fixed so the progress bar stays consistent: it now
+        // measures elapsed time against the larger total and visibly rewinds.
+        let newTotal = currentSlideDuration + clipLength
+        let remaining = max(0, newTotal - Date().timeIntervalSince(start))
+        currentSlideDuration = newTotal
+
+        timerCancellable?.cancel()
+        timerCancellable = Timer.publish(every: remaining, on: .main, in: .common)
+            .autoconnect()
+            .first()
+            .sink { [weak self] _ in
+                self?.next()
+            }
+    }
+
     private func effectiveVideoDuration() -> TimeInterval {
         switch videoPlayDuration {
         case .slideshowTimer: return slideDuration

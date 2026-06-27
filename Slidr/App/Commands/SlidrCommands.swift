@@ -801,6 +801,12 @@ struct SlidrCommands: Commands {
 
             Divider()
 
+            Button("Extend Clip") { activeSlideshow?.extendVideoClip() }
+                .keyboardShortcut("x", modifiers: [])
+                .disabled(activeSlideshow == nil)
+
+            Divider()
+
             Button("Volume Up") { activeSlideshow?.increaseVolume() }
                 .keyboardShortcut(.upArrow, modifiers: [])
                 .disabled(activeSlideshow == nil)
