@@ -11,7 +11,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var controlWindow: NSWindow?
     private(set) var pendingImportURLs: [URL] = []
     private(set) var pendingServiceImportURLs: [URL] = []
-    private var aiStatusWindowController: AIStatusWindowController?
 
     private static let logger = Logger(subsystem: "com.physicscloud.slidr", category: "Services")
 
@@ -19,20 +18,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Register as the provider for the "Copy to Slidr Library" Services menu item.
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
-    }
-
-    /// The single, app-lifetime AI status window, created on first use. Owned
-    /// here rather than in a ContentView `@State` so exactly one panel exists no
-    /// matter how many times a window is opened or ContentView is rebuilt (e.g.
-    /// across vault lock/unlock) — otherwise orphaned panels stack up.
-    @MainActor
-    func aiStatusWindow(for coordinator: AIProcessingCoordinator) -> AIStatusWindowController {
-        if let existing = aiStatusWindowController {
-            return existing
-        }
-        let controller = AIStatusWindowController(coordinator: coordinator)
-        aiStatusWindowController = controller
-        return controller
     }
 
     func applicationWillTerminate(_ notification: Notification) {

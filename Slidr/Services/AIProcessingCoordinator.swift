@@ -36,6 +36,11 @@ final class AIProcessingCoordinator {
     var errors: [(MediaItem, Error)] = []
     var operationLog: [AIOperationLog] = []
 
+    /// Non-item-specific problem that blocks a run before it starts (e.g. a
+    /// missing API key). Surfaced in the sidebar so misconfiguration no longer
+    /// fails silently. Cleared when a run actually begins or the user dismisses it.
+    var configError: String?
+
     private var cancelled = false
 
     /// Save and log-flush cadence: persist + surface accumulated log entries
@@ -50,6 +55,25 @@ final class AIProcessingCoordinator {
     func clearLog() {
         pendingLog.removeAll()
         operationLog.removeAll()
+        errors.removeAll()
+        configError = nil
+    }
+
+    func dismissConfigError() {
+        configError = nil
+    }
+
+    /// Reset per-run state at the start of a batch. Clears the previous run's log
+    /// and any stale config notice so the sidebar reflects only the current run.
+    private func beginBatch(total: Int) {
+        isProcessing = true
+        processedCount = 0
+        totalCount = total
+        errors = []
+        operationLog = []
+        pendingLog = []
+        configError = nil
+        cancelled = false
     }
 
     /// Set `currentOperation` only when the label actually changes, so identical
@@ -86,15 +110,12 @@ final class AIProcessingCoordinator {
         let xaiKey = KeychainService.load(key: KeychainService.xaiAPIKeyName)
 
         guard xaiKey != nil else {
+            configError = "No xAI API key configured. Add one in Settings › AI to tag or summarize media."
             Self.logger.warning("No xAI API key configured, skipping AI processing")
             return
         }
 
-        isProcessing = true
-        processedCount = 0
-        totalCount = items.count
-        errors = []
-        cancelled = false
+        beginBatch(total: items.count)
         defer { commitBatch(modelContext) }
 
         for item in items {
@@ -151,15 +172,12 @@ final class AIProcessingCoordinator {
             hasKey = KeychainService.exists(key: KeychainService.mistralAPIKeyName)
         }
         guard hasKey else {
+            configError = "No \(settings.transcriptionProvider.displayName) API key configured. Add one in Settings › AI to transcribe."
             Self.logger.warning("No API key configured for \(settings.transcriptionProvider.displayName), skipping transcription")
             return
         }
 
-        isProcessing = true
-        processedCount = 0
-        totalCount = items.count
-        errors = []
-        cancelled = false
+        beginBatch(total: items.count)
         defer { commitBatch(modelContext) }
 
         setOperation("Transcribing")
@@ -193,15 +211,12 @@ final class AIProcessingCoordinator {
         guard !items.isEmpty else { return }
 
         guard let xaiKey = KeychainService.load(key: KeychainService.xaiAPIKeyName) else {
+            configError = "No xAI API key configured. Add one in Settings › AI to tag media."
             Self.logger.warning("No xAI API key configured")
             return
         }
 
-        isProcessing = true
-        processedCount = 0
-        totalCount = items.count
-        errors = []
-        cancelled = false
+        beginBatch(total: items.count)
         defer { commitBatch(modelContext) }
 
         setOperation("Tagging")
@@ -235,15 +250,12 @@ final class AIProcessingCoordinator {
         guard !items.isEmpty else { return }
 
         guard let xaiKey = KeychainService.load(key: KeychainService.xaiAPIKeyName) else {
+            configError = "No xAI API key configured. Add one in Settings › AI to summarize media."
             Self.logger.warning("No xAI API key configured")
             return
         }
 
-        isProcessing = true
-        processedCount = 0
-        totalCount = items.count
-        errors = []
-        cancelled = false
+        beginBatch(total: items.count)
         defer { commitBatch(modelContext) }
 
         setOperation("Summarizing")

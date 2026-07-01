@@ -121,7 +121,6 @@ struct SlidrCommands: Commands {
     @FocusedValue(\.aiTranscribeSelected) var aiTranscribeSelected
     @FocusedValue(\.aiProcessUntagged) var aiProcessUntagged
     @FocusedValue(\.aiProcessUntranscribed) var aiProcessUntranscribed
-    @FocusedValue(\.aiShowStatusWindow) var aiShowStatusWindow
 
     // MARK: - Library FocusedValues
     @FocusedValue(\.duplicateScanAction) var duplicateScanAction
@@ -1218,13 +1217,6 @@ struct SlidrCommands: Commands {
                 aiProcessUntranscribed?()
             }
             .disabled(aiProcessUntranscribed == nil)
-
-            Divider()
-
-            Button("Show Status Window") {
-                aiShowStatusWindow?()
-            }
-            .disabled(aiShowStatusWindow == nil)
         }
     }
 

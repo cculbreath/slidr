@@ -19,6 +19,8 @@ struct SidebarView: View {
                 manualPlaylistsSection
             }
             .listStyle(.sidebar)
+
+            SidebarActivityPane()
         }
         .frame(minWidth: 200)
         .confirmationDialog(

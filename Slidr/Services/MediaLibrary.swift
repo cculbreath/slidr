@@ -3,6 +3,14 @@ import SwiftData
 import AppKit
 import OSLog
 
+/// Progress of a background scrub-thumbnail generation pass. `nil` when no pass
+/// with real work is running (a pass over an already-cached library never
+/// publishes progress).
+struct ScrubThumbnailProgress: Sendable {
+    let completed: Int
+    let total: Int
+}
+
 /// Main entry point for media library operations.
 /// Acts as a facade delegating to specialized services.
 @MainActor
@@ -20,6 +28,10 @@ final class MediaLibrary {
     // Import progress
     private(set) var importProgress: ImportProgress?
     private(set) var importCancelled = false
+
+    // Background scrub-thumbnail generation progress (nil unless real work is running)
+    private(set) var scrubThumbnailProgress: ScrubThumbnailProgress?
+    @ObservationIgnored private var scrubGenerationToken = 0
 
     // MARK: - Dependencies
     let modelContainer: ModelContainer
@@ -279,33 +291,61 @@ final class MediaLibrary {
     // MARK: - Scrub Thumbnail Generation
 
     func generateScrubThumbnailsForVideos(_ items: [MediaItem], count: Int) {
-        let config = thumbnailCache.scrubGenerationConfig
-        let videoItems = items.filter { $0.isVideo }
+        let pregen = items.filter { $0.isVideo }
             .map { PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename) }
+        startScrubGeneration(items: pregen, count: count, priority: .utility)
+    }
 
-        guard !videoItems.isEmpty else { return }
+    func backgroundGenerateMissingScrubThumbnails(count: Int) {
+        let pregen = allItems.filter { $0.isVideo && !$0.hasDecodeError }
+            .map { PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename) }
+        startScrubGeneration(items: pregen, count: count, priority: .background)
+    }
 
-        Task.detached(priority: .utility) { [weak self] in
-            let failedHashes = await Self.fanOutScrubGeneration(items: videoItems, count: count, config: config)
+    /// Shared entry point for background scrub-thumbnail generation. Pre-filters to
+    /// items actually missing thumbnails off the main actor (so we never stat disk
+    /// on the main thread), and only publishes `scrubThumbnailProgress` when there
+    /// is real work — otherwise a launch-time rescan of an already-cached library
+    /// would flash a full progress bar for nothing.
+    private func startScrubGeneration(items: [PreGenerateItem], count: Int, priority: TaskPriority) {
+        guard !items.isEmpty else { return }
+        let config = thumbnailCache.scrubGenerationConfig
+
+        Task.detached(priority: priority) { [weak self] in
+            let missing = items.filter {
+                !ThumbnailCache.hasScrubThumbnailsOnDisk(forHash: $0.contentHash, count: count, cacheDirectory: config.cacheDirectory)
+            }
+            guard !missing.isEmpty else { return }
+            guard let token = await self?.beginScrubGeneration(total: missing.count) else { return }
+
+            let failedHashes = await Self.fanOutScrubGeneration(items: missing, count: count, config: config) { completed, total in
+                self?.updateScrubProgress(completed: completed, total: total, token: token)
+            }
+
+            await self?.finishScrubGeneration(token: token)
             if !failedHashes.isEmpty {
                 await self?.markDecodeErrors(forHashes: failedHashes)
             }
         }
     }
 
-    func backgroundGenerateMissingScrubThumbnails(count: Int) {
-        let config = thumbnailCache.scrubGenerationConfig
-        let videoItems = allItems.filter { $0.isVideo && !$0.hasDecodeError }
-            .map { PreGenerateItem(contentHash: $0.contentHash, fileURL: absoluteURL(for: $0), filename: $0.originalFilename) }
+    /// Claim a generation token and publish the initial progress. Concurrent passes
+    /// each bump the token; only the newest one drives `scrubThumbnailProgress`, so
+    /// a finishing older pass can't prematurely clear a newer one's bar.
+    private func beginScrubGeneration(total: Int) -> Int {
+        scrubGenerationToken &+= 1
+        scrubThumbnailProgress = ScrubThumbnailProgress(completed: 0, total: total)
+        return scrubGenerationToken
+    }
 
-        guard !videoItems.isEmpty else { return }
+    private func updateScrubProgress(completed: Int, total: Int, token: Int) {
+        guard token == scrubGenerationToken else { return }
+        scrubThumbnailProgress = completed >= total ? nil : ScrubThumbnailProgress(completed: completed, total: total)
+    }
 
-        Task.detached(priority: .background) { [weak self] in
-            let failedHashes = await Self.fanOutScrubGeneration(items: videoItems, count: count, config: config)
-            if !failedHashes.isEmpty {
-                await self?.markDecodeErrors(forHashes: failedHashes)
-            }
-        }
+    private func finishScrubGeneration(token: Int) {
+        guard token == scrubGenerationToken else { return }
+        scrubThumbnailProgress = nil
     }
 
     func invalidateScrubThumbnails(newCount: Int) {

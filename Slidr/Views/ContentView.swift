@@ -104,12 +104,6 @@ struct ContentView: View {
         return "\(progress.currentItem + 1) of \(progress.totalItems): \(progress.currentFilename)"
     }
 
-    /// The shared, app-lifetime AI status window (owned by AppDelegate so there's
-    /// exactly one regardless of how many times ContentView is rebuilt).
-    private var aiStatusWindow: AIStatusWindowController? {
-        (NSApp.delegate as? AppDelegate)?.aiStatusWindow(for: aiCoordinator)
-    }
-
     // MARK: - Main Content
 
     private var mainContent: some View {
@@ -133,8 +127,7 @@ struct ContentView: View {
                 summarizeSelected: { aiSummarizeSelected() },
                 transcribeSelected: { aiTranscribeSelected() },
                 processUntagged: { aiProcessUntagged() },
-                processUntranscribed: { aiProcessUntranscribed() },
-                showStatusWindow: { aiStatusWindow?.show() }
+                processUntranscribed: { aiProcessUntranscribed() }
             ))
             .modifier(FilterFocusedValuesModifier(gridViewModel: gridViewModel))
             .modifier(DuplicateFocusedValuesModifier(scan: { force in
@@ -189,13 +182,6 @@ struct ContentView: View {
                 library.backgroundGenerateMissingScrubThumbnails(count: count)
                 duplicateScanCoordinator.configure(library: library)
                 drainDockImportURLs()
-            }
-            .onChange(of: aiCoordinator.isProcessing) { _, isProcessing in
-                if isProcessing {
-                    aiStatusWindow?.show()
-                } else {
-                    aiStatusWindow?.scheduleAutoDismiss()
-                }
             }
             .onChange(of: settingsQuery.first?.aiAutoProcessOnImport) { _, newValue in
                 menuCoordinator.aiAutoProcess = newValue ?? false

@@ -39,7 +39,6 @@ struct AIFocusedValuesModifier: ViewModifier {
     let transcribeSelected: () -> Void
     let processUntagged: () -> Void
     let processUntranscribed: () -> Void
-    let showStatusWindow: () -> Void
 
     func body(content: Content) -> some View {
         content
@@ -52,7 +51,6 @@ struct AIFocusedValuesModifier: ViewModifier {
             .focusedSceneValue(\.aiTranscribeSelected, transcribeSelected)
             .focusedSceneValue(\.aiProcessUntagged, processUntagged)
             .focusedSceneValue(\.aiProcessUntranscribed, processUntranscribed)
-            .focusedSceneValue(\.aiShowStatusWindow, showStatusWindow)
     }
 }
 
