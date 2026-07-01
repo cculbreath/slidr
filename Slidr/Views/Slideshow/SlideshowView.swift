@@ -410,6 +410,8 @@ struct SlideshowView: View {
         }
 
         uiState.scrubPosition = viewModel.scrubber.progress
+        uiState.didScrubWithMouse = false
+        uiState.scrubHoverAnchor = nil
         uiState.isScrubModeActive = true
 
         Task {
@@ -428,7 +430,12 @@ struct SlideshowView: View {
     private func exitScrubMode() {
         guard uiState.isScrubModeActive else { return }
 
-        viewModel.scrubber.seek(toPercentage: Double(uiState.scrubPosition))
+        // Only commit the overlay position when the user actually mouse-scrubbed.
+        // If Option was merely held as a modifier for a keyboard seek (⌥←/⌥→ = ±30s),
+        // leave the player where the seek put it instead of snapping back to entry.
+        if uiState.didScrubWithMouse {
+            viewModel.scrubber.seek(toPercentage: Double(uiState.scrubPosition))
+        }
         uiState.isScrubModeActive = false
 
         if uiState.wasPlayingBeforeScrub && !viewModel.isPlaying {

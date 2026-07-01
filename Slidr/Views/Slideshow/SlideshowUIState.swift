@@ -33,6 +33,8 @@ final class SlideshowUIState {
     var isScrubModeActive = false
     var scrubThumbnails: [NSImage] = []
     var scrubPosition: CGFloat = 0
+    var didScrubWithMouse = false
+    var scrubHoverAnchor: CGPoint?
     var wasPlayingBeforeScrub = false
     var optionKeyMonitor: Any?
 

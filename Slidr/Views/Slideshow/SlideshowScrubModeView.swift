@@ -66,7 +66,17 @@ struct SlideshowScrubModeView: View {
             }
             .background(Color.black)
             .onContinuousHover { phase in
-                if case .active(let location) = phase {
+                guard case .active(let location) = phase else { return }
+                // The first .active fires merely because the overlay appeared under a
+                // stationary cursor — record it as the anchor but don't treat it as a
+                // scrub. Only real pointer movement counts, so a held ⌥ used purely as
+                // a keyboard-seek modifier (⌥←/⌥→) isn't mistaken for mouse scrubbing.
+                guard let anchor = uiState.scrubHoverAnchor else {
+                    uiState.scrubHoverAnchor = location
+                    return
+                }
+                if abs(location.x - anchor.x) > 1 || abs(location.y - anchor.y) > 1 {
+                    uiState.didScrubWithMouse = true
                     uiState.scrubPosition = max(0, min(1, location.x / geo.size.width))
                 }
             }
